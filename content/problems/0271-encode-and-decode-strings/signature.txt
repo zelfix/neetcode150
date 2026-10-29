@@ -1,0 +1,9 @@
+// Encodes a list of strings to a single string.
+func encode(strs []string) string {
+    
+}
+
+// Decodes a single string back to the original list of strings.
+func decode(s string) []string {
+    
+}

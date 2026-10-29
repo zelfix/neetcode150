@@ -1,0 +1,48 @@
+# ---------------------------------------------------------------------------
+# Your work is yours, and it is deliberately not in this repo.
+#
+# The premise of this kit is that you solve each problem yourself, so a clone
+# arrives with no solutions, no notes, no hint ladders and no progress. Drop a
+# line below if you would rather track your own — but think twice before you
+# push someone a repo with the answers already in it.
+# ---------------------------------------------------------------------------
+/solutions/
+/progress.json
+content/problems/*/notes.md
+content/problems/*/hints.md
+
+# ---------------------------------------------------------------------------
+# Fetched from LeetCode — not ours to redistribute.
+#
+# `go run ./cmd/nc fetch` rebuilds all of these in a few minutes, and a re-run
+# only fills in what is missing. The seven premium problems are the exception:
+# LeetCode will not serve them, so their statements and signatures are written
+# by hand and are tracked here.
+# ---------------------------------------------------------------------------
+content/problems/*/problem.md
+content/problems/*/signature.txt
+
+!content/problems/0252-meeting-rooms/problem.md
+!content/problems/0252-meeting-rooms/signature.txt
+!content/problems/0253-meeting-rooms-ii/problem.md
+!content/problems/0253-meeting-rooms-ii/signature.txt
+!content/problems/0261-graph-valid-tree/problem.md
+!content/problems/0261-graph-valid-tree/signature.txt
+!content/problems/0269-alien-dictionary/problem.md
+!content/problems/0269-alien-dictionary/signature.txt
+!content/problems/0271-encode-and-decode-strings/problem.md
+!content/problems/0271-encode-and-decode-strings/signature.txt
+!content/problems/0286-walls-and-gates/problem.md
+!content/problems/0286-walls-and-gates/signature.txt
+!content/problems/0323-number-of-connected-components-in-an-undirected-graph/problem.md
+!content/problems/0323-number-of-connected-components-in-an-undirected-graph/signature.txt
+
+# ---------------------------------------------------------------------------
+# Build output, editors, OS cruft
+# ---------------------------------------------------------------------------
+/nc
+*.test
+*.out
+
+.idea/
+.DS_Store

@@ -1,0 +1,97 @@
+{{define "content"}}
+<nav class="pager">
+  {{if .Prev}}<a href="/problems/{{.Prev.Slug}}">← {{.Prev.ID}}. {{.Prev.Title}}</a>{{else}}<span class="spacer">—</span>{{end}}
+  {{if .Next}}<a href="/problems/{{.Next.Slug}}">{{.Next.ID}}. {{.Next.Title}} →</a>{{else}}<span class="spacer">—</span>{{end}}
+</nav>
+
+<header class="problem-head">
+  <h1>{{.P.ID}}. {{.P.Title}}</h1>
+  <div class="facts">
+    <span class="is-{{lower .P.Difficulty}}">{{.P.Difficulty}}</span>
+    {{if .HasGuide}}<a href="/patterns/{{.P.PatternSlug}}">{{.P.Pattern}}</a>{{else}}<span>{{.P.Pattern}}</span>{{end}}
+    {{if .P.Blind75}}<span>Blind 75</span>{{end}}
+    {{if .Topics}}<span>{{range $i, $t := .Topics}}{{if $i}}, {{end}}{{$t}}{{end}}</span>{{end}}
+  </div>
+</header>
+
+<div class="split">
+  <div>
+    {{if .Statement.Empty}}
+    <p class="notes-empty">No statement on disk yet. Run <code>nc fetch</code> to download it, or write
+      <code>{{.Statement.Path}}</code> by hand if LeetCode keeps this one behind Premium.</p>
+    {{else}}
+    <article class="prose">{{.Statement.HTMLBody}}</article>
+    {{end}}
+
+    <section class="hints">
+      <div class="block-head"><h2>Hints</h2></div>
+      {{if .Hints}}
+        {{if .HintPreamble}}<div class="prose hint-intro">{{.HintPreamble}}</div>{{end}}
+        {{range .Hints}}
+        <details class="hint">
+          <summary>{{.Title}}</summary>
+          <div class="prose hint-body">{{.HTML}}</div>
+        </details>
+        {{end}}
+      {{else}}
+      <p class="notes-empty">No hints written yet. Ask the tutor for a nudge and it will record each rung
+        you needed in <code>{{.P.ContentDir}}/hints.md</code>.</p>
+      {{end}}
+    </section>
+
+    <section class="hints">
+      <div class="block-head"><h2>Your notes</h2></div>
+      {{if .Notes.Empty}}
+      <p class="notes-empty">Nothing here yet. After you solve it, write down your approach in your own
+        words, what tripped you up, and the one trick worth remembering.</p>
+      {{else}}
+      <article class="prose">{{.Notes.HTML}}</article>
+      {{end}}
+    </section>
+  </div>
+
+  <aside class="aside">
+    <section>
+      <h2>Status</h2>
+      <form class="statuses" method="post" action="/problems/{{.P.Slug}}/status">
+        <input type="hidden" name="from" value="/problems/{{.P.Slug}}">
+        {{$current := statusClass .P.Entry.Status}}
+        {{range .Statuses}}
+        <button name="status" value="{{.}}" {{if eq (statusClass .) $current}}aria-current="true"{{end}}>
+          <i class="dot is-{{statusClass .}}"></i>{{statusLabel .}}
+        </button>
+        {{end}}
+      </form>
+    </section>
+
+    <section>
+      {{template "rateForm" dict "P" .P "BackTo" (printf "/problems/%s" .P.Slug)}}
+    </section>
+
+    <section>
+      <h2>Log</h2>
+      <div class="kv">
+        <div><span>Attempts</span><span>{{.P.Entry.Attempts}}</span></div>
+        {{if .P.Entry.Confidence}}<div><span>Last rating</span><span>{{.P.Entry.Confidence}} of 5</span></div>{{end}}
+        <div><span>Next review</span><span>{{until .P.Entry.NextReview}}</span></div>
+        {{if .IntervalDays}}<div><span>Interval</span><span>{{plural .IntervalDays "day" "days"}}</span></div>{{end}}
+        {{if .P.Entry.FirstSolved}}<div><span>First solved</span><span>{{date .P.Entry.FirstSolved}}</span></div>{{end}}
+      </div>
+    </section>
+
+    <section>
+      <h2>Elsewhere</h2>
+      <div class="links">
+        <a href="{{.P.LeetCodeURL}}" target="_blank" rel="noreferrer">Open on LeetCode</a>
+        {{if .P.VideoURL}}<a href="{{.P.VideoURL}}" target="_blank" rel="noreferrer">NeetCode walkthrough</a>{{end}}
+      </div>
+    </section>
+
+    <section>
+      <h2>Your solution</h2>
+      <span class="path{{if .SolutionExists}} there{{end}}">{{.SolutionPath}}</span>
+      {{if not .SolutionExists}}<span class="path">not created — run <code>nc start {{.P.Slug}}</code></span>{{end}}
+    </section>
+  </aside>
+</div>
+{{end}}

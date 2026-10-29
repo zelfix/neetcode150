@@ -1,0 +1,16 @@
+{{define "content"}}
+<div class="lede">
+  <h1>Patterns</h1>
+  <p>Eighteen ideas carry all 150 problems. Learn the idea once and the problems become variations.</p>
+</div>
+
+<div class="roadmap">
+  {{range .Groups}}
+  <a class="lane{{if eq .Summary.Done .Summary.Total}} done{{end}}" href="/patterns/{{.Slug}}">
+    <span class="lane-name">{{.Pattern}}{{if not .HasGuide}} <span class="b75">no guide</span>{{end}}</span>
+    <span class="lane-count">{{.Summary.Done}}/{{.Summary.Total}}</span>
+    {{template "cells" .Problems}}
+  </a>
+  {{end}}
+</div>
+{{end}}

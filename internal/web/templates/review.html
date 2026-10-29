@@ -1,0 +1,37 @@
+{{define "content"}}
+<div class="lede">
+  <h1>Review queue</h1>
+  <p>Solving something once is not knowing it. These come back on a widening schedule: 1, 3, 7, 16, 35, then 90 days.</p>
+</div>
+
+<section class="block">
+  <div class="block-head">
+    <h2>Due now</h2>
+    <span class="meta">{{plural (len .Due) "problem" "problems"}}</span>
+  </div>
+  {{if .Due}}
+  {{range .Due}}
+  <div class="row" style="grid-template-columns: 3.2rem 1fr 5rem 6rem">
+    <span class="row-id">{{.ID}}</span>
+    <span class="row-title"><a href="/problems/{{.Slug}}">{{.Title}}</a>{{if .Blind75}}<span class="b75">75</span>{{end}}</span>
+    <span class="row-diff is-{{lower .Difficulty}}">{{.Difficulty}}</span>
+    <span class="row-when">{{if .DaysOverdue}}{{plural .DaysOverdue "day" "days"}} over{{else}}today{{end}}</span>
+  </div>
+  <div style="padding: 0 0 1.25rem; max-width: 18rem">
+    {{template "rateForm" dict "P" . "BackTo" "/review/"}}
+  </div>
+  {{end}}
+  {{else}}
+  <p class="empty">Nothing due today.</p>
+  {{end}}
+</section>
+
+<section class="block">
+  <div class="block-head"><h2>Coming up</h2></div>
+  {{if .Upcoming}}
+  <div class="rows">{{range .Upcoming}}{{template "problemRow" .}}{{end}}</div>
+  {{else}}
+  <p class="empty">Nothing scheduled. Rate a solved problem and it enters the ladder.</p>
+  {{end}}
+</section>
+{{end}}

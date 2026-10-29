@@ -1,0 +1,33 @@
+{{/* cells renders one small cell per problem: the roadmap meter. */}}
+{{define "cells"}}<span class="cells">{{range .}}<i class="cell is-{{statusClass .Entry.Status}}" title="{{.ID}}. {{.Title}} — {{statusLabel .Entry.Status}}"></i>{{end}}</span>{{end}}
+
+{{/* problemRow is the standard list row. The data attributes drive filtering. */}}
+{{define "problemRow"}}
+<a class="row" href="/problems/{{.Slug}}"
+   data-title="{{lower .Title}}" data-id="{{.ID}}"
+   data-difficulty="{{.Difficulty}}" data-status="{{statusClass .Entry.Status}}"
+   data-blind="{{.Blind75}}" data-due="{{.IsDue}}">
+  <span class="row-id">{{.ID}}</span>
+  <span class="row-title">{{.Title}}{{if .Blind75}}<span class="b75" title="Also in the Blind 75">75</span>{{end}}</span>
+  <span class="row-diff is-{{lower .Difficulty}}">{{.Difficulty}}</span>
+  <span class="row-status"><i class="dot is-{{statusClass .Entry.Status}}"></i>{{statusLabel .Entry.Status}}</span>
+  <span class="row-when">{{if .IsDue}}<span class="due-flag">due</span>{{else if .Entry.NextReview}}{{until .Entry.NextReview}}{{else if .Entry.LastTouched}}{{ago .Entry.LastTouched}}{{end}}</span>
+</a>
+{{end}}
+
+{{/* rateForm offers the five confidence buttons. Pass a problemView, with
+     .BackTo set on the page so the form returns where it came from. */}}
+{{define "rateForm"}}
+<form class="rate" method="post" action="/problems/{{.P.Slug}}/rate">
+  <input type="hidden" name="from" value="{{.BackTo}}">
+  <span class="rate-label">How did it go?</span>
+  <span class="rate-row">
+    <button name="confidence" value="1" title="Lost — needed the solution">1</button>
+    <button name="confidence" value="2" title="Needed a strong hint">2</button>
+    <button name="confidence" value="3" title="Got there with effort">3</button>
+    <button name="confidence" value="4" title="Comfortable">4</button>
+    <button name="confidence" value="5" title="Instant">5</button>
+  </span>
+  <span class="rate-ends"><span>lost it</span><span>instant</span></span>
+</form>
+{{end}}

@@ -1,0 +1,61 @@
+{{define "content"}}
+{{if .Next}}
+<div class="pickup">
+  <p class="pickup-label">Pick up at</p>
+  <a class="pickup-title" href="/problems/{{.Next.Slug}}">{{.Next.ID}}. {{.Next.Title}}</a>
+  <div class="pickup-meta">
+    <span class="is-{{lower .Next.Difficulty}}">{{.Next.Difficulty}}</span>
+    <a href="/patterns/{{.Next.PatternSlug}}">{{.Next.Pattern}}</a>
+    <span>{{.NextReason}}</span>
+  </div>
+</div>
+{{else}}
+<div class="pickup">
+  <p class="pickup-label">Nothing left in the queue</p>
+  <span class="pickup-title">All 150 solved and reviewed.</span>
+</div>
+{{end}}
+
+<section class="block">
+  <div class="block-head">
+    <h2>The roadmap</h2>
+    <span class="meta metas">
+        <span>{{.Summary.Done}} solved</span>
+        <span>{{.Summary.Attempted}} in progress</span>
+        <span>{{.Summary.New}} untouched</span>
+      </span>
+  </div>
+  <div class="roadmap">
+    {{range .Groups}}
+    <a class="lane{{if eq .Summary.Done .Summary.Total}} done{{end}}" href="/patterns/{{.Slug}}">
+      <span class="lane-name">{{.Pattern}}</span>
+      <span class="lane-count">{{.Summary.Done}}/{{.Summary.Total}}</span>
+      {{template "cells" .Problems}}
+    </a>
+    {{end}}
+  </div>
+</section>
+
+<div class="pair">
+  <section class="block">
+    <div class="block-head">
+      <h2>Due for review</h2>
+      {{if .Due}}<a class="meta" href="/review/">see all {{.Due}}</a>{{end}}
+    </div>
+    {{if .DueSoon}}
+    <div class="rows">{{range .DueSoon}}{{template "problemRow" .}}{{end}}</div>
+    {{else}}
+    <p class="empty">Nothing due. Solve something new and it will come back here.</p>
+    {{end}}
+  </section>
+
+  <section class="block">
+    <div class="block-head"><h2>Recently worked on</h2></div>
+    {{if .Recent}}
+    <div class="rows">{{range .Recent}}{{template "problemRow" .}}{{end}}</div>
+    {{else}}
+    <p class="empty">No history yet. Open a problem to start the log.</p>
+    {{end}}
+  </section>
+</div>
+{{end}}

@@ -1,0 +1,27 @@
+{{define "content"}}
+<div class="lede">
+  <h1>{{.Group.Pattern}}</h1>
+  <p>{{.Group.Summary.Done}} of {{.Group.Summary.Total}} solved.</p>
+</div>
+
+<div class="split">
+  <div>
+    {{if .Guide.Empty}}
+    <p class="notes-empty">No guide for this pattern yet. It belongs in <code>{{.Guide.Path}}</code>.</p>
+    {{else}}
+    <article class="prose">{{.Guide.HTMLBody}}</article>
+    {{end}}
+  </div>
+
+  <aside class="aside">
+    <section>
+      <h2>Problems</h2>
+      <div class="links">
+        {{range .Group.Problems}}
+        <a href="/problems/{{.Slug}}"><i class="dot is-{{statusClass .Entry.Status}}"></i> {{.ID}}. {{.Title}}</a>
+        {{end}}
+      </div>
+    </section>
+  </aside>
+</div>
+{{end}}

@@ -1,0 +1,36 @@
+{
+  // Formatting and imports go through gopls, which is the Go extension's
+  // language server. gofmt's rules are not negotiable in Go, so there is
+  // nothing to configure beyond turning this on.
+  "[go]": {
+    "editor.defaultFormatter": "golang.go",
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": {
+      "source.organizeImports": "explicit"
+    }
+  },
+
+  // An unused import is a compile error in Go, not a warning, so having the
+  // editor add and remove them is worth more here than in most languages.
+  "go.useLanguageServer": true,
+
+  // Run the package's tests on save: a solution that stops compiling or starts
+  // failing says so immediately, without switching to the terminal.
+  "go.testOnSave": false,
+
+  // content/ holds 150 problem statements; keep them out of search results
+  // when you are looking for code.
+  "search.exclude": {
+    "content/problems/**": true
+  },
+
+  "gopls": {
+    // Flag a few things vet does not: shadowed variables and unused writes are
+    // both easy to introduce while reworking a loop.
+    "analyses": {
+      "shadow": true,
+      "unusedwrite": true
+    },
+    "staticcheck": false
+  }
+}

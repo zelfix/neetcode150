@@ -1,0 +1,32 @@
+{{define "content"}}
+<div class="lede">
+  <h1>All problems</h1>
+  <p>The full roadmap, in the order it is meant to be worked through.</p>
+</div>
+
+<div class="filters" data-filters>
+  <input class="search" type="search" placeholder="Search by name or number" data-search autocomplete="off" aria-label="Search problems">
+  <div class="chips" data-group="difficulty" role="group" aria-label="Filter by difficulty">
+    {{range .Difficulty}}<button class="chip" type="button" data-value="{{.}}" aria-pressed="false">{{.}}</button>{{end}}
+  </div>
+  <div class="chips" data-group="status" role="group" aria-label="Filter by status">
+    {{range .Statuses}}<button class="chip" type="button" data-value="{{statusClass .}}" aria-pressed="false">{{statusLabel .}}</button>{{end}}
+  </div>
+  <div class="chips" data-group="blind" role="group" aria-label="Filter by list">
+    <button class="chip" type="button" data-value="true" aria-pressed="false">Blind 75</button>
+  </div>
+  <span class="filter-note" data-count></span>
+</div>
+
+{{range .Groups}}
+<section class="group" data-group-section>
+  <div class="group-head">
+    <h2>{{if .HasGuide}}<a href="/patterns/{{.Slug}}">{{.Pattern}}</a>{{else}}{{.Pattern}}{{end}}</h2>
+    <span class="meta">{{.Summary.Done}}/{{.Summary.Total}}</span>
+  </div>
+  <div class="rows">{{range .Problems}}{{template "problemRow" .}}{{end}}</div>
+</section>
+{{end}}
+
+<p class="kbd-hint">Press <kbd>/</kbd> to search, <kbd>j</kbd> and <kbd>k</kbd> to move, <kbd>Enter</kbd> to open.</p>
+{{end}}
