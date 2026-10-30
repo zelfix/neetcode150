@@ -30,6 +30,23 @@ jobs:
             exit 1
           fi
 
+      # Markdown and JSON get no gofmt, so a stray editor keystroke in the
+      # hand-written premium statements is invisible in review and lands as a
+      # spurious diff on someone else's clone.
+      #
+      # signature.txt is excluded on purpose: each one holds an indented blank
+      # line inside an empty function body, which is where the cursor is meant
+      # to land, and stripping it would change what `nc start` scaffolds.
+      - name: trailing whitespace
+        run: |
+          offenders=$(git ls-files -z '*.md' '*.json' '*.yml' \
+            | xargs -0 grep -nIl '[[:blank:]]$' || true)
+          if [ -n "$offenders" ]; then
+            echo "These tracked files have trailing whitespace:"
+            echo "$offenders"
+            exit 1
+          fi
+
       - name: go vet
         run: go vet ./...
 
