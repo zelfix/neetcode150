@@ -8,6 +8,7 @@
 # ---------------------------------------------------------------------------
 /solutions/
 /progress.json
+/progress.json.lock
 content/problems/*/notes.md
 content/problems/*/hints.md
 
@@ -46,3 +47,8 @@ content/problems/*/signature.txt
 
 .idea/
 .DS_Store
+
+# ---------------------------------------------------------------------------
+# The tutor's session log: your study history, not ours.
+# ---------------------------------------------------------------------------
+/tutor/log.md

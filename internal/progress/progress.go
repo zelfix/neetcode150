@@ -63,6 +63,23 @@ var reviewIntervals = [...]int{0, 1, 3, 7, 16, 35, 90}
 // MaxStage is the last review stage; a problem there is considered retained.
 const MaxStage = len(reviewIntervals) - 1
 
+// Review is one recorded sitting: the self-rating given, and the ladder stage
+// it moved the problem to.
+//
+// The last rating on its own cannot tell retention from a lucky first solve.
+// A problem that went 4 → 2 → 3 needs different treatment from one rated 3
+// once, and only the sequence distinguishes them — so Rate appends rather than
+// overwrites. MinutesTotal is the cumulative time at that moment; the gap
+// between consecutive entries is how long that sitting took, which is the
+// clearest retention signal there is.
+type Review struct {
+	Date         time.Time `json:"date"`
+	Confidence   int       `json:"confidence"`
+	Stage        int       `json:"stage"` // ladder stage after this rating
+	MinutesTotal int       `json:"minutesTotal,omitempty"`
+	Rung         int       `json:"rung,omitempty"` // highest hint rung needed, 0 = unaided
+}
+
 // Entry is the state of one problem.
 type Entry struct {
 	Status       Status     `json:"status"`
@@ -74,6 +91,26 @@ type Entry struct {
 	LastSolved   *time.Time `json:"lastSolved,omitempty"`
 	NextReview   *time.Time `json:"nextReview,omitempty"`
 	MinutesSpent int        `json:"minutesSpent,omitempty"`
+	History      []Review   `json:"history,omitempty"`
+
+	// AttemptStartedAt is the clock for the sitting in progress, so time spent
+	// is measured rather than remembered. Rate consumes and clears it.
+	AttemptStartedAt *time.Time `json:"attemptStartedAt,omitempty"`
+}
+
+// LastReview returns the most recent recorded rating.
+func (e Entry) LastReview() (Review, bool) {
+	if len(e.History) == 0 {
+		return Review{}, false
+	}
+	return e.History[len(e.History)-1], true
+}
+
+// Slipped reports whether the latest rating came in below the one before it —
+// the signal that the previous interval was too long.
+func (e Entry) Slipped() bool {
+	n := len(e.History)
+	return n >= 2 && e.History[n-1].Confidence < e.History[n-2].Confidence
 }
 
 // Due reports whether the problem is due for review at or before now.
@@ -207,11 +244,94 @@ func (s *Store) save() error {
 	return nil
 }
 
+// reloadLocked re-reads the file unconditionally. The caller must hold the
+// write lock.
+//
+// This skips the modification-time and size comparison that syncFromDisk uses,
+// because that comparison has a blind spot a write cannot afford: a rating
+// changed from 4 to 5, or minutes from 10 to 11, leaves the file exactly as
+// long as it was, and a filesystem that keeps mtime to the second then reports
+// nothing changed. A stale read merely renders an old number; a stale *write*
+// reverts it on disk.
+func (s *Store) reloadLocked() {
+	b, err := os.ReadFile(s.path)
+	if err != nil {
+		return // nothing on disk yet; whatever is in memory is the only state
+	}
+	entries := map[string]Entry{}
+	if len(strings.TrimSpace(string(b))) > 0 {
+		if err := json.Unmarshal(b, &entries); err != nil {
+			return // a half-written or corrupt file must not wipe memory
+		}
+	}
+	s.entries = entries
+	if info, err := os.Stat(s.path); err == nil {
+		s.modTime, s.size = info.ModTime(), info.Size()
+	}
+}
+
+// Lock timings. The critical section is one read and one write of a file
+// measured in tens of kilobytes, so a holder is gone in well under a
+// millisecond; every number here is orders of magnitude above that.
+const (
+	lockRetryDelay = 2 * time.Millisecond
+	lockTimeout    = 2 * time.Second
+	lockStaleAfter = 15 * time.Second
+)
+
+// lockExclusive takes a lock shared with every other process holding this
+// progress file, and returns the function that releases it.
+//
+// O_CREATE|O_EXCL is the portable primitive here: the kernel guarantees exactly
+// one creator wins. flock would be the better tool but lives in
+// golang.org/x/sys, and this module's dependencies stop at the renderer.
+//
+// Re-reading under the in-process mutex is not enough on its own. save() writes
+// the whole map, so two processes that both read before either writes lose one
+// of the two changes — and not only on the same problem, since every entry the
+// stale map holds is reverted along with it.
+func (s *Store) lockExclusive() (func(), error) {
+	path := s.path + ".lock"
+	deadline := time.Now().Add(lockTimeout)
+	for {
+		f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
+		if err == nil {
+			fmt.Fprintf(f, "%d\n", os.Getpid()) // for working out who is holding it
+			f.Close()
+			return func() { os.Remove(path) }, nil
+		}
+		if !errors.Is(err, os.ErrExist) {
+			return nil, fmt.Errorf("lock %s: %w", path, err)
+		}
+		// A process killed mid-write would otherwise block every later one
+		// forever, so an old lock is taken to be abandoned.
+		if info, statErr := os.Stat(path); statErr == nil && time.Since(info.ModTime()) > lockStaleAfter {
+			os.Remove(path)
+			continue
+		}
+		if time.Now().After(deadline) {
+			return nil, fmt.Errorf("%s is locked by another process; try again", s.path)
+		}
+		time.Sleep(lockRetryDelay)
+	}
+}
+
 // Update applies fn to a problem's entry and persists the result.
+//
+// The two locks are always taken in this order — cross-process first, then
+// in-process — and Update is the only thing that takes both, so there is
+// nothing to deadlock against. The file is then re-read *inside* both, because
+// a map read any earlier may already be out of date.
 func (s *Store) Update(slug string, fn func(*Entry)) (Entry, error) {
-	s.syncFromDisk()
+	release, err := s.lockExclusive()
+	if err != nil {
+		return Entry{}, err
+	}
+	defer release()
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.reloadLocked()
 	e, ok := s.entries[slug]
 	if !ok {
 		e = Entry{Status: New}
@@ -253,32 +373,95 @@ func (s *Store) SetStatus(slug string, status Status, now time.Time) (Entry, err
 			}
 			schedule(e, now)
 		case Shaky:
-			// Drop a rung, but never out of the ladder entirely.
-			e.ReviewStage = max(1, e.ReviewStage-1)
+			lapse(e)
 			schedule(e, now)
 		case New:
 			e.ReviewStage = 0
 			e.NextReview = nil
 			e.Confidence = 0
+			e.AttemptStartedAt = nil
 		}
 	})
 }
 
+// lapseRungs is how far a problem falls when it slips but is not wholly lost.
+//
+// A full reset to stage 1 is too harsh for something you got with a hint: a
+// problem you held for 35 days comes back tomorrow, and that is time spent on
+// what you nearly knew. Dropping two rungs is the Anki "Hard" behaviour, as
+// against "Again", which does reset — here, a rating of 1.
+const lapseRungs = 2
+
+// lapse moves a slipped problem back down the ladder without dropping it out.
+// SetStatus(Shaky) and a rating of 2 are the same event reported two ways, so
+// they must land on the same stage.
+func lapse(e *Entry) {
+	e.ReviewStage = max(1, e.ReviewStage-lapseRungs)
+}
+
+// BeginTimer stamps the start of a sitting, leaving a running clock alone so
+// that re-running `nc start` does not discard time already spent.
+func (s *Store) BeginTimer(slug string, now time.Time) (Entry, error) {
+	return s.Update(slug, func(e *Entry) {
+		if e.AttemptStartedAt == nil {
+			t := now
+			e.AttemptStartedAt = &t
+		}
+	})
+}
+
+// ResetTimer starts the clock over, for a re-solve.
+func (s *Store) ResetTimer(slug string, now time.Time) (Entry, error) {
+	return s.Update(slug, func(e *Entry) {
+		t := now
+		e.AttemptStartedAt = &t
+	})
+}
+
+// Elapsed is how long the sitting in progress has been running.
+func (e Entry) Elapsed(now time.Time) (time.Duration, bool) {
+	if e.AttemptStartedAt == nil {
+		return 0, false
+	}
+	d := now.Sub(*e.AttemptStartedAt)
+	if d < 0 {
+		return 0, false
+	}
+	return d, true
+}
+
 // Rate records a confidence score from 1 (lost) to 5 (instant) and moves the
-// problem along the review ladder accordingly.
+// problem along the review ladder accordingly, noting no hint rung.
 func (s *Store) Rate(slug string, confidence int, now time.Time) (Entry, error) {
+	return s.RateHinted(slug, confidence, 0, now)
+}
+
+// RateHinted is Rate, also recording the highest hint rung the problem needed:
+// 0 for unaided, 1..5 up the ladder in tutor/TUTOR.md.
+//
+// The rung is the honest measure and the rating is the felt one. Recording both
+// is what exposes an inflated rating — "rated 4, needed rung 3" is a problem
+// that is not yet known, however comfortable it felt afterwards.
+func (s *Store) RateHinted(slug string, confidence, rung int, now time.Time) (Entry, error) {
 	if confidence < 1 || confidence > 5 {
 		return Entry{}, fmt.Errorf("confidence must be 1..5, got %d", confidence)
+	}
+	if rung < 0 || rung > 5 {
+		return Entry{}, fmt.Errorf("rung must be 0..5, got %d", rung)
 	}
 	return s.Update(slug, func(e *Entry) {
 		e.Confidence = confidence
 		touched := now
 		e.LastTouched = &touched
 		switch {
-		case confidence <= 2:
-			// Needed real help: repeat sooner and flag it.
+		case confidence == 1:
+			// Lost it entirely: back to the start of the ladder.
 			e.Status = Shaky
 			e.ReviewStage = 1
+		case confidence == 2:
+			// Got there, but on a strong hint. A partial fall, not a reset.
+			e.Status = Shaky
+			lapse(e)
 		case confidence == 3:
 			if e.ReviewStage < 1 {
 				e.ReviewStage = 1
@@ -295,6 +478,15 @@ func (s *Store) Rate(slug string, confidence int, now time.Time) (Entry, error) 
 			e.FirstSolved = &first
 		}
 		schedule(e, now)
+		// Appended after scheduling so Stage is the one this rating produced.
+		e.History = append(e.History, Review{
+			Date:         now,
+			Confidence:   confidence,
+			Stage:        e.ReviewStage,
+			MinutesTotal: e.MinutesSpent,
+			Rung:         rung,
+		})
+		e.AttemptStartedAt = nil // the sitting is over
 	})
 }
 

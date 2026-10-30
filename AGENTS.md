@@ -62,9 +62,15 @@ go run ./cmd/nc info <ref>            # paths and state for one problem
 go run ./cmd/nc start <ref>           # scaffold solution.go + solution_test.go
 go run ./cmd/nc status <ref> <state>  # new | attempted | solved | shaky
 go run ./cmd/nc rate <ref> <1-5>      # record how it went, reschedule the review
-go run ./cmd/nc time <ref> <minutes>  # log time spent
+                                      #   --rung <0-5> notes the highest hint needed
+go run ./cmd/nc time <ref> <minutes>  # log time spent, if the clock missed it
+go run ./cmd/nc resolve <ref>         # archive the solution, reset it for a cold re-solve
+go run ./cmd/nc diff <ref>            # last archived attempt vs the current one
+go run ./cmd/nc drill [--pattern p]   # a problem at random, pattern withheld
+go run ./cmd/nc weak [-n 10]          # what is least secure, and why
 go run ./cmd/nc review                # what is due
 go run ./cmd/nc stats                 # progress by pattern
+go run ./cmd/nc history <ref>         # every rating one problem has had
 go run ./cmd/nc fetch [--force]       # download statements and signatures
 go run ./cmd/nc serve [--port 8150]   # the study site
 ```

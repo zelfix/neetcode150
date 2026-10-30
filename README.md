@@ -147,13 +147,23 @@ ladder in tutor/TUTOR.md — one rung only"* and it will generally get back on t
 | `nc start <problem>` | Scaffold the Go solution, test and notes |
 | `nc status <problem> <state>` | `new`, `attempted`, `solved` or `shaky` |
 | `nc rate <problem> <1-5>` | Record how it went and reschedule the review |
-| `nc time <problem> <minutes>` | Log time spent |
+| `nc rate <problem> <1-5> --rung <0-5>` | The same, noting the highest hint you needed |
+| `nc time <problem> <minutes>` | Log time spent, if the clock did not catch it |
+| `nc resolve <problem>` | Archive the solution and reset it for a cold re-solve |
+| `nc diff <problem>` | The last archived attempt against the current one |
+| `nc drill [--pattern p] [--solved]` | A problem at random, pattern withheld |
+| `nc weak [-n 10]` | What is least secure, and why |
 | `nc review` | What is due for review |
 | `nc stats` | Progress by pattern |
+| `nc history <problem>` | Every rating one problem has had |
 | `nc info <problem>` | Paths and state for one problem |
 
 `<problem>` takes a slug, a LeetCode number, a directory name, or part of a title —
 `nc start two-sum`, `nc start 1` and `nc start "valid anag"` all work.
+
+`nc start` and `nc resolve` start a clock, and `nc rate` logs the elapsed time by itself,
+so the schedule runs on measured minutes rather than remembered ones. A sitting left open
+longer than six hours is ignored rather than believed.
 
 ## Layout
 
@@ -191,31 +201,52 @@ internal/
 
 Solving something once is not knowing it. A solve enters a ladder of widening intervals —
 1, 3, 7, 16, 35, then 90 days — and `nc rate` moves you along it. A confident review widens
-the gap; a shaky one pulls it back to the start. The site's **Review** page shows what is
-due, and `nc next` puts reviews ahead of new material on purpose.
+the gap; a slip pulls it back. The site's **Review** page shows what is due, and `nc next`
+puts reviews ahead of new material on purpose.
 
 Rate honestly. The scale is about the help you needed, not how you feel now that you have
 seen the answer:
 
-| | |
-|---|---|
-| **1** | Needed the full solution. Back tomorrow, marked shaky. |
-| **2** | Needed a strong hint. Same. |
-| **3** | Got there, with effort. Stays on the ladder. |
-| **4** | Comfortable. Interval widens. |
-| **5** | Near-instant. Interval widens. |
+| | | |
+|---|---|---|
+| **1** | Needed the full solution. | Back to the start of the ladder, marked shaky. |
+| **2** | Needed a strong hint. | Falls two rungs, marked shaky. |
+| **3** | Got there, with effort. | Holds its place. |
+| **4** | Comfortable. | Interval widens. |
+| **5** | Near-instant. | Interval widens. |
+
+A 1 and a 2 are deliberately not the same. Forgetting something outright and getting it
+with a nudge are different events, and sending a problem you held for 35 days back to
+tomorrow is time spent on what you nearly knew.
 
 An inflated rating pushes a problem out to 90 days, by which point you will have forgotten
-it.
+it. `nc rate --rung <0-5>` records the highest hint you actually needed alongside the
+rating; a 4 next to rung 3 is the signature of a generous self-assessment, and `nc history`
+and `nc weak` both surface it.
 
-A review is a re-solve from scratch, not a re-read: the protocol says not to show you your
-old solution until you have written a new one. Comparing the two afterwards is the
-interesting part — did you find something better, or forget something you knew?
+A review is a re-solve from scratch, not a re-read. `nc resolve <problem>` sets that up: it
+archives your current solution under `attempts/` and resets the file to a blank scaffold,
+so you cannot read the answer out of the file you are meant to be writing. Once the test
+passes, `nc diff <problem>` shows the two attempts against each other — did you find
+something better, or forget something you knew?
+
+Reviews are not the only thing worth mixing up. `nc next` walks the roadmap in order, which
+means you know the pattern before you have read the statement, and that is most of the
+work. `nc drill` draws a problem at random and does not tell you which pattern it belongs
+to. Interleaved practice feels worse during a session and holds up better weeks later.
 
 ## What is not here
 
 Two categories of file are deliberately gitignored. Both are listed in
 [`.gitignore`](.gitignore) with the reasoning inline.
+
+`progress.json` is a plain JSON file rather than a database, and deliberately so: 150
+problems come to well under 200 KB including their full review history, which is small
+enough to read with `cat`, copy as a backup and repair by hand. The CLI and `nc serve` are
+separate processes writing it, so a write takes an advisory lock (`progress.json.lock`)
+and re-reads the file inside it — without that, two writes that both start before either
+finishes lose one of the two, and because the whole file is rewritten the loss is not
+limited to the problem being rated.
 
 **Nobody's solutions.** `solutions/`, `progress.json`, and every `hints.md` and `notes.md`.
 A clone that arrives with 150 worked solutions is an answer sheet, and a problem you did
