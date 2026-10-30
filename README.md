@@ -56,7 +56,11 @@ The rest of this README assumes `nc` is on your path. If you skipped the build s
 ## Solving in the browser
 
 `nc serve` has a workspace at `/problems/<slug>/solve`: the statement and hints on one
-side, an editor and the test output on the other. Cmd+S saves, Cmd+Enter saves and runs
+side, an editor and the test output on the other. The dashboard's pick-up card and every
+problem page carry the button that leads there — **Start** when there is no scaffold yet,
+**Continue** while one is in progress, **Open workspace** once it is solved. From the
+problem list, `s` on the highlighted row goes straight to the editor and skips the
+statement. Cmd+S saves, Cmd+Enter saves and runs
 `go test` on that one package. There is no scaffold yet on a problem you have not started,
 so the page offers to create one — the same thing `nc start` does, including marking the
 problem in progress and starting the clock.

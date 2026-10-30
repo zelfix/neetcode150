@@ -662,3 +662,102 @@ func TestWorkspaceEndpointsRequireJSON(t *testing.T) {
 		})
 	}
 }
+
+// ---------- getting into the workspace ----------
+
+func TestWorkActionNamesWhatTheButtonWillDo(t *testing.T) {
+	due := func(v problemView) problemView { v.IsDue = true; return v }
+	with := func(st progress.Status) problemView {
+		return problemView{Entry: progress.Entry{Status: st}}
+	}
+
+	cases := []struct {
+		name        string
+		view        problemView
+		hasSolution bool
+		want        string
+	}{
+		{"untouched", with(progress.New), false, "Start"},
+		{"scaffolded and in progress", with(progress.Attempted), true, "Continue"},
+		{"solved", with(progress.Solved), true, "Open workspace"},
+		{"shaky", with(progress.Shaky), true, "Open workspace"},
+		// A due problem must not be offered as a re-solve: the workspace opens
+		// on the old solution, which is the opposite of what a review wants.
+		{"due for review", due(with(progress.Solved)), true, "Open workspace"},
+		// Marked solved but the file is gone — believe the disk.
+		{"solved with no file", with(progress.Solved), false, "Start"},
+	}
+	for _, tc := range cases {
+		if got := workAction(tc.view, tc.hasSolution); got != tc.want {
+			t.Errorf("%s: workAction = %q, want %q", tc.name, got, tc.want)
+		}
+	}
+}
+
+func TestProblemPageLeadsIntoTheWorkspace(t *testing.T) {
+	srv, _, prog := testSite(t)
+	h := srv.Handler()
+
+	body := get(t, h, "/problems/two-sum").Body.String()
+	if !strings.Contains(body, `href="/problems/two-sum/solve"`) {
+		t.Error("no link into the workspace")
+	}
+	if !strings.Contains(body, ">Start <") {
+		t.Error("an untouched problem should offer Start")
+	}
+
+	// Once there is a scaffold, the verb changes with the state.
+	if rec := postJSON(t, h, "/problems/two-sum/create", struct{}{}); rec.Code != http.StatusOK {
+		t.Fatal(rec.Body.String())
+	}
+	if body := get(t, h, "/problems/two-sum").Body.String(); !strings.Contains(body, ">Continue <") {
+		t.Error("a problem in progress should offer Continue")
+	}
+
+	if _, err := prog.Rate("two-sum", 4, srv.now()); err != nil {
+		t.Fatal(err)
+	}
+	if body := get(t, h, "/problems/two-sum").Body.String(); !strings.Contains(body, ">Open workspace <") {
+		t.Error("a solved problem should offer the workspace, not Start")
+	}
+}
+
+func TestDashboardCardStartsTheWork(t *testing.T) {
+	srv, _, _ := testSite(t)
+	body := get(t, srv.Handler(), "/").Body.String()
+	if !strings.Contains(body, `class="go-solve" href="/problems/contains-duplicate/solve"`) {
+		t.Error("the pick-up card does not lead into the workspace")
+	}
+	if !strings.Contains(body, "Read it first") {
+		t.Error("the card should still offer the statement")
+	}
+}
+
+// Opening a review in the browser shows the old solution, which the review flow
+// says not to do. The page has to say so rather than quietly break the protocol.
+func TestWorkspaceWarnsWhenTheProblemIsDueForReview(t *testing.T) {
+	srv, _, prog := testSite(t)
+	h := srv.Handler()
+	if rec := postJSON(t, h, "/problems/two-sum/create", struct{}{}); rec.Code != http.StatusOK {
+		t.Fatal(rec.Body.String())
+	}
+
+	// Not due yet: no warning.
+	if body := get(t, h, "/problems/two-sum/solve").Body.String(); strings.Contains(body, "solve-warn") {
+		t.Error("warned about a review on a problem that is not due")
+	}
+
+	// Rate it, then look from far enough in the future that it has come back.
+	if _, err := prog.Rate("two-sum", 4, srv.now()); err != nil {
+		t.Fatal(err)
+	}
+	srv.now = func() time.Time { return time.Date(2026, 6, 1, 9, 0, 0, 0, time.UTC) }
+
+	body := get(t, h, "/problems/two-sum/solve").Body.String()
+	if !strings.Contains(body, "solve-warn") {
+		t.Fatal("no warning on a problem due for review")
+	}
+	if !strings.Contains(body, "nc resolve two-sum") {
+		t.Error("the warning does not name the command that fixes it")
+	}
+}

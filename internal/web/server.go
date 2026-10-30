@@ -199,6 +199,7 @@ type dashboardPage struct {
 	common
 	Groups     []groupView
 	Next       *problemView
+	NextAction string
 	NextReason string
 	DueSoon    []problemView
 	Recent     []problemView
@@ -212,7 +213,9 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	}
 	if p, reason, ok := s.progress.Next(s.cat.Problems, now); ok {
 		v := s.view(p, now)
+		_, hasSolution := s.readSolution(p)
 		page.Next, page.NextReason = &v, reason
+		page.NextAction = workAction(v, hasSolution)
 	}
 	due := s.views(s.progress.DueReview(s.cat.Problems, now), now)
 	page.DueSoon = due[:min(len(due), 5)]
@@ -251,8 +254,28 @@ func (s *Server) handleProblems(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// workAction is the label on the button that leads into the workspace.
+//
+// The verb has to describe what pressing it will actually do. In particular a
+// problem due for review does not get "Re-solve": the workspace opens on the
+// existing solution, and the review flow in tutor/TUTOR.md wants it archived
+// and the file blanked first, which only `nc resolve` can do today. Promising
+// a cold re-solve and then showing the old answer would be worse than saying
+// nothing.
+func workAction(v problemView, hasSolution bool) string {
+	switch {
+	case !hasSolution:
+		return "Start"
+	case v.Entry.Status == progress.Attempted:
+		return "Continue"
+	default:
+		return "Open workspace"
+	}
+}
+
 type problemPage struct {
 	common
+	Action         string
 	P              problemView
 	Statement      *content.Doc
 	HintPreamble   template.HTML
@@ -298,6 +321,7 @@ func (s *Server) handleProblem(w http.ResponseWriter, r *http.Request) {
 
 	page := problemPage{
 		common:         s.common(fmt.Sprintf("%d. %s", p.ID, p.Title), "problems"),
+		Action:         workAction(v, statErr == nil),
 		P:              v,
 		Statement:      statement,
 		HintPreamble:   preamble,

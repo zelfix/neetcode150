@@ -35,6 +35,11 @@
 
   <section class="solve-work">
     {{if .SolutionExists}}
+    {{if .Reviewing}}
+    <p class="solve-warn">This one is due for review, and your previous solution is in the editor
+      below. A review is meant to be a re-solve from scratch — run
+      <code>nc resolve {{.P.Slug}}</code> first and it will archive this and hand you a blank file.</p>
+    {{end}}
     <div class="solve-bar">
       <span class="path there">{{.SolutionPath}}</span>
       <span class="solve-state" data-state></span>
@@ -66,7 +71,7 @@
       <p>Creating it scaffolds <code>solution.go</code> and <code>solution_test.go</code> from the
         official Go signature, marks the problem in progress and starts the clock — the same thing
         <code>nc start {{.P.Slug}}</code> does.</p>
-      <button type="button" class="primary" data-create>Create the scaffold</button>
+      <button type="button" class="primary" data-create>Start</button>
       <p class="solve-state" data-state></p>
     </div>
     {{end}}

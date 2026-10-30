@@ -5,13 +5,16 @@
 </nav>
 
 <header class="problem-head">
-  <h1>{{.P.ID}}. {{.P.Title}}</h1>
-  <div class="facts">
-    <span class="is-{{lower .P.Difficulty}}">{{.P.Difficulty}}</span>
-    {{if .HasGuide}}<a href="/patterns/{{.P.PatternSlug}}">{{.P.Pattern}}</a>{{else}}<span>{{.P.Pattern}}</span>{{end}}
-    {{if .P.Blind75}}<span>Blind 75</span>{{end}}
-    {{if .Topics}}<span>{{range $i, $t := .Topics}}{{if $i}}, {{end}}{{$t}}{{end}}</span>{{end}}
+  <div>
+    <h1>{{.P.ID}}. {{.P.Title}}</h1>
+    <div class="facts">
+      <span class="is-{{lower .P.Difficulty}}">{{.P.Difficulty}}</span>
+      {{if .HasGuide}}<a href="/patterns/{{.P.PatternSlug}}">{{.P.Pattern}}</a>{{else}}<span>{{.P.Pattern}}</span>{{end}}
+      {{if .P.Blind75}}<span>Blind 75</span>{{end}}
+      {{if .Topics}}<span>{{range $i, $t := .Topics}}{{if $i}}, {{end}}{{$t}}{{end}}</span>{{end}}
+    </div>
   </div>
+  <a class="go-solve" href="/problems/{{.P.Slug}}/solve">{{.Action}} <span aria-hidden="true">→</span></a>
 </header>
 
 <div class="split">
@@ -90,9 +93,6 @@
     <section>
       <h2>Your solution</h2>
       <span class="path{{if .SolutionExists}} there{{end}}">{{.SolutionPath}}</span>
-      <div class="links">
-        <a href="/problems/{{.P.Slug}}/solve">{{if .SolutionExists}}Open the workspace{{else}}Start it in the browser{{end}}</a>
-      </div>
     </section>
   </aside>
 </div>

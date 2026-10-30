@@ -8,6 +8,10 @@
     <a href="/patterns/{{.Next.PatternSlug}}">{{.Next.Pattern}}</a>
     <span>{{.NextReason}}</span>
   </div>
+  <div class="pickup-go">
+    <a class="go-solve" href="/problems/{{.Next.Slug}}/solve">{{.NextAction}} <span aria-hidden="true">→</span></a>
+    <a class="go-read" href="/problems/{{.Next.Slug}}">Read it first</a>
+  </div>
 </div>
 {{else}}
 <div class="pickup">

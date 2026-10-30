@@ -33,6 +33,7 @@ type solvePage struct {
 	Code           string
 	TestCode       string
 	SolutionExists bool
+	Reviewing      bool
 	SolutionPath   string
 	TestPath       string
 	Archived       int
@@ -71,10 +72,13 @@ func (s *Server) handleSolve(w http.ResponseWriter, r *http.Request) {
 		Code:           code,
 		TestCode:       testCode,
 		SolutionExists: exists,
-		SolutionPath:   filepath.ToSlash(filepath.Join(p.SolutionDir(), "solution.go")),
-		TestPath:       filepath.ToSlash(filepath.Join(p.SolutionDir(), "solution_test.go")),
-		Archived:       s.countArchived(p),
-		Statuses:       progress.Statuses,
+		// A due problem opened with its old solution on screen is not the cold
+		// re-solve the review flow asks for, so the page has to admit it.
+		Reviewing:    exists && s.view(p, s.now()).IsDue,
+		SolutionPath: filepath.ToSlash(filepath.Join(p.SolutionDir(), "solution.go")),
+		TestPath:     filepath.ToSlash(filepath.Join(p.SolutionDir(), "solution_test.go")),
+		Archived:     s.countArchived(p),
+		Statuses:     progress.Statuses,
 	})
 }
 

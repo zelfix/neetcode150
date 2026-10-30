@@ -106,12 +106,14 @@
       if (rows.length === 0) return;
       e.preventDefault();
       moveCursor(-1);
-    } else if (e.key === "Enter") {
+    } else if (e.key === "Enter" || e.key === "s") {
       const row = visible()[cursor];
-      if (row) {
-        const href = row.getAttribute("href") || row.querySelector("a")?.getAttribute("href");
-        if (href) window.location.href = href;
-      }
+      if (!row) return;
+      const href = row.getAttribute("href") || row.querySelector("a")?.getAttribute("href");
+      if (!href) return;
+      // s skips the reading page and lands in the editor, for a problem whose
+      // statement you have already read.
+      window.location.href = e.key === "s" ? href + "/solve" : href;
     }
   });
 
