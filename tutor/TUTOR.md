@@ -110,6 +110,12 @@ only seen when it is asked for. Do not put the solution in `hints.md`.
 
 ### 4. Implement
 
+They may be working in the browser rather than an editor: `nc serve` has a workspace at
+`/problems/<slug>/solve` with the statement, the hints and an editor that saves through
+`gofmt` and runs the package tests. It creates the scaffold itself, so "run `nc start`"
+may already have happened without the CLI. Ask where they are working before telling them
+which command to type.
+
 Run `nc start <slug>`. It scaffolds `solution.go` with the official Go signature and the
 node types the problem needs, plus a `solution_test.go` — table-driven when the problem
 is one function with one result, a plain skeleton when it is not.

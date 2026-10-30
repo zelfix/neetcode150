@@ -72,8 +72,12 @@ go run ./cmd/nc review                # what is due
 go run ./cmd/nc stats                 # progress by pattern
 go run ./cmd/nc history <ref>         # every rating one problem has had
 go run ./cmd/nc fetch [--force]       # download statements and signatures
-go run ./cmd/nc serve [--port 8150]   # the study site
+go run ./cmd/nc serve [--port 8150]   # the study site, incl. the browser workspace
 ```
+
+The site's workspace at `/problems/<slug>/solve` writes `solution.go` and runs `go test`.
+Those endpoints require a same-origin JSON request (`internal/web/guard.go`) — a plain
+`curl` is refused by design, so reach for the CLI rather than trying to work around it.
 
 `<ref>` accepts a slug, a LeetCode number, a directory name, or part of a title:
 `two-sum`, `1` and `"valid anag"` all resolve. Prefer the CLI over hand-editing

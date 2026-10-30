@@ -90,7 +90,9 @@
     <section>
       <h2>Your solution</h2>
       <span class="path{{if .SolutionExists}} there{{end}}">{{.SolutionPath}}</span>
-      {{if not .SolutionExists}}<span class="path">not created — run <code>nc start {{.P.Slug}}</code></span>{{end}}
+      <div class="links">
+        <a href="/problems/{{.P.Slug}}/solve">{{if .SolutionExists}}Open the workspace{{else}}Start it in the browser{{end}}</a>
+      </div>
     </section>
   </aside>
 </div>

@@ -8,7 +8,10 @@ import (
 	"go/format"
 	"go/parser"
 	"go/token"
+	"os"
+	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"unicode"
 
@@ -336,4 +339,52 @@ _In your own words, before you look at anything else._
 
 ## The one thing worth remembering
 `, p.Title)
+}
+
+// Create writes the scaffold for a problem to disk and reports which files it
+// created.
+//
+// Both the CLI (`nc start`) and the study site need this, and the part that must
+// not diverge between them is the write policy: which three files, and that an
+// existing one is never touched. Reading the inputs stays with the caller —
+// stripping frontmatter belongs to the content layer, and importing that here
+// would drag a Markdown renderer into a code generator.
+//
+// An existing file is left exactly as it is, so running this against a problem
+// already in progress cannot destroy a solution.
+func Create(root string, p catalog.Problem, signature, statement string) (written []string, f Files, err error) {
+	f = Generate(p, signature, statement)
+
+	solDir := filepath.Join(root, p.SolutionDir())
+	if err := os.MkdirAll(solDir, 0o755); err != nil {
+		return nil, f, err
+	}
+	written, err = writeNew(map[string]string{
+		filepath.Join(solDir, "solution.go"):            f.Solution,
+		filepath.Join(solDir, "solution_test.go"):       f.Test,
+		filepath.Join(root, p.ContentDir(), "notes.md"): NotesTemplate(p),
+	})
+	return written, f, err
+}
+
+// writeNew writes files that do not exist yet, leaving existing ones alone, and
+// returns the paths it wrote in a stable order.
+func writeNew(files map[string]string) ([]string, error) {
+	paths := make([]string, 0, len(files))
+	for path := range files {
+		paths = append(paths, path)
+	}
+	sort.Strings(paths)
+
+	var written []string
+	for _, path := range paths {
+		if _, err := os.Stat(path); err == nil {
+			continue
+		}
+		if err := os.WriteFile(path, []byte(files[path]), 0o644); err != nil {
+			return written, err
+		}
+		written = append(written, path)
+	}
+	return written, nil
 }

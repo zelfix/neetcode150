@@ -3,6 +3,7 @@
 package web
 
 import (
+	"context"
 	"embed"
 	"errors"
 	"fmt"
@@ -26,7 +27,7 @@ import (
 var assets embed.FS
 
 // pageNames are the templates that each compose with the layout.
-var pageNames = []string{"dashboard", "problems", "problem", "patterns", "pattern", "review"}
+var pageNames = []string{"dashboard", "problems", "problem", "patterns", "pattern", "review", "solve"}
 
 // Server serves the site.
 type Server struct {
@@ -36,6 +37,10 @@ type Server struct {
 	progress *progress.Store
 	pages    map[string]*template.Template
 	now      func() time.Time
+
+	// runTests is injected the same way now is, so handler tests do not shell
+	// out to a real `go test` and inherit its speed and flakiness.
+	runTests func(ctx context.Context, root, pkgDir string) (output string, ok bool, err error)
 }
 
 // New builds a Server over the project at root.
@@ -47,6 +52,7 @@ func New(root string, cat *catalog.Catalog, store *content.Store, prog *progress
 		progress: prog,
 		pages:    map[string]*template.Template{},
 		now:      time.Now,
+		runTests: runGoTest,
 	}
 	for _, name := range pageNames {
 		t, err := template.New("layout.html").Funcs(s.funcs()).ParseFS(assets,
@@ -73,11 +79,16 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /{$}", s.handleDashboard)
 	mux.HandleFunc("GET /problems/{$}", s.handleProblems)
 	mux.HandleFunc("GET /problems/{slug}", s.handleProblem)
+	mux.HandleFunc("GET /problems/{slug}/solve", s.handleSolve)
 	mux.HandleFunc("GET /patterns/{$}", s.handlePatterns)
 	mux.HandleFunc("GET /patterns/{slug}", s.handlePattern)
 	mux.HandleFunc("GET /review/{$}", s.handleReview)
-	mux.HandleFunc("POST /problems/{slug}/status", s.handleSetStatus)
-	mux.HandleFunc("POST /problems/{slug}/rate", s.handleRate)
+	mux.HandleFunc("POST /problems/{slug}/status", guard(s.handleSetStatus))
+	mux.HandleFunc("POST /problems/{slug}/rate", guard(s.handleRate))
+	// These three write files and run code, so they carry the stricter guard.
+	mux.HandleFunc("POST /problems/{slug}/create", guardJSON(s.handleCreateSolution))
+	mux.HandleFunc("POST /problems/{slug}/solution", guardJSON(s.handleSaveSolution))
+	mux.HandleFunc("POST /problems/{slug}/test", guardJSON(s.handleRunTests))
 
 	// Accept the paths without the trailing slash too.
 	for _, p := range []string{"/problems", "/patterns", "/review"} {
@@ -112,12 +123,21 @@ type common struct {
 	Nav     string
 	Summary progress.Summary
 	Due     int
+	// Wide widens the main column. The workspace runs two live panes side by
+	// side, which does not fit the measure a page of prose wants.
+	Wide bool
 }
 
 func (s *Server) common(title, nav string) common {
 	now := s.now()
 	sum := s.progress.Summarize(s.cat.Problems, now)
 	return common{Title: title, Nav: nav, Summary: sum, Due: sum.DueNow}
+}
+
+func (s *Server) wideCommon(title, nav string) common {
+	c := s.common(title, nav)
+	c.Wide = true
+	return c
 }
 
 // problemView is a problem plus your state for it.

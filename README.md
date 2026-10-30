@@ -53,6 +53,29 @@ go build -o nc ./cmd/nc
 The rest of this README assumes `nc` is on your path. If you skipped the build step, read
 `nc` as `go run ./cmd/nc`.
 
+## Solving in the browser
+
+`nc serve` has a workspace at `/problems/<slug>/solve`: the statement and hints on one
+side, an editor and the test output on the other. Cmd+S saves, Cmd+Enter saves and runs
+`go test` on that one package. There is no scaffold yet on a problem you have not started,
+so the page offers to create one — the same thing `nc start` does, including marking the
+problem in progress and starting the clock.
+
+The editor is a plain textarea. Every save goes through `gofmt`, so indentation comes back
+correct without the page having to understand Go, and nothing third-party is served to
+your browser. Source that does not parse is still saved, exactly as typed, with the parse
+error shown — a save in the middle of a thought should not lose keystrokes.
+
+The test pane is read-only on purpose: a test you can edit from the same window is a test
+you can make pass by editing it.
+
+This is the one part of the site that writes files and runs code, so those endpoints are
+guarded. A request has to prove it came from one of this site's own pages (`Sec-Fetch-Site`,
+or `Origin` for older clients) and carry a JSON body. Binding to localhost is not that
+proof: any page open in your browser can POST to `127.0.0.1`, and a form-encoded POST needs
+no preflight, so without the check another site could write Go into your solution and ask
+this server to run it. The older status and rating endpoints are behind the same check.
+
 ## Working a problem
 
 ```sh

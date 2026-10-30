@@ -20,7 +20,7 @@
   <span class="tally">{{.Summary.Done}}<span class="tally-sep">/</span>{{.Summary.Total}}</span>
 </header>
 
-<main class="main">
+<main class="main{{if .Wide}} main-wide{{end}}">
 {{template "content" .}}
 </main>
 

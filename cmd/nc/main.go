@@ -242,20 +242,8 @@ func cmdStart(root string, args []string) error {
 		return err
 	}
 
-	signature, _ := os.ReadFile(filepath.Join(root, p.ContentDir(), "signature.txt"))
-	statementBytes, _ := os.ReadFile(filepath.Join(root, p.ContentDir(), "problem.md"))
-	_, statement := content.SplitFrontmatter(string(statementBytes))
-	files := scaffold.Generate(p, string(signature), statement)
-
-	solDir := filepath.Join(root, p.SolutionDir())
-	if err := os.MkdirAll(solDir, 0o755); err != nil {
-		return err
-	}
-	written, err := writeNew(map[string]string{
-		filepath.Join(solDir, "solution.go"):            files.Solution,
-		filepath.Join(solDir, "solution_test.go"):       files.Test,
-		filepath.Join(root, p.ContentDir(), "notes.md"): scaffold.NotesTemplate(p),
-	})
+	signature, statement := problemInputs(root, p)
+	written, files, err := scaffold.Create(root, p, signature, statement)
 	if err != nil {
 		return err
 	}
@@ -287,28 +275,6 @@ func cmdStart(root string, args []string) error {
 	fmt.Printf("  read   %s/problem.md\n", p.ContentDir())
 	fmt.Printf("  test   go test ./%s/\n", filepath.ToSlash(p.SolutionDir()))
 	return nil
-}
-
-// writeNew writes files that do not exist yet, leaving existing ones alone so
-// your own work is never overwritten.
-func writeNew(files map[string]string) ([]string, error) {
-	paths := make([]string, 0, len(files))
-	for path := range files {
-		paths = append(paths, path)
-	}
-	slices.Sort(paths)
-
-	var written []string
-	for _, path := range paths {
-		if _, err := os.Stat(path); err == nil {
-			continue
-		}
-		if err := os.WriteFile(path, []byte(files[path]), 0o644); err != nil {
-			return written, err
-		}
-		written = append(written, path)
-	}
-	return written, nil
 }
 
 func cmdStatus(root string, args []string) error {
@@ -641,6 +607,16 @@ func bar(done, total int) string {
 	return strings.Repeat("█", filled) + strings.Repeat("·", width-filled)
 }
 
+// problemInputs reads the two files a scaffold is generated from. A missing
+// file is not an error: a scaffold without a signature still gives you
+// somewhere to write, and `nc fetch` fills the gap later.
+func problemInputs(root string, p catalog.Problem) (signature, statement string) {
+	sig, _ := os.ReadFile(filepath.Join(root, p.ContentDir(), "signature.txt"))
+	raw, _ := os.ReadFile(filepath.Join(root, p.ContentDir(), "problem.md"))
+	_, body := content.SplitFrontmatter(string(raw))
+	return string(sig), body
+}
+
 // ---------- re-solving ----------
 
 func attemptsDir(root string, p catalog.Problem) string {
@@ -716,10 +692,8 @@ func cmdResolve(root string, args []string) error {
 		return err
 	}
 
-	signature, _ := os.ReadFile(filepath.Join(root, p.ContentDir(), "signature.txt"))
-	statementBytes, _ := os.ReadFile(filepath.Join(root, p.ContentDir(), "problem.md"))
-	_, statement := content.SplitFrontmatter(string(statementBytes))
-	files := scaffold.Generate(p, string(signature), statement)
+	signature, statement := problemInputs(root, p)
+	files := scaffold.Generate(p, signature, statement)
 	if err := os.WriteFile(solPath, []byte(files.Solution), 0o644); err != nil {
 		return err
 	}

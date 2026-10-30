@@ -1,0 +1,77 @@
+{{define "content"}}
+<header class="solve-head">
+  <div>
+    <h1>{{.P.ID}}. {{.P.Title}}</h1>
+    <div class="facts">
+      <span class="is-{{lower .P.Difficulty}}">{{.P.Difficulty}}</span>
+      <span>{{.P.Pattern}}</span>
+      {{if .Archived}}<span>{{plural .Archived "earlier attempt" "earlier attempts"}} archived</span>{{end}}
+    </div>
+  </div>
+  <a class="solve-exit" href="/problems/{{.P.Slug}}">Reading view →</a>
+</header>
+
+<div class="solve" data-solve data-slug="{{.P.Slug}}">
+  <section class="solve-statement">
+    {{if .Statement.Empty}}
+    <p class="notes-empty">No statement on disk. Run <code>nc fetch</code> first.</p>
+    {{else}}
+    <article class="prose">{{.Statement.HTMLBody}}</article>
+    {{end}}
+
+    {{if .Hints}}
+    <section class="hints">
+      <div class="block-head"><h2>Hints</h2></div>
+      {{if .HintPreamble}}<div class="prose hint-intro">{{.HintPreamble}}</div>{{end}}
+      {{range .Hints}}
+      <details class="hint">
+        <summary>{{.Title}}</summary>
+        <div class="prose hint-body">{{.HTML}}</div>
+      </details>
+      {{end}}
+    </section>
+    {{end}}
+  </section>
+
+  <section class="solve-work">
+    {{if .SolutionExists}}
+    <div class="solve-bar">
+      <span class="path there">{{.SolutionPath}}</span>
+      <span class="solve-state" data-state></span>
+      <button type="button" data-save>Save <kbd>⌘S</kbd></button>
+      <button type="button" class="primary" data-run>Run tests <kbd>⌘↵</kbd></button>
+    </div>
+
+    <textarea data-editor spellcheck="false" autocomplete="off" autocapitalize="off"
+      wrap="off" aria-label="Your solution">{{.Code}}</textarea>
+
+    <div class="solve-out" data-output hidden></div>
+
+    <details class="solve-tests">
+      <summary>{{.TestPath}}</summary>
+      <p class="notes-empty">Edit the test table in your editor of choice — this pane is read-only,
+        because a test you can change from here is a test you can make pass by changing it.</p>
+      <pre><code>{{.TestCode}}</code></pre>
+    </details>
+
+    <section class="solve-finish">
+      <div class="block-head"><h2>Finish</h2></div>
+      {{template "rateForm" dict "P" .P "BackTo" (printf "/problems/%s/solve" .P.Slug)}}
+      <p class="notes-empty">Rate on the help you needed, not on how it feels now that it passes.
+        The clock started when the scaffold did, and the rating logs it.</p>
+    </section>
+    {{else}}
+    <div class="solve-empty">
+      <h2>No solution file yet</h2>
+      <p>Creating it scaffolds <code>solution.go</code> and <code>solution_test.go</code> from the
+        official Go signature, marks the problem in progress and starts the clock — the same thing
+        <code>nc start {{.P.Slug}}</code> does.</p>
+      <button type="button" class="primary" data-create>Create the scaffold</button>
+      <p class="solve-state" data-state></p>
+    </div>
+    {{end}}
+  </section>
+</div>
+
+<script src="/static/solve.js" defer></script>
+{{end}}
