@@ -34,6 +34,7 @@ type solvePage struct {
 	TestCode       string
 	SolutionExists bool
 	Reviewing      bool
+	CanResolve     bool
 	SolutionPath   string
 	TestPath       string
 	Archived       int
@@ -62,6 +63,7 @@ func (s *Server) handleSolve(w http.ResponseWriter, r *http.Request) {
 
 	code, exists := s.readSolution(p)
 	testCode, _ := readIfPresent(filepath.Join(s.root, p.SolutionDir(), "solution_test.go"))
+	entry := s.progress.Get(p.Slug)
 
 	s.render(w, "solve", solvePage{
 		common:         s.wideCommon(fmt.Sprintf("%d. %s", p.ID, p.Title), "problems"),
@@ -73,8 +75,11 @@ func (s *Server) handleSolve(w http.ResponseWriter, r *http.Request) {
 		TestCode:       testCode,
 		SolutionExists: exists,
 		// A due problem opened with its old solution on screen is not the cold
-		// re-solve the review flow asks for, so the page has to admit it.
-		Reviewing:    exists && s.view(p, s.now()).IsDue,
+		// re-solve the review flow asks for, so the page offers to fix that.
+		Reviewing: exists && s.view(p, s.now()).IsDue,
+		// Re-solving something still in progress would archive a half-written
+		// attempt and hand back a blank file, which is only ever a mistake.
+		CanResolve:   exists && entry.Status != progress.Attempted,
 		SolutionPath: filepath.ToSlash(filepath.Join(p.SolutionDir(), "solution.go")),
 		TestPath:     filepath.ToSlash(filepath.Join(p.SolutionDir(), "solution_test.go")),
 		Archived:     s.countArchived(p),
@@ -287,4 +292,58 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	if err := json.NewEncoder(w).Encode(v); err != nil {
 		log.Printf("error: writing JSON response: %v", err)
 	}
+}
+
+type resolveResponse struct {
+	Code     string `json:"code"`
+	Archive  string `json:"archive"`
+	Archived int    `json:"archived"`
+}
+
+// handleResolve starts a cold re-solve: the current solution is archived and the
+// file is reset to a blank scaffold, exactly as `nc resolve` does.
+//
+// Nothing is destroyed — the old attempt is on disk under attempts/ and
+// `nc diff` reads it back — but the editor's contents do change out from under
+// the user, so the page asks before calling this.
+func (s *Server) handleResolve(w http.ResponseWriter, r *http.Request) {
+	p, ok := s.cat.BySlug(r.PathValue("slug"))
+	if !ok {
+		s.notFound(w, r, "No problem with that slug.")
+		return
+	}
+	// Archiving a solution that is still being written would put aside a
+	// half-finished attempt and hand back an empty file.
+	if s.progress.Get(p.Slug).Status == progress.Attempted {
+		http.Error(w, "this problem is already in progress; there is nothing to re-solve",
+			http.StatusConflict)
+		return
+	}
+
+	signature, _ := readIfPresent(filepath.Join(s.root, p.ContentDir(), "signature.txt"))
+	raw, _ := readIfPresent(filepath.Join(s.root, p.ContentDir(), "problem.md"))
+	_, statement := content.SplitFrontmatter(raw)
+
+	now := s.now()
+	archive, _, err := scaffold.Reset(s.root, p, signature, statement, now)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusConflict)
+		return
+	}
+	if _, err := s.progress.SetStatus(p.Slug, progress.Attempted, now); err != nil {
+		s.fail(w, err)
+		return
+	}
+	if _, err := s.progress.ResetTimer(p.Slug, now); err != nil {
+		s.fail(w, err)
+		return
+	}
+
+	code, _ := s.readSolution(p)
+	rel, _ := filepath.Rel(s.root, archive)
+	writeJSON(w, http.StatusOK, resolveResponse{
+		Code:     code,
+		Archive:  filepath.ToSlash(rel),
+		Archived: s.countArchived(p),
+	})
 }

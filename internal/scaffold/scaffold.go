@@ -13,6 +13,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 	"unicode"
 
 	"neetcode150/internal/catalog"
@@ -387,4 +388,84 @@ func writeNew(files map[string]string) ([]string, error) {
 		written = append(written, path)
 	}
 	return written, nil
+}
+
+// AttemptExt is the extension archived attempts carry.
+//
+// Deliberately not ".go": archives sit inside the solution's own package
+// directory, and a second file declaring the same functions would stop the
+// package compiling.
+const AttemptExt = ".go.txt"
+
+// AttemptsDir is where earlier attempts at a problem are kept.
+func AttemptsDir(root string, p catalog.Problem) string {
+	return filepath.Join(root, p.SolutionDir(), "attempts")
+}
+
+// Attempts lists the archived attempts for a problem, oldest first.
+func Attempts(root string, p catalog.Problem) ([]string, error) {
+	des, err := os.ReadDir(AttemptsDir(root, p))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	var out []string
+	for _, de := range des {
+		if !de.IsDir() && strings.HasSuffix(de.Name(), AttemptExt) {
+			out = append(out, filepath.Join(AttemptsDir(root, p), de.Name()))
+		}
+	}
+	sort.Strings(out)
+	return out, nil
+}
+
+// attemptPath is the archive slot for now, suffixed if the day already has one.
+func attemptPath(dir string, now time.Time) string {
+	stamp := now.Format("2006-01-02")
+	path := filepath.Join(dir, stamp+AttemptExt)
+	for n := 2; ; n++ {
+		if _, err := os.Stat(path); err != nil {
+			return path
+		}
+		path = filepath.Join(dir, fmt.Sprintf("%s-%d%s", stamp, n, AttemptExt))
+	}
+}
+
+// Reset archives the current solution and puts a blank scaffold in its place,
+// returning the path the old one was moved to.
+//
+// This is what makes a review a re-solve rather than a re-read. The two needs in
+// tutor/TUTOR.md — solve it cold, then compare against the old attempt — are in
+// conflict while there is only one file, and archiving is what separates them.
+//
+// The test file is left alone on purpose: it holds the cases, not the approach,
+// and rewriting it would throw away edge cases the user added.
+//
+// The caller updates progress; this touches files only.
+func Reset(root string, p catalog.Problem, signature, statement string, now time.Time) (archive string, f Files, err error) {
+	solPath := filepath.Join(root, p.SolutionDir(), "solution.go")
+	current, err := os.ReadFile(solPath)
+	if err != nil {
+		return "", f, fmt.Errorf("no solution to archive at %s",
+			filepath.ToSlash(filepath.Join(p.SolutionDir(), "solution.go")))
+	}
+
+	dir := AttemptsDir(root, p)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", f, err
+	}
+	archive = attemptPath(dir, now)
+	// The archive is written before the solution is overwritten, so a failure
+	// here cannot lose the work it was meant to preserve.
+	if err := os.WriteFile(archive, current, 0o644); err != nil {
+		return "", f, err
+	}
+
+	f = Generate(p, signature, statement)
+	if err := os.WriteFile(solPath, []byte(f.Solution), 0o644); err != nil {
+		return archive, f, err
+	}
+	return archive, f, nil
 }

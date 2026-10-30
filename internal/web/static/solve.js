@@ -11,6 +11,9 @@
   if (!root) return;
 
   const slug = root.dataset.slug;
+  // Declared up here because the re-solve handler clears it before the editor
+  // section runs.
+  let saved = "";
   const editor = root.querySelector("[data-editor]");
   const output = root.querySelector("[data-output]");
   const state = root.querySelector("[data-state]");
@@ -54,11 +57,38 @@
     });
   }
 
+  // ---- re-solve ----
+
+  // Archiving replaces what is on screen, so it is the one action here that
+  // asks first. The old attempt is kept on disk either way.
+  for (const btn of root.querySelectorAll("[data-resolve]")) {
+    btn.addEventListener("click", async () => {
+      const ok = confirm(
+        "Archive this solution and start over with a blank file?\n\n" +
+          "The current attempt is kept under attempts/ and stays readable with nc diff."
+      );
+      if (!ok) return;
+      btn.disabled = true;
+      say("archiving…");
+      try {
+        const res = await post("resolve");
+        // Drop the unsaved-changes guard: the file on disk is deliberately
+        // different from what is in the editor now.
+        saved = editor ? editor.value : "";
+        say(`archived to ${res.archive}`, "ok");
+        location.reload();
+      } catch (err) {
+        btn.disabled = false;
+        say(err.message, "bad");
+      }
+    });
+  }
+
   if (!editor) return;
 
   // ---- dirty tracking ----
 
-  let saved = editor.value;
+  saved = editor.value;
   const dirty = () => editor.value !== saved;
 
   function markClean(code) {

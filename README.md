@@ -70,6 +70,13 @@ correct without the page having to understand Go, and nothing third-party is ser
 your browser. Source that does not parse is still saved, exactly as typed, with the parse
 error shown — a save in the middle of a thought should not lose keystrokes.
 
+A problem that comes back for review can be re-solved from the same page: archiving puts
+the previous attempt under `attempts/` and hands you a blank scaffold, so the answer is not
+sitting in the file you are meant to be writing. Nothing is destroyed — `nc diff <problem>`
+reads the old attempt back once the tests pass, which is the comparison the review flow
+asks for. The offer only appears once a problem is finished; re-solving work in progress
+would archive something half-written.
+
 The test pane is read-only on purpose: a test you can edit from the same window is a test
 you can make pass by editing it.
 

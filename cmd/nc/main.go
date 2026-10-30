@@ -619,47 +619,6 @@ func problemInputs(root string, p catalog.Problem) (signature, statement string)
 
 // ---------- re-solving ----------
 
-func attemptsDir(root string, p catalog.Problem) string {
-	return filepath.Join(root, p.SolutionDir(), "attempts")
-}
-
-// Archives are deliberately not named *.go: they sit inside the solution's own
-// package directory, and a second file declaring the same functions would stop
-// the package compiling.
-const attemptExt = ".go.txt"
-
-// attemptPath is today's archive slot, suffixed if the day already has one.
-func attemptPath(dir string, now time.Time) string {
-	stamp := now.Format("2006-01-02")
-	path := filepath.Join(dir, stamp+attemptExt)
-	for n := 2; ; n++ {
-		if _, err := os.Stat(path); err != nil {
-			return path
-		}
-		path = filepath.Join(dir, fmt.Sprintf("%s-%d%s", stamp, n, attemptExt))
-	}
-}
-
-// listAttempts returns the archived attempts, oldest first.
-func listAttempts(root string, p catalog.Problem) ([]string, error) {
-	dir := attemptsDir(root, p)
-	des, err := os.ReadDir(dir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-		return nil, err
-	}
-	var out []string
-	for _, de := range des {
-		if !de.IsDir() && strings.HasSuffix(de.Name(), attemptExt) {
-			out = append(out, filepath.Join(dir, de.Name()))
-		}
-	}
-	slices.Sort(out)
-	return out, nil
-}
-
 // cmdResolve sets up a cold re-solve: the current solution is archived and the
 // file is reset to a blank scaffold.
 //
@@ -676,29 +635,13 @@ func cmdResolve(root string, args []string) error {
 		return err
 	}
 
-	solPath := filepath.Join(root, p.SolutionDir(), "solution.go")
-	current, err := os.ReadFile(solPath)
-	if err != nil {
-		return fmt.Errorf("no solution to archive at %s — `nc start %s` starts a first attempt",
-			filepath.ToSlash(filepath.Join(p.SolutionDir(), "solution.go")), p.Slug)
-	}
-
-	dir := attemptsDir(root, p)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return err
-	}
-	archive := attemptPath(dir, time.Now())
-	if err := os.WriteFile(archive, current, 0o644); err != nil {
-		return err
-	}
-
-	signature, statement := problemInputs(root, p)
-	files := scaffold.Generate(p, signature, statement)
-	if err := os.WriteFile(solPath, []byte(files.Solution), 0o644); err != nil {
-		return err
-	}
-
 	now := time.Now()
+	signature, statement := problemInputs(root, p)
+	archive, _, err := scaffold.Reset(root, p, signature, statement, now)
+	if err != nil {
+		return fmt.Errorf("%w — `nc start %s` starts a first attempt", err, p.Slug)
+	}
+
 	if _, err := prog.SetStatus(p.Slug, progress.Attempted, now); err != nil {
 		return err
 	}
@@ -728,7 +671,7 @@ func cmdDiff(root string, args []string) error {
 	if err != nil {
 		return err
 	}
-	attempts, err := listAttempts(root, p)
+	attempts, err := scaffold.Attempts(root, p)
 	if err != nil {
 		return err
 	}

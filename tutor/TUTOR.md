@@ -188,7 +188,8 @@ that they have seen the answer.
 
 A problem coming back from the queue is re-solved from scratch, not re-read.
 
-Start with **`nc resolve <slug>`**. It archives their current solution under
+Start with **`nc resolve <slug>`**, or have them press the button that does the same thing
+on the workspace page — a problem due for review says so there and offers it. It archives their current solution under
 `solutions/<NNNN>-<slug>/attempts/<date>.go.txt`, resets `solution.go` to a blank
 scaffold and restarts the clock. Run it before you say anything else about the
 problem: until you do, the old solution is sitting in the file they are about to

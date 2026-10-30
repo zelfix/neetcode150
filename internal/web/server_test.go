@@ -18,6 +18,7 @@ import (
 	"neetcode150/internal/catalog"
 	"neetcode150/internal/content"
 	"neetcode150/internal/progress"
+	"neetcode150/internal/scaffold"
 )
 
 // testSite builds a small site on a temporary project root.
@@ -757,7 +758,168 @@ func TestWorkspaceWarnsWhenTheProblemIsDueForReview(t *testing.T) {
 	if !strings.Contains(body, "solve-warn") {
 		t.Fatal("no warning on a problem due for review")
 	}
-	if !strings.Contains(body, "nc resolve two-sum") {
-		t.Error("the warning does not name the command that fixes it")
+	// The fix is a button, not an instruction to go and type something.
+	if !strings.Contains(body, "data-resolve") {
+		t.Error("the warning offers no way to archive and start over")
+	}
+	// And it must say the old attempt is still readable, or archiving looks
+	// like throwing work away.
+	if !strings.Contains(body, "nc diff two-sum") {
+		t.Error("the warning does not say the archived attempt can be read back")
+	}
+}
+
+// ---------- re-solving from the browser ----------
+
+// solvedFixture scaffolds a problem, writes a solution into it and rates it, so
+// it looks like something finished earlier.
+func solvedFixture(t *testing.T, srv *Server, h http.Handler, prog *progress.Store) string {
+	t.Helper()
+	if rec := postJSON(t, h, "/problems/two-sum/create", struct{}{}); rec.Code != http.StatusOK {
+		t.Fatal(rec.Body.String())
+	}
+	mine := "package twosum\n\nfunc twoSum(nums []int, target int) []int {\n\treturn []int{0, 1}\n}\n"
+	if rec := postJSON(t, h, "/problems/two-sum/solution", map[string]string{"code": mine}); rec.Code != http.StatusOK {
+		t.Fatal(rec.Body.String())
+	}
+	if _, err := prog.Rate("two-sum", 4, srv.now()); err != nil {
+		t.Fatal(err)
+	}
+	return mine
+}
+
+func TestResolveArchivesTheOldAttemptAndBlanksTheFile(t *testing.T) {
+	srv, root, prog := testSite(t)
+	h := srv.Handler()
+	mine := solvedFixture(t, srv, h, prog)
+
+	rec := postJSON(t, h, "/problems/two-sum/resolve", struct{}{})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("POST resolve = %d: %s", rec.Code, rec.Body.String())
+	}
+	got := decode[struct {
+		Code     string `json:"code"`
+		Archive  string `json:"archive"`
+		Archived int    `json:"archived"`
+	}](t, rec)
+
+	// The file handed back must be a blank scaffold, not the old answer.
+	if strings.Contains(got.Code, "return []int{0, 1}") {
+		t.Error("the editor was handed the previous solution back")
+	}
+	if !strings.Contains(got.Code, "panic(\"TODO") {
+		t.Errorf("not a blank scaffold: %q", got.Code)
+	}
+	if got.Archived != 1 {
+		t.Errorf("archived = %d, want 1", got.Archived)
+	}
+
+	// The old attempt is on disk, byte for byte.
+	archived, err := os.ReadFile(filepath.Join(root, got.Archive))
+	if err != nil {
+		t.Fatalf("reading %s: %v", got.Archive, err)
+	}
+	if string(archived) != mine {
+		t.Errorf("archive holds %q, want the previous solution verbatim", string(archived))
+	}
+	// And it must not be a .go file, or the package would stop compiling.
+	if !strings.HasSuffix(got.Archive, scaffold.AttemptExt) {
+		t.Errorf("archive named %q, want the %s extension", got.Archive, scaffold.AttemptExt)
+	}
+
+	// The test file is untouched: it holds the cases, not the approach.
+	if _, err := os.Stat(filepath.Join(root, "solutions/0001-two-sum/solution_test.go")); err != nil {
+		t.Errorf("the test file went missing: %v", err)
+	}
+
+	e := prog.Get("two-sum")
+	if e.Status != progress.Attempted {
+		t.Errorf("status = %q, want attempted", e.Status)
+	}
+	if _, running := e.Elapsed(srv.now()); !running {
+		t.Error("the clock was not restarted for the re-solve")
+	}
+}
+
+// Archiving a solution that is still being written would put aside a
+// half-finished attempt and hand back an empty file.
+func TestResolveRefusesWorkInProgress(t *testing.T) {
+	srv, root, _ := testSite(t)
+	h := srv.Handler()
+	if rec := postJSON(t, h, "/problems/two-sum/create", struct{}{}); rec.Code != http.StatusOK {
+		t.Fatal(rec.Body.String())
+	}
+	before, _ := os.ReadFile(filepath.Join(root, "solutions/0001-two-sum/solution.go"))
+
+	if rec := postJSON(t, h, "/problems/two-sum/resolve", struct{}{}); rec.Code != http.StatusConflict {
+		t.Errorf("POST resolve on work in progress = %d, want 409", rec.Code)
+	}
+	after, _ := os.ReadFile(filepath.Join(root, "solutions/0001-two-sum/solution.go"))
+	if string(after) != string(before) {
+		t.Error("a refused re-solve still changed the file")
+	}
+	if n := srv.countArchived(catalog.Problem{Dir: "0001-two-sum"}); n != 0 {
+		t.Errorf("a refused re-solve archived %d files", n)
+	}
+}
+
+func TestResolveNeedsSomethingToArchive(t *testing.T) {
+	srv, _, _ := testSite(t)
+	if rec := postJSON(t, srv.Handler(), "/problems/two-sum/resolve", struct{}{}); rec.Code != http.StatusConflict {
+		t.Errorf("POST resolve with no solution = %d, want 409", rec.Code)
+	}
+}
+
+// Two re-solves on one day must not overwrite the first archive.
+func TestResolveTwiceKeepsBothAttempts(t *testing.T) {
+	srv, _, prog := testSite(t)
+	h := srv.Handler()
+	solvedFixture(t, srv, h, prog)
+
+	first := decode[struct{ Archive string }](t, postJSON(t, h, "/problems/two-sum/resolve", struct{}{}))
+
+	second := "package twosum\n\nfunc twoSum(nums []int, target int) []int {\n\treturn nil\n}\n"
+	if rec := postJSON(t, h, "/problems/two-sum/solution", map[string]string{"code": second}); rec.Code != http.StatusOK {
+		t.Fatal(rec.Body.String())
+	}
+	if _, err := prog.Rate("two-sum", 4, srv.now()); err != nil {
+		t.Fatal(err)
+	}
+	got := decode[struct {
+		Archive  string `json:"archive"`
+		Archived int    `json:"archived"`
+	}](t, postJSON(t, h, "/problems/two-sum/resolve", struct{}{}))
+
+	if got.Archive == first.Archive {
+		t.Errorf("the second re-solve reused %q and overwrote the first attempt", got.Archive)
+	}
+	if got.Archived != 2 {
+		t.Errorf("archived = %d, want 2", got.Archived)
+	}
+}
+
+func TestWorkspaceOffersAReSolveOnlyWhenItMakesSense(t *testing.T) {
+	srv, _, prog := testSite(t)
+	h := srv.Handler()
+
+	// No solution at all: nothing to archive.
+	if body := get(t, h, "/problems/two-sum/solve").Body.String(); strings.Contains(body, "data-resolve") {
+		t.Error("offered a re-solve with no solution on disk")
+	}
+
+	// In progress: re-solving would throw away unfinished work.
+	if rec := postJSON(t, h, "/problems/two-sum/create", struct{}{}); rec.Code != http.StatusOK {
+		t.Fatal(rec.Body.String())
+	}
+	if body := get(t, h, "/problems/two-sum/solve").Body.String(); strings.Contains(body, "data-resolve") {
+		t.Error("offered a re-solve on work in progress")
+	}
+
+	// Solved: offered, quietly.
+	if _, err := prog.Rate("two-sum", 4, srv.now()); err != nil {
+		t.Fatal(err)
+	}
+	if body := get(t, h, "/problems/two-sum/solve").Body.String(); !strings.Contains(body, "data-resolve") {
+		t.Error("a solved problem should offer a re-solve")
 	}
 }

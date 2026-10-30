@@ -89,6 +89,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /problems/{slug}/create", guardJSON(s.handleCreateSolution))
 	mux.HandleFunc("POST /problems/{slug}/solution", guardJSON(s.handleSaveSolution))
 	mux.HandleFunc("POST /problems/{slug}/test", guardJSON(s.handleRunTests))
+	mux.HandleFunc("POST /problems/{slug}/resolve", guardJSON(s.handleResolve))
 
 	// Accept the paths without the trailing slash too.
 	for _, p := range []string{"/problems", "/patterns", "/review"} {
