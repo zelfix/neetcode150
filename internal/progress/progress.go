@@ -193,19 +193,48 @@ func (e Entry) Due(now time.Time) bool {
 }
 
 // Store keeps scheduling rules in Go and persists each change in SQLite.
-type Store struct{ db *studydb.DB }
+//
+// A Store is one person's view. The scheduling half of this package is pure and
+// never sees a user; everything that reads or writes goes through the scope, so
+// the filter lives in one place rather than in every query.
+type Store struct {
+	scope *studydb.Scope
+	// owned is the database this Store opened, and is nil for the per-request
+	// stores the site builds. Only the opener may close it.
+	owned *studydb.DB
+}
 
 // Load accepts the old progress path so existing callers can migrate in place.
 // The JSON file is imported once and is never written again.
+//
+// It yields the owner's view: the CLI is the owner's own tool.
 func Load(path string) (*Store, error) {
 	db, err := studydb.Open(filepath.Dir(path))
 	if err != nil {
 		return nil, err
 	}
-	return &Store{db: db}, nil
+	return &Store{scope: db.Owner(), owned: db}, nil
 }
-func (s *Store) DB() *studydb.DB { return s.db }
-func (s *Store) Close() error    { return s.db.Close() }
+
+// NewScoped wraps one user's view. It opens nothing, so the site can build one
+// per request.
+func NewScoped(scope *studydb.Scope) *Store { return &Store{scope: scope} }
+
+// Scope is this store's user view, for callers that need the storage API.
+func (s *Store) Scope() *studydb.Scope { return s.scope }
+
+// DB reaches the shared handle for the few genuinely global statements.
+func (s *Store) DB() *studydb.DB { return s.scope.Unscoped() }
+
+// UserID is whose progress this store reads and writes.
+func (s *Store) UserID() int64 { return s.scope.UserID() }
+
+func (s *Store) Close() error {
+	if s.owned == nil {
+		return nil
+	}
+	return s.owned.Close()
+}
 
 func entryOf(entries map[string]Entry, slug string) Entry {
 	e := entries[slug]
@@ -215,7 +244,7 @@ func entryOf(entries map[string]Entry, slug string) Entry {
 	return e
 }
 func (s *Store) snapshot() map[string]Entry {
-	rows, err := s.db.SQL.Query("SELECT slug,entry FROM progress")
+	rows, err := s.scope.Unscoped().SQL.Query("SELECT slug,entry FROM progress WHERE user_id=?", s.scope.UserID())
 	if err != nil {
 		panic(fmt.Errorf("read study progress: %w", err))
 	}
@@ -243,7 +272,7 @@ func (s *Store) All() map[string]Entry { return s.snapshot() }
 func (s *Store) UpdateIn(tx *sql.Tx, slug string, fn func(*Entry)) (Entry, error) {
 	e := Entry{Status: New}
 	var raw string
-	err := tx.QueryRow("SELECT entry FROM progress WHERE slug=?", slug).Scan(&raw)
+	err := tx.QueryRow("SELECT entry FROM progress WHERE user_id=? AND slug=?", s.scope.UserID(), slug).Scan(&raw)
 	if err != nil && err != sql.ErrNoRows {
 		return e, err
 	}
@@ -257,11 +286,11 @@ func (s *Store) UpdateIn(tx *sql.Tx, slug string, fn func(*Entry)) (Entry, error
 	if err != nil {
 		return e, err
 	}
-	_, err = tx.Exec("INSERT INTO progress VALUES(?,?) ON CONFLICT(slug) DO UPDATE SET entry=excluded.entry", slug, string(data))
+	_, err = tx.Exec("INSERT INTO progress(user_id,slug,entry) VALUES(?,?,?) ON CONFLICT(user_id,slug) DO UPDATE SET entry=excluded.entry", s.scope.UserID(), slug, string(data))
 	return e, err
 }
 func (s *Store) Update(slug string, fn func(*Entry)) (e Entry, err error) {
-	err = s.db.Write(func(tx *sql.Tx) error { e, err = s.UpdateIn(tx, slug, fn); return err })
+	err = s.scope.Write(func(tx *sql.Tx) error { e, err = s.UpdateIn(tx, slug, fn); return err })
 	return
 }
 

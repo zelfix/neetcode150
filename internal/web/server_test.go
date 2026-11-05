@@ -832,7 +832,7 @@ func TestResolveArchivesTheOldAttemptAndBlanksTheFile(t *testing.T) {
 	}
 
 	// The snapshot is stored byte for byte in SQLite.
-	archived, err := scaffold.ReadAttempt(root, got.Archive)
+	archived, err := scaffold.ReadAttempt(prog.Scope(), got.Archive)
 	if err != nil {
 		t.Fatalf("reading %s: %v", got.Archive, err)
 	}

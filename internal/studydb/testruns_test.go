@@ -14,31 +14,31 @@ func TestRecordTestRunCountsRunsAndFixtures(t *testing.T) {
 	now := time.Date(2026, 3, 1, 9, 0, 0, 0, time.UTC)
 
 	fail := []FailedCase{{Kind: "edge", Name: "empty input"}, {Kind: "example", Name: "example 1"}}
-	if err := db.RecordTestRun("two-sum", now, 3, 2, fail); err != nil {
+	if err := db.Owner().RecordTestRun("two-sum", now, 3, 2, fail); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.RecordTestRun("two-sum", now.Add(time.Minute), 4, 1, fail[:1]); err != nil {
+	if err := db.Owner().RecordTestRun("two-sum", now.Add(time.Minute), 4, 1, fail[:1]); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.RecordTestRun("two-sum", now.Add(2*time.Minute), 5, 0, nil); err != nil {
+	if err := db.Owner().RecordTestRun("two-sum", now.Add(2*time.Minute), 5, 0, nil); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.RecordTestRun("valid-anagram", now, 1, 1, []FailedCase{{Kind: "edge", Name: "single"}}); err != nil {
+	if err := db.Owner().RecordTestRun("valid-anagram", now, 1, 1, []FailedCase{{Kind: "edge", Name: "single"}}); err != nil {
 		t.Fatal(err)
 	}
 
-	tally, err := db.Tally("two-sum")
+	tally, err := db.Owner().Tally("two-sum")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if tally.Runs != 3 || tally.Clean != 1 || tally.Share() != 33 {
 		t.Errorf("tally = %+v (%d%%), want 3 runs, 1 clean", tally, tally.Share())
 	}
-	if all, err := db.Tally(""); err != nil || all.Runs != 4 {
+	if all, err := db.Owner().Tally(""); err != nil || all.Runs != 4 {
 		t.Errorf("global tally = %+v, %v; want 4 runs", all, err)
 	}
 
-	cases, err := db.CaseFailures("two-sum", 0)
+	cases, err := db.Owner().CaseFailures("two-sum", 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,7 +56,7 @@ func TestRecordTestRunCountsRunsAndFixtures(t *testing.T) {
 		t.Errorf("LastAt = %v, want the later run", cases[0].LastAt)
 	}
 
-	kinds, err := db.FailuresByKind()
+	kinds, err := db.Owner().FailuresByKind()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,7 +64,7 @@ func TestRecordTestRunCountsRunsAndFixtures(t *testing.T) {
 		t.Errorf("by kind = %v, want 3 edge and 1 example", kinds)
 	}
 
-	if got, err := db.CaseFailures("", 1); err != nil || len(got) != 1 {
+	if got, err := db.Owner().CaseFailures("", 1); err != nil || len(got) != 1 {
 		t.Errorf("limit 1 returned %d, %v", len(got), err)
 	}
 }
@@ -76,17 +76,17 @@ func TestTallyAndFailuresOnAnEmptyDatabase(t *testing.T) {
 	}
 	defer db.Close()
 
-	tally, err := db.Tally("")
+	tally, err := db.Owner().Tally("")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if tally.Runs != 0 || tally.Share() != 0 {
 		t.Errorf("tally = %+v, want zeroes without dividing by zero", tally)
 	}
-	if cases, err := db.CaseFailures("", 0); err != nil || len(cases) != 0 {
+	if cases, err := db.Owner().CaseFailures("", 0); err != nil || len(cases) != 0 {
 		t.Errorf("cases = %v, %v", cases, err)
 	}
-	if kinds, err := db.FailuresByKind(); err != nil || len(kinds) != 0 {
+	if kinds, err := db.Owner().FailuresByKind(); err != nil || len(kinds) != 0 {
 		t.Errorf("kinds = %v, %v", kinds, err)
 	}
 }

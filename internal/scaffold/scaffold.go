@@ -358,6 +358,12 @@ _In your own words, before you look at anything else._
 // Create writes the scaffold for a problem to disk and reports which files it
 // created.
 //
+// The scope comes from the caller rather than being opened here. These helpers
+// used to call studydb.Open themselves, which meant a second *sql.DB — with its
+// own single write lane — against the same WAL file: with more than one person
+// using the site, a start from the browser would collide with another write and
+// burn the busy timeout.
+//
 // Both the CLI (`nc start`) and the study site need this, and the part that must
 // not diverge between them is the write policy: which three files, and that an
 // existing one is never touched. Reading the inputs stays with the caller —
@@ -366,19 +372,14 @@ _In your own words, before you look at anything else._
 //
 // An existing file is left exactly as it is, so running this against a problem
 // already in progress cannot destroy a solution.
-func Create(root string, p catalog.Problem, signature, statement string) (written []string, f Files, err error) {
+func Create(scope *studydb.Scope, root string, p catalog.Problem, signature, statement string) (written []string, f Files, err error) {
 	f = Generate(p, signature, statement)
 
 	solDir := filepath.Join(root, p.SolutionDir())
 	if err := os.MkdirAll(solDir, 0o755); err != nil {
 		return nil, f, err
 	}
-	db, err := studydb.Open(root)
-	if err != nil {
-		return nil, f, err
-	}
-	defer db.Close()
-	if err := db.EnsureDocument(p.Slug, "notes", NotesTemplate(p)); err != nil {
+	if err := scope.EnsureDocument(p.Slug, "notes", NotesTemplate(p)); err != nil {
 		return nil, f, err
 	}
 	written, err = writeNew(map[string]string{
@@ -424,13 +425,8 @@ func writeNew(files map[string]string) ([]string, error) {
 const AttemptExt = ".go.txt"
 
 // Attempts returns stable database references, oldest first.
-func Attempts(root string, p catalog.Problem) ([]string, error) {
-	db, err := studydb.Open(root)
-	if err != nil {
-		return nil, err
-	}
-	defer db.Close()
-	attempts, err := db.Attempts(p.Slug)
+func Attempts(scope *studydb.Scope, p catalog.Problem) ([]string, error) {
+	attempts, err := scope.Attempts(p.Slug)
 	if err != nil {
 		return nil, err
 	}
@@ -440,23 +436,13 @@ func Attempts(root string, p catalog.Problem) ([]string, error) {
 	}
 	return refs, nil
 }
-func ReadAttempt(root, ref string) (studydb.Attempt, error) {
-	db, err := studydb.Open(root)
-	if err != nil {
-		return studydb.Attempt{}, err
-	}
-	defer db.Close()
-	return db.Attempt(ref)
+func ReadAttempt(scope *studydb.Scope, ref string) (studydb.Attempt, error) {
+	return scope.Attempt(ref)
 }
 
 // ArchiveAttempt preserves a snapshot without changing the working Go file.
-func ArchiveAttempt(root string, p catalog.Problem, code []byte, now time.Time) (string, error) {
-	db, err := studydb.Open(root)
-	if err != nil {
-		return "", err
-	}
-	defer db.Close()
-	return db.Archive(p.Slug, string(code), now)
+func ArchiveAttempt(scope *studydb.Scope, p catalog.Problem, code []byte, now time.Time) (string, error) {
+	return scope.Archive(p.Slug, string(code), now)
 }
 
 // Reset archives the current solution and puts a blank scaffold in its place,
@@ -470,7 +456,7 @@ func ArchiveAttempt(root string, p catalog.Problem, code []byte, now time.Time) 
 // and rewriting it would throw away edge cases the user added.
 //
 // The caller updates progress; this touches files only.
-func Reset(root string, p catalog.Problem, signature, statement string, now time.Time) (archive string, f Files, err error) {
+func Reset(scope *studydb.Scope, root string, p catalog.Problem, signature, statement string, now time.Time) (archive string, f Files, err error) {
 	solPath := filepath.Join(root, p.SolutionDir(), "solution.go")
 	current, err := os.ReadFile(solPath)
 	if err != nil {
@@ -478,7 +464,7 @@ func Reset(root string, p catalog.Problem, signature, statement string, now time
 			filepath.ToSlash(filepath.Join(p.SolutionDir(), "solution.go")))
 	}
 
-	archive, err = ArchiveAttempt(root, p, current, now)
+	archive, err = ArchiveAttempt(scope, p, current, now)
 	if err != nil {
 		return "", f, err
 	}

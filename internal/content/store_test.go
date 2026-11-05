@@ -6,7 +6,28 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"neetcode150/internal/studydb"
 )
+
+// hintsPath is a real per-problem path, because the slug is read back out of the
+// directory name.
+const hintsPath = "content/problems/0001-two-sum/hints.md"
+
+// storedHints puts a hint ladder where hints now live: in the owner's storage.
+func storedHints(t *testing.T, root, slug, md string) *studydb.Scope {
+	t.Helper()
+	db, err := studydb.Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	scope := db.Owner()
+	if err := scope.SaveDocument(slug, "hints", md); err != nil {
+		t.Fatal(err)
+	}
+	return scope
+}
 
 func TestSplitFrontmatter(t *testing.T) {
 	cases := []struct {
@@ -60,7 +81,7 @@ func TestSplitFrontmatter(t *testing.T) {
 
 func TestDocMissingFileIsNotAnError(t *testing.T) {
 	s := NewStore(t.TempDir(), NewRenderer())
-	doc, err := s.Doc("content/problems/nope/hints.md")
+	doc, err := s.Doc(nil, "content/problems/nope/problem.md")
 	if err != nil {
 		t.Fatalf("Doc: %v", err)
 	}
@@ -71,13 +92,13 @@ func TestDocMissingFileIsNotAnError(t *testing.T) {
 
 func TestDocPicksUpEditsAfterCaching(t *testing.T) {
 	root := t.TempDir()
-	path := filepath.Join(root, "notes.md")
+	path := filepath.Join(root, "guide.md")
 	if err := os.WriteFile(path, []byte("first\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	s := NewStore(root, NewRenderer())
 
-	if doc, err := s.Doc("notes.md"); err != nil || !strings.Contains(doc.Body, "first") {
+	if doc, err := s.Doc(nil, "guide.md"); err != nil || !strings.Contains(doc.Body, "first") {
 		t.Fatalf("first read: %+v %v", doc, err)
 	}
 	// A rewrite with a bumped mtime must invalidate the cache.
@@ -87,7 +108,7 @@ func TestDocPicksUpEditsAfterCaching(t *testing.T) {
 	if err := os.Chtimes(path, time.Now().Add(time.Second), time.Now().Add(time.Second)); err != nil {
 		t.Fatal(err)
 	}
-	doc, err := s.Doc("notes.md")
+	doc, err := s.Doc(nil, "guide.md")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,12 +120,10 @@ func TestDocPicksUpEditsAfterCaching(t *testing.T) {
 func TestHintsSplitOnHeadings(t *testing.T) {
 	root := t.TempDir()
 	md := "---\ntitle: Hints\n---\n\nRead the constraints first.\n\n## Hint 1 — pattern\n\nThink about a hash map.\n\n## Hint 2 — invariant\n\nOne pass is enough.\n"
-	if err := os.WriteFile(filepath.Join(root, "hints.md"), []byte(md), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	scope := storedHints(t, root, "two-sum", md)
 	s := NewStore(root, NewRenderer())
 
-	pre, hints, err := s.Hints("hints.md")
+	pre, hints, err := s.Hints(scope, hintsPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -127,11 +146,9 @@ func TestHintsSplitOnHeadings(t *testing.T) {
 
 func TestHintsWithoutHeadingsBecomeOneReveal(t *testing.T) {
 	root := t.TempDir()
-	if err := os.WriteFile(filepath.Join(root, "hints.md"), []byte("just one thought\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	scope := storedHints(t, root, "two-sum", "just one thought\n")
 	s := NewStore(root, NewRenderer())
-	_, hints, err := s.Hints("hints.md")
+	_, hints, err := s.Hints(scope, hintsPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -186,7 +203,7 @@ func TestDocHTMLBodyDropsOnlyTheTitle(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "problem.md"), []byte(md), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	doc, err := NewStore(root, NewRenderer()).Doc("problem.md")
+	doc, err := NewStore(root, NewRenderer()).Doc(nil, "problem.md")
 	if err != nil {
 		t.Fatal(err)
 	}

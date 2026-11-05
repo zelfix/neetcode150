@@ -2,6 +2,7 @@ package content
 
 import (
 	"errors"
+	"fmt"
 	"html/template"
 	"neetcode150/internal/studydb"
 	"os"
@@ -45,7 +46,6 @@ func (d *Doc) Empty() bool { return d == nil || d.Missing || strings.TrimSpace(d
 // Store reads documents from disk, caching each by modification time so files
 // written mid-session show up on the next page load without a restart.
 type Store struct {
-	study    *studydb.DB
 	root     string
 	renderer *Renderer
 	mu       sync.RWMutex
@@ -56,8 +56,6 @@ type Store struct {
 func NewStore(root string, r *Renderer) *Store {
 	return &Store{root: root, renderer: r, cache: map[string]*Doc{}}
 }
-
-func (s *Store) UseStudyDB(db *studydb.DB) { s.study = db }
 
 // StudyDoc renders mutable Markdown without caching a legacy file's mtime.
 func (s *Store) StudyDoc(path, raw string) *Doc {
@@ -71,10 +69,19 @@ func (s *Store) Renderer() *Renderer { return s.renderer }
 // Doc reads the Markdown file at a project-relative path. A missing file comes
 // back as a Doc with Missing set, not as an error, because hints and notes are
 // written as you go.
-func (s *Store) Doc(relPath string) (*Doc, error) {
-	if s.study != nil && (filepath.Base(relPath) == "notes.md" || filepath.Base(relPath) == "hints.md") {
+//
+// Notes and hints are personal, so they come from storage rather than from disk
+// and need the scope of whoever is asking. The scope is a required parameter
+// rather than state on the Store because a Store is shared by every request:
+// holding one user's handle here is how a site hands everybody the owner's
+// notes while still compiling cleanly. Pass nil only for shared content.
+func (s *Store) Doc(scope *studydb.Scope, relPath string) (*Doc, error) {
+	if base := filepath.Base(relPath); base == "notes.md" || base == "hints.md" {
+		if scope == nil {
+			return nil, fmt.Errorf("content: %s is personal and needs a user", relPath)
+		}
 		_, slug, _ := strings.Cut(filepath.Base(filepath.Dir(relPath)), "-")
-		raw, err := s.study.Document(slug, strings.TrimSuffix(filepath.Base(relPath), ".md"))
+		raw, err := scope.Document(slug, strings.TrimSuffix(base, ".md"))
 		if err != nil {
 			return nil, err
 		}
@@ -159,8 +166,8 @@ var hintHeadingRE = regexp.MustCompile(`(?m)^##\s+(.+?)\s*$`)
 // Hints splits a hints document on its `## ` headings. Each heading becomes one
 // rung, revealed on its own, and anything before the first heading is returned
 // as an always-visible preamble.
-func (s *Store) Hints(relPath string) (preamble template.HTML, hints []Hint, err error) {
-	doc, err := s.Doc(relPath)
+func (s *Store) Hints(scope *studydb.Scope, relPath string) (preamble template.HTML, hints []Hint, err error) {
+	doc, err := s.Doc(scope, relPath)
 	if err != nil {
 		return "", nil, err
 	}

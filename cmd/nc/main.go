@@ -162,7 +162,7 @@ func cmdDocument(root, kind string, args []string) error {
 		args = args[1:]
 	}
 	if len(args) == 0 {
-		text, err := prog.DB().Document(slug, kind)
+		text, err := prog.Scope().Document(slug, kind)
 		if err != nil {
 			return err
 		}
@@ -177,9 +177,9 @@ func cmdDocument(root, kind string, args []string) error {
 		return err
 	}
 	if args[0] == "--append-file" {
-		_, err = prog.DB().SQL.Exec("INSERT INTO documents VALUES(?,?,?) ON CONFLICT(slug,kind) DO UPDATE SET text=documents.text || excluded.text", slug, kind, string(data))
+		_, err = prog.DB().SQL.Exec("INSERT INTO documents(user_id,slug,kind,text) VALUES(?,?,?,?) ON CONFLICT(user_id,slug,kind) DO UPDATE SET text=documents.text || excluded.text", prog.UserID(), slug, kind, string(data))
 	} else {
-		err = prog.DB().SaveDocument(slug, kind, string(data))
+		err = prog.Scope().SaveDocument(slug, kind, string(data))
 	}
 	return err
 }
@@ -389,7 +389,7 @@ func cmdStart(root string, args []string) error {
 	}
 
 	signature, statement := problemInputs(root, p)
-	written, files, err := scaffold.Create(root, p, signature, statement)
+	written, files, err := scaffold.Create(prog.Scope(), root, p, signature, statement)
 	if err != nil {
 		return err
 	}
@@ -934,7 +934,7 @@ func cmdResolve(root string, args []string) error {
 
 	now := time.Now()
 	signature, statement := problemInputs(root, p)
-	archive, _, err := scaffold.Reset(root, p, signature, statement, now)
+	archive, _, err := scaffold.Reset(prog.Scope(), root, p, signature, statement, now)
 	if err != nil {
 		return fmt.Errorf("%w — `nc start %s` starts a first attempt", err, p.Slug)
 	}
@@ -960,15 +960,16 @@ func cmdResolve(root string, args []string) error {
 
 // cmdDiff compares the current solution against the most recent archived one.
 func cmdDiff(root string, args []string) error {
-	cat, _, err := load(root)
+	cat, prog, err := load(root)
 	if err != nil {
 		return err
 	}
+	defer prog.Close()
 	p, err := resolve(cat, args)
 	if err != nil {
 		return err
 	}
-	attempts, err := scaffold.Attempts(root, p)
+	attempts, err := scaffold.Attempts(prog.Scope(), p)
 	if err != nil {
 		return err
 	}
@@ -977,7 +978,7 @@ func cmdDiff(root string, args []string) error {
 	}
 	previous := attempts[len(attempts)-1]
 
-	oldAttempt, err := scaffold.ReadAttempt(root, previous)
+	oldAttempt, err := scaffold.ReadAttempt(prog.Scope(), previous)
 	oldSrc := []byte(oldAttempt.Code)
 	if err != nil {
 		return err

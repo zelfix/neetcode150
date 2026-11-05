@@ -193,12 +193,12 @@ func (s *Server) handleSolve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	statement, err := s.content.Doc(filepath.Join(p.ContentDir(), "problem.md"))
+	statement, err := s.content.Doc(nil, filepath.Join(p.ContentDir(), "problem.md"))
 	if err != nil {
 		s.fail(w, err)
 		return
 	}
-	notesRaw, err := s.progress.DB().Document(p.Slug, "notes")
+	notesRaw, err := s.progress.Scope().Document(p.Slug, "notes")
 	if err != nil {
 		s.fail(w, err)
 		return
@@ -262,7 +262,7 @@ func formatElapsed(elapsed time.Duration) string {
 }
 
 func (s *Server) submissions(p catalog.Problem) []submissionView {
-	attempts, err := s.progress.DB().Attempts(p.Slug)
+	attempts, err := s.progress.Scope().Attempts(p.Slug)
 	if err != nil {
 		panic(err)
 	}
@@ -536,7 +536,7 @@ func (s *Server) submissionDecisionPrompt(p catalog.Problem, pending pendingSubm
 
 // Only review evidence enters a new lesson; archived solutions stay out of cold solves.
 func (s *Server) appendLearningHistory(b *strings.Builder, p catalog.Problem) {
-	attempts, err := s.progress.DB().Attempts(p.Slug)
+	attempts, err := s.progress.Scope().Attempts(p.Slug)
 	if err != nil {
 		panic(err)
 	}
@@ -603,7 +603,7 @@ func (s *Server) recordSubmission(p catalog.Problem, pending pendingSubmission, 
 		var err error
 		if pending.Token != "" {
 			var id int64
-			err = tx.QueryRow("SELECT id FROM attempts WHERE submission_key=?", pending.Token).Scan(&id)
+			err = tx.QueryRow("SELECT id FROM attempts WHERE user_id=? AND submission_key=?", s.progress.UserID(), pending.Token).Scan(&id)
 			if err == nil {
 				archive = fmt.Sprintf("attempt:%d", id)
 				return nil
@@ -612,15 +612,14 @@ func (s *Server) recordSubmission(p catalog.Problem, pending pendingSubmission, 
 				return err
 			}
 		}
-		archive, err = studydb.InsertAttempt(tx, p.Slug, pending.Code, data, now, pending.Token)
+		archive, err = studydb.InsertAttempt(tx, s.progress.UserID(), p.Slug, pending.Code, data, now, pending.Token)
 		if err != nil {
 			return err
 		}
 		if err = s.progress.CompleteIn(tx, p.Slug, review.Confidence, review.Rung, minutes, pending.Passed, now); err != nil {
 			return err
 		}
-		_, err = tx.Exec("DELETE FROM pending_submissions WHERE slug=?", p.Slug)
-		return err
+		return s.progress.Scope().DeletePendingIn(tx, p.Slug)
 	})
 	if err != nil {
 		return "", err
@@ -780,9 +779,9 @@ func (s *Server) handleStartAttempt(w http.ResponseWriter, r *http.Request) {
 	var archive string
 	var err error
 	if _, statErr := os.Stat(solutionPath); statErr == nil {
-		archive, _, err = scaffold.Reset(s.root, p, signature, statement, s.now())
+		archive, _, err = scaffold.Reset(s.progress.Scope(), s.root, p, signature, statement, s.now())
 	} else if os.IsNotExist(statErr) {
-		_, _, err = scaffold.Create(s.root, p, signature, statement)
+		_, _, err = scaffold.Create(s.progress.Scope(), s.root, p, signature, statement)
 	} else {
 		err = statErr
 	}
@@ -868,7 +867,7 @@ func (s *Server) handleCreateSolution(w http.ResponseWriter, r *http.Request) {
 	raw, _ := readIfPresent(filepath.Join(s.root, p.ContentDir(), "problem.md"))
 	_, statement := content.SplitFrontmatter(raw)
 
-	written, _, err := scaffold.Create(s.root, p, signature, statement)
+	written, _, err := scaffold.Create(s.progress.Scope(), s.root, p, signature, statement)
 	if err != nil {
 		s.fail(w, err)
 		return
@@ -980,7 +979,7 @@ func (s *Server) recordRun(slug string, run testRun, runErr error) {
 	if runErr != nil || !run.Ran {
 		return
 	}
-	if err := s.progress.DB().RecordTestRun(slug, s.now(), run.Passed, run.Failed, run.Cases); err != nil {
+	if err := s.progress.Scope().RecordTestRun(slug, s.now(), run.Passed, run.Failed, run.Cases); err != nil {
 		log.Printf("record test run for %s: %v", slug, err)
 	}
 }
@@ -1016,7 +1015,7 @@ func (s *Server) readSolution(p catalog.Problem) (code string, exists bool) {
 // countArchived is how many earlier attempts `nc resolve` has put aside.
 func (s *Server) countArchived(p catalog.Problem) int {
 	var n int
-	if err := s.progress.DB().SQL.QueryRow("SELECT count(*) FROM attempts WHERE slug=?", p.Slug).Scan(&n); err != nil {
+	if err := s.progress.DB().SQL.QueryRow("SELECT count(*) FROM attempts WHERE user_id=? AND slug=?", s.progress.UserID(), p.Slug).Scan(&n); err != nil {
 		panic(err)
 	}
 	return n
@@ -1082,7 +1081,7 @@ func (s *Server) handleResolve(w http.ResponseWriter, r *http.Request) {
 	_, statement := content.SplitFrontmatter(raw)
 
 	now := s.now()
-	archive, _, err := scaffold.Reset(s.root, p, signature, statement, now)
+	archive, _, err := scaffold.Reset(s.progress.Scope(), s.root, p, signature, statement, now)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusConflict)
 		return

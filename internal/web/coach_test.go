@@ -78,14 +78,14 @@ func TestRunningTestsRecordsWhichCasesBroke(t *testing.T) {
 	}
 
 	db := srv.progress.DB()
-	tally, err := db.Tally("two-sum")
+	tally, err := db.Owner().Tally("two-sum")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if tally.Runs != 2 || tally.Clean != 0 {
 		t.Errorf("tally = %+v, want 2 runs and none clean", tally)
 	}
-	cases, err := db.CaseFailures("two-sum", 0)
+	cases, err := db.Owner().CaseFailures("two-sum", 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,7 +103,7 @@ func TestRunningTestsRecordsWhichCasesBroke(t *testing.T) {
 		return testRun{}, errors.New("could not run go test")
 	}
 	postJSON(t, h, "/problems/two-sum/test", map[string]string{"code": "package twosum\n"})
-	if tally, _ := db.Tally("two-sum"); tally.Runs != 2 {
+	if tally, _ := db.Owner().Tally("two-sum"); tally.Runs != 2 {
 		t.Errorf("a failed run was recorded: %d runs", tally.Runs)
 	}
 

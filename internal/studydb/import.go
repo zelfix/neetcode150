@@ -45,7 +45,7 @@ func (d *DB) importLegacy() error {
 				if len(entry) == 0 || entry[0] != '{' {
 					return fmt.Errorf("invalid progress entry for %s", slug)
 				}
-				if _, err := tx.Exec("INSERT INTO progress VALUES(?,?)", slug, string(entry)); err != nil {
+				if _, err := tx.Exec("INSERT INTO progress(user_id,slug,entry) VALUES(?,?,?)", OwnerID, slug, string(entry)); err != nil {
 					return err
 				}
 				counts["progress"]++
@@ -78,7 +78,7 @@ func (d *DB) importLegacy() error {
 				if err != nil {
 					return err
 				}
-				if _, err := tx.Exec("INSERT INTO documents VALUES(?,?,?)", slug, kind, string(text)); err != nil {
+				if _, err := tx.Exec("INSERT INTO documents(user_id,slug,kind,text) VALUES(?,?,?,?)", OwnerID, slug, kind, string(text)); err != nil {
 					return err
 				}
 				counts["documents"]++
@@ -87,7 +87,7 @@ func (d *DB) importLegacy() error {
 		if text, err := read(filepath.Join(d.Root, "tutor/log.md")); err != nil {
 			return err
 		} else if text != nil {
-			if _, err := tx.Exec("INSERT INTO documents VALUES('','log',?)", string(text)); err != nil {
+			if _, err := tx.Exec("INSERT INTO documents(user_id,slug,kind,text) VALUES(?,'','log',?)", OwnerID, string(text)); err != nil {
 				return err
 			}
 			counts["documents"]++
@@ -148,11 +148,11 @@ func (d *DB) importLegacy() error {
 			if err != nil {
 				return err
 			}
-			if _, err := tx.Exec("INSERT INTO attempts(slug,created_at,code,review,legacy_path) VALUES(?,?,?,?,?)", slug, created.Format(time.RFC3339Nano), string(code), review, filepath.ToSlash(rel)); err != nil {
+			if _, err := tx.Exec("INSERT INTO attempts(user_id,slug,created_at,code,review,legacy_path) VALUES(?,?,?,?,?,?)", OwnerID, slug, created.Format(time.RFC3339Nano), string(code), review, filepath.ToSlash(rel)); err != nil {
 				return err
 			}
 			var stored string
-			if err := tx.QueryRow("SELECT code FROM attempts WHERE legacy_path=?", filepath.ToSlash(rel)).Scan(&stored); err != nil {
+			if err := tx.QueryRow("SELECT code FROM attempts WHERE user_id=? AND legacy_path=?", OwnerID, filepath.ToSlash(rel)).Scan(&stored); err != nil {
 				return err
 			}
 			if stored != string(code) {
@@ -162,7 +162,7 @@ func (d *DB) importLegacy() error {
 		}
 		for _, table := range []string{"progress", "documents", "attempts"} {
 			var n int
-			if err := tx.QueryRow("SELECT count(*) FROM " + table).Scan(&n); err != nil {
+			if err := tx.QueryRow("SELECT count(*) FROM "+table+" WHERE user_id=?", OwnerID).Scan(&n); err != nil {
 				return err
 			}
 			if n != counts[table] {

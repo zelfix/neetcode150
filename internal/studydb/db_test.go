@@ -42,7 +42,7 @@ func TestImportPreservesLegacyDataAndRunsOnlyOnce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	attempts, err := db.Attempts("two-sum")
+	attempts, err := db.Owner().Attempts("two-sum")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,7 +54,7 @@ func TestImportPreservesLegacyDataAndRunsOnlyOnce(t *testing.T) {
 			t.Fatalf("wrong import order at %d: %s", i, a.Code)
 		}
 	}
-	if text, err := db.Document("two-sum", "notes"); err != nil || text != notes {
+	if text, err := db.Owner().Document("two-sum", "notes"); err != nil || text != notes {
 		t.Fatalf("notes changed: %q, %v", text, err)
 	}
 	var raw string
@@ -76,7 +76,7 @@ func TestImportPreservesLegacyDataAndRunsOnlyOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	if text, _ := db.Document("two-sum", "notes"); text != notes {
+	if text, _ := db.Owner().Document("two-sum", "notes"); text != notes {
 		t.Fatal("legacy files reimported")
 	}
 	var count int
@@ -141,17 +141,29 @@ func TestVersionOneWithoutSubmissionKeyUpgradesWithoutLosingData(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ref, err := db.Archive("two-sum", "existing snapshot", time.Now())
+	ref, err := db.Owner().Archive("two-sum", "existing snapshot", time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.SaveDocument("two-sum", "notes", "existing notes"); err != nil {
+	if err := db.Owner().SaveDocument("two-sum", "notes", "existing notes"); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.SavePending("two-sum", []byte(`{"Token":"pending-token","Code":"pending snapshot"}`)); err != nil {
+	if err := db.Owner().SavePending("two-sum", []byte(`{"Token":"pending-token","Code":"pending snapshot"}`)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.SQL.Exec(`INSERT INTO progress VALUES('two-sum','{"status":"attempted","confidence":4}'); DROP INDEX attempts_submission_key; ALTER TABLE attempts DROP COLUMN submission_key; PRAGMA user_version=1;`); err != nil {
+	// Put attempts back into the genuine version-1 shape — no submission_key and
+	// no user_id — rather than mutating the current one. Since v4 the uniqueness
+	// of submission_key is a table constraint, not the attempts_submission_key
+	// index, and a column named in a constraint cannot simply be dropped.
+	if _, err := db.SQL.Exec(`
+INSERT INTO progress(user_id,slug,entry) VALUES(1,'two-sum','{"status":"attempted","confidence":4}');
+CREATE TABLE attempts_v1 (id INTEGER PRIMARY KEY AUTOINCREMENT, slug TEXT NOT NULL, created_at TEXT NOT NULL, code TEXT NOT NULL, review TEXT CHECK(review IS NULL OR json_valid(review)), legacy_path TEXT UNIQUE);
+INSERT INTO attempts_v1(id,slug,created_at,code,review,legacy_path) SELECT id,slug,created_at,code,review,legacy_path FROM attempts;
+DROP TABLE attempts;
+ALTER TABLE attempts_v1 RENAME TO attempts;
+DROP INDEX IF EXISTS attempts_problem;
+CREATE INDEX attempts_problem ON attempts(slug,id);
+PRAGMA user_version=1;`); err != nil {
 		t.Fatal(err)
 	}
 	db.Close()
@@ -164,14 +176,14 @@ func TestVersionOneWithoutSubmissionKeyUpgradesWithoutLosingData(t *testing.T) {
 	if version != schemaVersion {
 		t.Fatalf("version=%d, want %d", version, schemaVersion)
 	}
-	attempt, err := db.Attempt(ref)
+	attempt, err := db.Owner().Attempt(ref)
 	if err != nil || attempt.Code != "existing snapshot" {
 		t.Fatal("existing attempt lost")
 	}
-	if text, _ := db.Document("two-sum", "notes"); text != "existing notes" {
+	if text, _ := db.Owner().Document("two-sum", "notes"); text != "existing notes" {
 		t.Fatal("notes lost")
 	}
-	pending, err := db.Pending()
+	pending, err := db.Owner().Pending()
 	if err != nil || !strings.Contains(string(pending["two-sum"]), "pending snapshot") {
 		t.Fatal("pending submission lost")
 	}
@@ -181,7 +193,7 @@ func TestVersionOneWithoutSubmissionKeyUpgradesWithoutLosingData(t *testing.T) {
 	}
 	insert := func() error {
 		return db.Write(func(tx *sql.Tx) error {
-			_, err := InsertAttempt(tx, "two-sum", "new snapshot", nil, time.Now(), "submission-token")
+			_, err := InsertAttempt(tx, OwnerID, "two-sum", "new snapshot", nil, time.Now(), "submission-token")
 			return err
 		})
 	}

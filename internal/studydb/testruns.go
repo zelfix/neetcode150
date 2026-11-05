@@ -39,17 +39,17 @@ func (t TestTally) Share() int {
 // RecordTestRun stores the outcome of one `go test` and increments the counter
 // for each fixture it broke. The run and its failures land together so a
 // failure can never be counted against a run that was not recorded.
-func (d *DB) RecordTestRun(slug string, now time.Time, passed, failed int, cases []FailedCase) error {
+func (s *Scope) RecordTestRun(slug string, now time.Time, passed, failed int, cases []FailedCase) error {
 	stamp := now.Format(time.RFC3339Nano)
-	return d.Write(func(tx *sql.Tx) error {
-		if _, err := tx.Exec("INSERT INTO test_runs(slug,ran_at,passed,failed) VALUES(?,?,?,?)",
-			slug, stamp, passed, failed); err != nil {
+	return s.db.Write(func(tx *sql.Tx) error {
+		if _, err := tx.Exec("INSERT INTO test_runs(user_id,slug,ran_at,passed,failed) VALUES(?,?,?,?,?)",
+			s.userID, slug, stamp, passed, failed); err != nil {
 			return err
 		}
 		for _, c := range cases {
-			if _, err := tx.Exec(`INSERT INTO case_failures(slug,kind,name,failures,last_at) VALUES(?,?,?,1,?)
-ON CONFLICT(slug,kind,name) DO UPDATE SET failures=failures+1, last_at=excluded.last_at`,
-				slug, c.Kind, c.Name, stamp); err != nil {
+			if _, err := tx.Exec(`INSERT INTO case_failures(user_id,slug,kind,name,failures,last_at) VALUES(?,?,?,?,1,?)
+ON CONFLICT(user_id,slug,kind,name) DO UPDATE SET failures=failures+1, last_at=excluded.last_at`,
+				s.userID, slug, c.Kind, c.Name, stamp); err != nil {
 				return err
 			}
 		}
@@ -57,27 +57,27 @@ ON CONFLICT(slug,kind,name) DO UPDATE SET failures=failures+1, last_at=excluded.
 	})
 }
 
-// Tally counts the runs recorded for one problem, or for every problem when
-// slug is empty.
-func (d *DB) Tally(slug string) (TestTally, error) {
+// Tally counts the runs recorded for one of this user's problems, or for every
+// problem of theirs when slug is empty.
+func (s *Scope) Tally(slug string) (TestTally, error) {
 	var t TestTally
-	query := "SELECT count(*), coalesce(sum(failed=0),0) FROM test_runs"
-	args := []any{}
+	query := "SELECT count(*), coalesce(sum(failed=0),0) FROM test_runs WHERE user_id=?"
+	args := []any{s.userID}
 	if slug != "" {
-		query += " WHERE slug=?"
+		query += " AND slug=?"
 		args = append(args, slug)
 	}
-	err := d.SQL.QueryRow(query, args...).Scan(&t.Runs, &t.Clean)
+	err := s.db.SQL.QueryRow(query, args...).Scan(&t.Runs, &t.Clean)
 	return t, err
 }
 
 // CaseFailures lists the fixtures that have failed most often, for one problem
 // or across all of them when slug is empty. A limit of zero or less keeps all.
-func (d *DB) CaseFailures(slug string, limit int) ([]CaseFailure, error) {
-	query := "SELECT slug,kind,name,failures,last_at FROM case_failures"
-	args := []any{}
+func (s *Scope) CaseFailures(slug string, limit int) ([]CaseFailure, error) {
+	query := "SELECT slug,kind,name,failures,last_at FROM case_failures WHERE user_id=?"
+	args := []any{s.userID}
 	if slug != "" {
-		query += " WHERE slug=?"
+		query += " AND slug=?"
 		args = append(args, slug)
 	}
 	query += " ORDER BY failures DESC, last_at DESC"
@@ -85,7 +85,7 @@ func (d *DB) CaseFailures(slug string, limit int) ([]CaseFailure, error) {
 		query += " LIMIT ?"
 		args = append(args, limit)
 	}
-	rows, err := d.SQL.Query(query, args...)
+	rows, err := s.db.SQL.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -108,8 +108,8 @@ func (d *DB) CaseFailures(slug string, limit int) ([]CaseFailure, error) {
 // FailuresByKind totals failures for examples against corner cases. Breaking a
 // worked example means the approach is wrong; breaking only corner cases means
 // it is nearly right and under-tested, which calls for different advice.
-func (d *DB) FailuresByKind() (map[string]int, error) {
-	rows, err := d.SQL.Query("SELECT kind, sum(failures) FROM case_failures GROUP BY kind")
+func (s *Scope) FailuresByKind() (map[string]int, error) {
+	rows, err := s.db.SQL.Query("SELECT kind, sum(failures) FROM case_failures WHERE user_id=? GROUP BY kind", s.userID)
 	if err != nil {
 		return nil, err
 	}

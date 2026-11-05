@@ -17,7 +17,7 @@ func (s *Server) handleSaveNotes(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "expected notes text", http.StatusBadRequest)
 		return
 	}
-	if err := s.progress.DB().SaveDocument(p.Slug, "notes", *req.Text); err != nil {
+	if err := s.progress.Scope().SaveDocument(p.Slug, "notes", *req.Text); err != nil {
 		s.fail(w, err)
 		return
 	}

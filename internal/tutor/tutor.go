@@ -95,7 +95,7 @@ const subBuffer = 256
 
 // Session is one local agent process and conversation, for one problem.
 type Session struct {
-	storage        *studydb.DB
+	storage        *studydb.Scope
 	storageID      int64
 	restored       bool
 	persistenceErr error

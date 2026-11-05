@@ -531,7 +531,7 @@ while IFS= read -r line; do
  echo '{"type":"result","subtype":"success"}'
 done
 `)
-	first.UseStorage(db)
+	first.UseStorage(db.Owner())
 	s, err := first.Send(twoSum, "my earlier question")
 	if err != nil {
 		t.Fatal(err)
@@ -551,7 +551,7 @@ while IFS= read -r line; do
 done
 `)
 	defer second.Close()
-	second.UseStorage(db)
+	second.UseStorage(db.Owner())
 	restored := second.Get(twoSum.Slug)
 	if restored == nil || restored.Info().Running {
 		t.Fatal("expected a saved conversation without a running process")

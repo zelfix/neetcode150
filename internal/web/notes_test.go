@@ -19,7 +19,7 @@ func TestNotesCanBeEditedAndClearedInTheBrowser(t *testing.T) {
 		if rec.Code != http.StatusOK {
 			t.Fatalf("save: %d %s", rec.Code, rec.Body.String())
 		}
-		textOnDB, err := srv.progress.DB().Document("two-sum", "notes")
+		textOnDB, err := srv.progress.Scope().Document("two-sum", "notes")
 		data := []byte(textOnDB)
 		if err != nil || string(data) != text {
 			t.Fatalf("notes not saved verbatim: %q, %v", data, err)

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"neetcode150/internal/catalog"
+	"neetcode150/internal/studydb"
 )
 
 func TestPackageName(t *testing.T) {
@@ -211,23 +212,23 @@ func TestAttemptsKeepStableIDsAndSnapshots(t *testing.T) {
 	day := time.Date(2026, 10, 31, 12, 0, 0, 0, time.UTC)
 	var want []string
 	for i := 1; i <= 12; i++ {
-		path, err := ArchiveAttempt(root, p, []byte(fmt.Sprintf("attempt %d", i)), day)
+		path, err := ArchiveAttempt(ownerScope(t, root), p, []byte(fmt.Sprintf("attempt %d", i)), day)
 		if err != nil {
 			t.Fatal(err)
 		}
 		want = append(want, path)
 	}
 	// Creation order must not override the dates encoded in the filenames.
-	earlier, err := ArchiveAttempt(root, p, nil, day.AddDate(0, 0, -1))
+	earlier, err := ArchiveAttempt(ownerScope(t, root), p, nil, day.AddDate(0, 0, -1))
 	if err != nil {
 		t.Fatal(err)
 	}
-	later, err := ArchiveAttempt(root, p, nil, day.AddDate(0, 0, 1))
+	later, err := ArchiveAttempt(ownerScope(t, root), p, nil, day.AddDate(0, 0, 1))
 	if err != nil {
 		t.Fatal(err)
 	}
 	want = append(want, earlier, later)
-	got, err := Attempts(root, p)
+	got, err := Attempts(ownerScope(t, root), p)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -239,4 +240,16 @@ func TestAttemptsKeepStableIDsAndSnapshots(t *testing.T) {
 			t.Errorf("attempt %d: got %s, want %s", i, filepath.Base(got[i]), filepath.Base(want[i]))
 		}
 	}
+}
+
+// ownerScope opens the study database for a test root and returns the owner's
+// view, which is what the CLI passes in production.
+func ownerScope(t *testing.T, root string) *studydb.Scope {
+	t.Helper()
+	db, err := studydb.Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	return db.Owner()
 }

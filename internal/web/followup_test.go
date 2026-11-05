@@ -18,7 +18,7 @@ func TestPostAttemptChatKeepsTheRatingAndTimerUnchanged(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	attempt, err := prog.DB().Attempt(ref)
+	attempt, err := prog.Scope().Attempt(ref)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,11 +70,11 @@ done
 		if after := prog.Get(p.Slug); !reflect.DeepEqual(before, after) {
 			t.Fatal("follow-up changed the rating, time, or schedule")
 		}
-		attempts, err := prog.DB().Attempts(p.Slug)
+		attempts, err := prog.Scope().Attempts(p.Slug)
 		if err != nil || len(attempts) != 1 {
 			t.Fatal("follow-up created another attempt")
 		}
-		pending, err := prog.DB().Pending()
+		pending, err := prog.Scope().Pending()
 		if err != nil || len(pending) != 0 {
 			t.Fatal("follow-up restarted assessment")
 		}

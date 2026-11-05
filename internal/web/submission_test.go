@@ -107,7 +107,7 @@ func TestLearningEvidenceSurvivesANewSessionWithoutArchivedCode(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	attempt, err := srv.progress.DB().Attempt(archive)
+	attempt, err := srv.progress.Scope().Attempt(archive)
 	data := attempt.Review
 	if err != nil {
 		t.Fatal(err)
@@ -332,7 +332,7 @@ done
 	if entry := prog.Get(p.Slug); len(entry.History) != 1 || entry.Confidence != 4 {
 		t.Fatal("resumed rating was not committed")
 	}
-	saved, err := reopened.DB().Pending()
+	saved, err := reopened.Scope().Pending()
 	if err != nil || len(saved) != 0 {
 		t.Fatal("completed submission remains pending")
 	}

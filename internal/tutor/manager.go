@@ -25,7 +25,7 @@ const maxLive = 4
 
 // Manager owns the running sessions, one per problem.
 type Manager struct {
-	storage  *studydb.DB
+	storage  *studydb.Scope
 	root     string
 	provider Provider
 	mode     Mode
@@ -110,7 +110,11 @@ func (m *Manager) Mode() Mode { return m.mode }
 func (m *Manager) Provider() Provider { return m.provider }
 
 // UseStorage attaches the application's database before sessions are started.
-func (m *Manager) UseStorage(db *studydb.DB) { m.storage = db }
+// UseStorage attaches the study data this manager persists through.
+//
+// A Scope rather than a DB: sessions and their transcripts are personal, and a
+// shared handle here would mean one live session per problem across everyone.
+func (m *Manager) UseStorage(scope *studydb.Scope) { m.storage = scope }
 
 func (m *Manager) restoredLocked(slug string) (*Session, error) {
 	if s := m.sessions[slug]; s != nil {

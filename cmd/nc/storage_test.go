@@ -39,10 +39,10 @@ func TestDocumentCommandsAndConsistentBackup(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	if text, _ := db.Document("two-sum", "notes"); text != "My own notes.\n" {
+	if text, _ := db.Owner().Document("two-sum", "notes"); text != "My own notes.\n" {
 		t.Fatalf("notes: %q", text)
 	}
-	if text, _ := db.Document("", "log"); text != "My own notes.\nMy own notes.\n" {
+	if text, _ := db.Owner().Document("", "log"); text != "My own notes.\nMy own notes.\n" {
 		t.Fatalf("append: %q", text)
 	}
 	backup := filepath.Join(t.TempDir(), "backup.sqlite3")
@@ -66,7 +66,7 @@ func TestDocumentCommandsAndConsistentBackup(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer restored.Close()
-	if text, _ := restored.Document("two-sum", "notes"); text != "My own notes.\n" {
+	if text, _ := restored.Owner().Document("two-sum", "notes"); text != "My own notes.\n" {
 		t.Fatalf("backup lost notes: %q", text)
 	}
 }

@@ -194,7 +194,7 @@ func (s *Server) postAttemptPrompt(p catalog.Problem, entry progress.Entry, text
 	b.WriteString("This is a post-attempt learning conversation. Respond conversationally in the user's language, not decision JSON or another rating. Earlier JSON-only instructions applied only to private assessment turns. Do not restart an attempt, timer, grading or scheduling; the completed rating and hint rung stay unchanged. Encourage questions and give useful Go idiom and trade-off observations without rewriting the solution. Optional allocation tuning is not a correctness defect.\n")
 	fmt.Fprintf(&b, "Problem: %s. Current status: %s.\n", p.Title, entry.Status)
 	if entry.Status == progress.Solved || entry.Status == progress.Shaky {
-		attempts, err := s.progress.DB().Attempts(p.Slug)
+		attempts, err := s.progress.Scope().Attempts(p.Slug)
 		if err != nil {
 			return "", err
 		}
@@ -225,7 +225,7 @@ func (s *Server) persistPendingLocked(slug string, pending pendingSubmission) er
 	if err != nil {
 		return err
 	}
-	if err := s.progress.DB().SavePending(slug, data); err != nil {
+	if err := s.progress.Scope().SavePending(slug, data); err != nil {
 		return err
 	}
 	s.pendingSubmissions[slug] = pending

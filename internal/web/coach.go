@@ -66,13 +66,13 @@ func (s *Server) handleCoach(w http.ResponseWriter, r *http.Request) {
 
 	// The test record is a nicety, not the point of the page: if it cannot be
 	// read, the rest still renders.
-	if tally, err := s.progress.DB().Tally(""); err == nil {
+	if tally, err := s.progress.Scope().Tally(""); err == nil {
 		page.Tally = tally
 	}
-	if kinds, err := s.progress.DB().FailuresByKind(); err == nil {
+	if kinds, err := s.progress.Scope().FailuresByKind(); err == nil {
 		page.Examples, page.Edges = kinds["example"], kinds["edge"]
 	}
-	if cases, err := s.progress.DB().CaseFailures("", 12); err == nil {
+	if cases, err := s.progress.Scope().CaseFailures("", 12); err == nil {
 		for _, c := range cases {
 			v := caseFailureView{CaseFailure: c, Title: c.Slug}
 			if p, ok := s.cat.BySlug(c.Slug); ok {

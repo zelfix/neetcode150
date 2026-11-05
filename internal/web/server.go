@@ -67,9 +67,8 @@ func New(root string, cat *catalog.Catalog, store *content.Store, prog *progress
 		tutor:              tutor.New(root, tutor.ModeTutor, 0),
 		pendingSubmissions: make(map[string]pendingSubmission),
 	}
-	store.UseStudyDB(prog.DB())
-	s.tutor.UseStorage(prog.DB())
-	pending, err := prog.DB().Pending()
+	s.tutor.UseStorage(prog.Scope())
+	pending, err := prog.Scope().Pending()
 	if err != nil {
 		return nil, err
 	}
@@ -106,7 +105,7 @@ func (s *Server) UseTutor(m *tutor.Manager) {
 	if s.tutor != nil {
 		s.tutor.Close()
 	}
-	m.UseStorage(s.progress.DB())
+	m.UseStorage(s.progress.Scope())
 	s.tutor = m
 }
 
@@ -262,7 +261,7 @@ func (s *Server) groups(now time.Time) []groupView {
 }
 
 func (s *Server) hasGuide(patternSlug string) bool {
-	doc, err := s.content.Doc(filepath.Join("content", "patterns", patternSlug+".md"))
+	doc, err := s.content.Doc(nil, filepath.Join("content", "patterns", patternSlug+".md"))
 	return err == nil && !doc.Empty()
 }
 
@@ -372,17 +371,17 @@ func (s *Server) handleProblem(w http.ResponseWriter, r *http.Request) {
 	now := s.now()
 	v := s.view(p, now)
 
-	statement, err := s.content.Doc(filepath.Join(p.ContentDir(), "problem.md"))
+	statement, err := s.content.Doc(nil, filepath.Join(p.ContentDir(), "problem.md"))
 	if err != nil {
 		s.fail(w, err)
 		return
 	}
-	preamble, hints, err := s.content.Hints(filepath.Join(p.ContentDir(), "hints.md"))
+	preamble, hints, err := s.content.Hints(s.progress.Scope(), filepath.Join(p.ContentDir(), "hints.md"))
 	if err != nil {
 		s.fail(w, err)
 		return
 	}
-	notes, err := s.content.Doc(filepath.Join(p.ContentDir(), "notes.md"))
+	notes, err := s.content.Doc(s.progress.Scope(), filepath.Join(p.ContentDir(), "notes.md"))
 	if err != nil {
 		s.fail(w, err)
 		return
@@ -441,7 +440,7 @@ func (s *Server) handlePattern(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	now := s.now()
-	guide, err := s.content.Doc(filepath.Join("content", "patterns", slug+".md"))
+	guide, err := s.content.Doc(nil, filepath.Join("content", "patterns", slug+".md"))
 	if err != nil {
 		s.fail(w, err)
 		return
