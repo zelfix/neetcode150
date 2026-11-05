@@ -1,0 +1,55 @@
+{
+  "slug": "palindromic-substrings",
+  "entry": "countSubstrings",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        "abc"
+      ],
+      "want": 3
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        "aaa"
+      ],
+      "want": 6
+    },
+    {
+      "name": "single",
+      "kind": "edge",
+      "args": [
+        "z"
+      ],
+      "want": 1
+    },
+    {
+      "name": "even center",
+      "kind": "edge",
+      "args": [
+        "abba"
+      ],
+      "want": 6
+    },
+    {
+      "name": "all identical",
+      "kind": "edge",
+      "args": [
+        "aaaa"
+      ],
+      "want": 10
+    },
+    {
+      "name": "two odd centers",
+      "kind": "edge",
+      "args": [
+        "ababa"
+      ],
+      "want": 9
+    }
+  ]
+}

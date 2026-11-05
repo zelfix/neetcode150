@@ -1,0 +1,76 @@
+{
+  "slug": "container-with-most-water",
+  "entry": "maxArea",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        [
+          1,
+          8,
+          6,
+          2,
+          5,
+          4,
+          8,
+          3,
+          7
+        ]
+      ],
+      "want": 49
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        [
+          1,
+          1
+        ]
+      ],
+      "want": 1
+    },
+    {
+      "name": "all zero",
+      "kind": "edge",
+      "args": [
+        [
+          0,
+          0,
+          0
+        ]
+      ],
+      "want": 0
+    },
+    {
+      "name": "wide endpoints",
+      "kind": "edge",
+      "args": [
+        [
+          5,
+          0,
+          0,
+          0,
+          5
+        ]
+      ],
+      "want": 20
+    },
+    {
+      "name": "increasing heights",
+      "kind": "edge",
+      "args": [
+        [
+          1,
+          2,
+          3,
+          4,
+          5
+        ]
+      ],
+      "want": 6
+    }
+  ]
+}

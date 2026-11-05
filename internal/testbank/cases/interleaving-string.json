@@ -1,0 +1,87 @@
+{
+  "slug": "interleaving-string",
+  "entry": "isInterleave",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        "aabcc",
+        "dbbca",
+        "aadbbcbcac"
+      ],
+      "want": true
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        "aabcc",
+        "dbbca",
+        "aadbbbaccc"
+      ],
+      "want": false
+    },
+    {
+      "name": "example 3",
+      "kind": "example",
+      "args": [
+        "",
+        "",
+        ""
+      ],
+      "want": true
+    },
+    {
+      "name": "first empty",
+      "kind": "edge",
+      "args": [
+        "",
+        "abc",
+        "abc"
+      ],
+      "want": true
+    },
+    {
+      "name": "second empty",
+      "kind": "edge",
+      "args": [
+        "abc",
+        "",
+        "abc"
+      ],
+      "want": true
+    },
+    {
+      "name": "length mismatch",
+      "kind": "edge",
+      "args": [
+        "a",
+        "b",
+        "a"
+      ],
+      "want": false
+    },
+    {
+      "name": "order violation",
+      "kind": "edge",
+      "args": [
+        "ab",
+        "cd",
+        "adbc"
+      ],
+      "want": false
+    },
+    {
+      "name": "ambiguous repeated letters",
+      "kind": "edge",
+      "args": [
+        "aa",
+        "ab",
+        "aaba"
+      ],
+      "want": true
+    }
+  ]
+}

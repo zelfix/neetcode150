@@ -1,0 +1,79 @@
+{
+  "slug": "partition-equal-subset-sum",
+  "entry": "canPartition",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        [
+          1,
+          5,
+          11,
+          5
+        ]
+      ],
+      "want": true
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        [
+          1,
+          2,
+          3,
+          5
+        ]
+      ],
+      "want": false
+    },
+    {
+      "name": "single cannot partition",
+      "kind": "edge",
+      "args": [
+        [
+          2
+        ]
+      ],
+      "want": false
+    },
+    {
+      "name": "two equal",
+      "kind": "edge",
+      "args": [
+        [
+          1,
+          1
+        ]
+      ],
+      "want": true
+    },
+    {
+      "name": "even total impossible",
+      "kind": "edge",
+      "args": [
+        [
+          1,
+          2,
+          5
+        ]
+      ],
+      "want": false
+    },
+    {
+      "name": "duplicates",
+      "kind": "edge",
+      "args": [
+        [
+          2,
+          2,
+          2,
+          2
+        ]
+      ],
+      "want": true
+    }
+  ]
+}

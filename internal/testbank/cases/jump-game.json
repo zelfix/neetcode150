@@ -1,0 +1,81 @@
+{
+  "slug": "jump-game",
+  "entry": "canJump",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        [
+          2,
+          3,
+          1,
+          1,
+          4
+        ]
+      ],
+      "want": true
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        [
+          3,
+          2,
+          1,
+          0,
+          4
+        ]
+      ],
+      "want": false
+    },
+    {
+      "name": "already at destination",
+      "kind": "edge",
+      "args": [
+        [
+          0
+        ]
+      ],
+      "want": true
+    },
+    {
+      "name": "blocked first step",
+      "kind": "edge",
+      "args": [
+        [
+          0,
+          1
+        ]
+      ],
+      "want": false
+    },
+    {
+      "name": "jump over zero",
+      "kind": "edge",
+      "args": [
+        [
+          2,
+          0,
+          0
+        ]
+      ],
+      "want": true
+    },
+    {
+      "name": "cannot cross final gap",
+      "kind": "edge",
+      "args": [
+        [
+          1,
+          1,
+          0,
+          1
+        ]
+      ],
+      "want": false
+    }
+  ]
+}

@@ -2,7 +2,7 @@
 {{if .Next}}
 <div class="pickup">
   <p class="pickup-label">Pick up at</p>
-  <a class="pickup-title" href="/problems/{{.Next.Slug}}">{{.Next.ID}}. {{.Next.Title}}</a>
+  <a class="pickup-title" href="/problems/{{.Next.Slug}}/solve">{{.Next.ID}}. {{.Next.Title}}</a>
   <div class="pickup-meta">
     <span class="is-{{lower .Next.Difficulty}}">{{.Next.Difficulty}}</span>
     <a href="/patterns/{{.Next.PatternSlug}}">{{.Next.Pattern}}</a>

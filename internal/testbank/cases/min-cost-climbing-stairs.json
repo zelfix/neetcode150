@@ -1,0 +1,84 @@
+{
+  "slug": "min-cost-climbing-stairs",
+  "entry": "minCostClimbingStairs",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        [
+          10,
+          15,
+          20
+        ]
+      ],
+      "want": 15
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        [
+          1,
+          100,
+          1,
+          1,
+          1,
+          100,
+          1,
+          1,
+          100,
+          1
+        ]
+      ],
+      "want": 6
+    },
+    {
+      "name": "two steps choose cheaper",
+      "kind": "edge",
+      "args": [
+        [
+          5,
+          2
+        ]
+      ],
+      "want": 2
+    },
+    {
+      "name": "all free",
+      "kind": "edge",
+      "args": [
+        [
+          0,
+          0,
+          0
+        ]
+      ],
+      "want": 0
+    },
+    {
+      "name": "skip expensive middle",
+      "kind": "edge",
+      "args": [
+        [
+          1,
+          999,
+          1
+        ]
+      ],
+      "want": 2
+    },
+    {
+      "name": "two expensive steps",
+      "kind": "edge",
+      "args": [
+        [
+          999,
+          999
+        ]
+      ],
+      "want": 999
+    }
+  ]
+}

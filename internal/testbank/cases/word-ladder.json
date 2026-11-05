@@ -1,0 +1,81 @@
+{
+  "slug": "word-ladder",
+  "entry": "ladderLength",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        "hit",
+        "cog",
+        [
+          "hot",
+          "dot",
+          "dog",
+          "lot",
+          "log",
+          "cog"
+        ]
+      ],
+      "want": 5
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        "hit",
+        "cog",
+        [
+          "hot",
+          "dot",
+          "dog",
+          "lot",
+          "log"
+        ]
+      ],
+      "want": 0
+    },
+    {
+      "name": "one transformation",
+      "kind": "edge",
+      "args": [
+        "a",
+        "c",
+        [
+          "a",
+          "b",
+          "c"
+        ]
+      ],
+      "want": 2
+    },
+    {
+      "name": "end present but unreachable",
+      "kind": "edge",
+      "args": [
+        "hit",
+        "cog",
+        [
+          "cog",
+          "hot"
+        ]
+      ],
+      "want": 0
+    },
+    {
+      "name": "begin in dictionary",
+      "kind": "edge",
+      "args": [
+        "hot",
+        "dog",
+        [
+          "hot",
+          "dot",
+          "dog"
+        ]
+      ],
+      "want": 3
+    }
+  ]
+}

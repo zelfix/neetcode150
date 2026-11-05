@@ -1,0 +1,61 @@
+{
+  "slug": "permutation-in-string",
+  "entry": "checkInclusion",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        "ab",
+        "eidbaooo"
+      ],
+      "want": true
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        "ab",
+        "eidboaoo"
+      ],
+      "want": false
+    },
+    {
+      "name": "pattern longer than text",
+      "kind": "edge",
+      "args": [
+        "abc",
+        "ab"
+      ],
+      "want": false
+    },
+    {
+      "name": "repeated pattern characters",
+      "kind": "edge",
+      "args": [
+        "aab",
+        "baa"
+      ],
+      "want": true
+    },
+    {
+      "name": "wrong multiplicities",
+      "kind": "edge",
+      "args": [
+        "aab",
+        "abb"
+      ],
+      "want": false
+    },
+    {
+      "name": "match at last window",
+      "kind": "edge",
+      "args": [
+        "ab",
+        "zzba"
+      ],
+      "want": true
+    }
+  ]
+}

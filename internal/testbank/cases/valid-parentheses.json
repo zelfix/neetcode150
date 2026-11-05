@@ -1,0 +1,79 @@
+{
+  "slug": "valid-parentheses",
+  "entry": "isValid",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        "()"
+      ],
+      "want": true
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        "()[]{}"
+      ],
+      "want": true
+    },
+    {
+      "name": "example 3",
+      "kind": "example",
+      "args": [
+        "(]"
+      ],
+      "want": false
+    },
+    {
+      "name": "example 4",
+      "kind": "example",
+      "args": [
+        "([])"
+      ],
+      "want": true
+    },
+    {
+      "name": "example 5",
+      "kind": "example",
+      "args": [
+        "([)]"
+      ],
+      "want": false
+    },
+    {
+      "name": "single opening",
+      "kind": "edge",
+      "args": [
+        "("
+      ],
+      "want": false
+    },
+    {
+      "name": "closing before opening",
+      "kind": "edge",
+      "args": [
+        ")("
+      ],
+      "want": false
+    },
+    {
+      "name": "nested all types",
+      "kind": "edge",
+      "args": [
+        "{[()]}"
+      ],
+      "want": true
+    },
+    {
+      "name": "unclosed suffix",
+      "kind": "edge",
+      "args": [
+        "()("
+      ],
+      "want": false
+    }
+  ]
+}

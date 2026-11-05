@@ -1,0 +1,88 @@
+{
+  "slug": "find-the-duplicate-number",
+  "entry": "findDuplicate",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        [
+          1,
+          3,
+          4,
+          2,
+          2
+        ]
+      ],
+      "want": 2
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        [
+          3,
+          1,
+          3,
+          4,
+          2
+        ]
+      ],
+      "want": 3
+    },
+    {
+      "name": "example 3",
+      "kind": "example",
+      "args": [
+        [
+          3,
+          3,
+          3,
+          3,
+          3
+        ]
+      ],
+      "want": 3
+    },
+    {
+      "name": "minimum size",
+      "kind": "edge",
+      "args": [
+        [
+          1,
+          1
+        ]
+      ],
+      "want": 1
+    },
+    {
+      "name": "duplicate more than twice",
+      "kind": "edge",
+      "args": [
+        [
+          2,
+          2,
+          2,
+          2,
+          3
+        ]
+      ],
+      "want": 2
+    },
+    {
+      "name": "duplicate at value bound",
+      "kind": "edge",
+      "args": [
+        [
+          4,
+          1,
+          2,
+          3,
+          4
+        ]
+      ],
+      "want": 4
+    }
+  ]
+}

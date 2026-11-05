@@ -73,3 +73,13 @@ func guardJSON(next http.HandlerFunc) http.HandlerFunc {
 		next(w, r)
 	})
 }
+
+// guardStream is guard for a GET that returns private data rather than a page.
+//
+// The tutor's event stream carries the conversation, and the conversation
+// quotes the user's own code. A page on another site could otherwise open an
+// EventSource against it and read along. Browsers already refuse a cross-origin
+// EventSource without CORS headers, which this server never sends, so this is
+// the second lock rather than the first — but it costs one line and the first
+// lock is somebody else's implementation.
+func guardStream(next http.HandlerFunc) http.HandlerFunc { return guard(next) }

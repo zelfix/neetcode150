@@ -1,0 +1,138 @@
+{
+  "slug": "3sum",
+  "entry": "threeSum",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        [
+          -1,
+          0,
+          1,
+          2,
+          -1,
+          -4
+        ]
+      ],
+      "want": [
+        [
+          -1,
+          -1,
+          2
+        ],
+        [
+          -1,
+          0,
+          1
+        ]
+      ]
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        [
+          0,
+          1,
+          1
+        ]
+      ],
+      "want": []
+    },
+    {
+      "name": "example 3",
+      "kind": "example",
+      "args": [
+        [
+          0,
+          0,
+          0
+        ]
+      ],
+      "want": [
+        [
+          0,
+          0,
+          0
+        ]
+      ]
+    },
+    {
+      "name": "duplicate triplet once",
+      "kind": "edge",
+      "args": [
+        [
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "want": [
+        [
+          0,
+          0,
+          0
+        ]
+      ]
+    },
+    {
+      "name": "no solution all negative",
+      "kind": "edge",
+      "args": [
+        [
+          -4,
+          -3,
+          -2
+        ]
+      ],
+      "want": []
+    },
+    {
+      "name": "two different triplets",
+      "kind": "edge",
+      "args": [
+        [
+          -2,
+          0,
+          1,
+          1,
+          2
+        ]
+      ],
+      "want": [
+        [
+          -2,
+          0,
+          2
+        ],
+        [
+          -2,
+          1,
+          1
+        ]
+      ]
+    },
+    {
+      "name": "value bounds",
+      "kind": "edge",
+      "args": [
+        [
+          -100000,
+          0,
+          100000
+        ]
+      ],
+      "want": [
+        [
+          -100000,
+          0,
+          100000
+        ]
+      ]
+    }
+  ],
+  "policy": "unordered-groups"
+}

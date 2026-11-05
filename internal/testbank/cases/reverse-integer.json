@@ -1,0 +1,71 @@
+{
+  "slug": "reverse-integer",
+  "entry": "reverse",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        123
+      ],
+      "want": 321
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        -123
+      ],
+      "want": -321
+    },
+    {
+      "name": "example 3",
+      "kind": "example",
+      "args": [
+        120
+      ],
+      "want": 21
+    },
+    {
+      "name": "zero",
+      "kind": "edge",
+      "args": [
+        0
+      ],
+      "want": 0
+    },
+    {
+      "name": "negative trailing zero",
+      "kind": "edge",
+      "args": [
+        -120
+      ],
+      "want": -21
+    },
+    {
+      "name": "positive overflow",
+      "kind": "edge",
+      "args": [
+        1534236469
+      ],
+      "want": 0
+    },
+    {
+      "name": "negative overflow",
+      "kind": "edge",
+      "args": [
+        -2147483648
+      ],
+      "want": 0
+    },
+    {
+      "name": "near positive limit",
+      "kind": "edge",
+      "args": [
+        1463847412
+      ],
+      "want": 2147483641
+    }
+  ]
+}

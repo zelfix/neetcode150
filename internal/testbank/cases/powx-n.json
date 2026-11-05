@@ -1,0 +1,89 @@
+{
+  "slug": "powx-n",
+  "entry": "myPow",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        2.0,
+        10
+      ],
+      "want": 1024.0
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        2.1,
+        3
+      ],
+      "want": 9.261
+    },
+    {
+      "name": "example 3",
+      "kind": "example",
+      "args": [
+        2.0,
+        -2
+      ],
+      "want": 0.25
+    },
+    {
+      "name": "zero exponent",
+      "kind": "edge",
+      "args": [
+        3,
+        0
+      ],
+      "want": 1
+    },
+    {
+      "name": "zero base",
+      "kind": "edge",
+      "args": [
+        0,
+        3
+      ],
+      "want": 0
+    },
+    {
+      "name": "negative odd base",
+      "kind": "edge",
+      "args": [
+        -2,
+        3
+      ],
+      "want": -8
+    },
+    {
+      "name": "minimum integer exponent",
+      "kind": "edge",
+      "args": [
+        -1,
+        -2147483648
+      ],
+      "want": 1
+    },
+    {
+      "name": "negative exponent fraction",
+      "kind": "edge",
+      "args": [
+        2,
+        -3
+      ],
+      "want": 0.125
+    },
+    {
+      "name": "small result stays nonzero",
+      "kind": "edge",
+      "args": [
+        2,
+        -40
+      ],
+      "want": 9.094947017729282e-13
+    }
+  ],
+  "policy": "float"
+}

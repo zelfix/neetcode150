@@ -17,15 +17,18 @@ import (
 	"unicode"
 
 	"neetcode150/internal/catalog"
+	"neetcode150/internal/studydb"
+	"neetcode150/internal/testbank"
 )
 
 // Files is a generated solution scaffold.
 type Files struct {
-	Package     string
-	Solution    string
-	Test        string
-	FuncName    string // the entry point, when the problem has a single one
-	TableDriven bool   // whether the test came out as a filled-in table
+	Package       string
+	Solution      string
+	Test          string
+	FuncName      string // the entry point, when the problem has a single one
+	TableDriven   bool   // whether the test came out as a filled-in table
+	PracticeCases int    // curated examples and corner cases included in the test
 }
 
 // PackageName turns a problem slug into a legal Go package name. Slugs such as
@@ -206,6 +209,16 @@ func Generate(p catalog.Problem, signature, statement string) Files {
 		sol.WriteString("\n")
 	}
 	f.Solution = sol.String()
+	if strings.TrimSpace(code) != "" {
+		if suite, err := testbank.Load(p.Slug); err == nil {
+			if test, err := testbank.TestSource(pkg, p.Slug); err == nil {
+				f.Test, f.FuncName = test, suite.Entry
+				f.TableDriven, f.PracticeCases = true, len(suite.Cases)
+				f.Solution = gofmt(f.Solution)
+				return f
+			}
+		}
+	}
 
 	entry, _ := analyze(code)
 	if entry == nil {
@@ -360,11 +373,24 @@ func Create(root string, p catalog.Problem, signature, statement string) (writte
 	if err := os.MkdirAll(solDir, 0o755); err != nil {
 		return nil, f, err
 	}
+	db, err := studydb.Open(root)
+	if err != nil {
+		return nil, f, err
+	}
+	defer db.Close()
+	if err := db.EnsureDocument(p.Slug, "notes", NotesTemplate(p)); err != nil {
+		return nil, f, err
+	}
 	written, err = writeNew(map[string]string{
-		filepath.Join(solDir, "solution.go"):            f.Solution,
-		filepath.Join(solDir, "solution_test.go"):       f.Test,
-		filepath.Join(root, p.ContentDir(), "notes.md"): NotesTemplate(p),
+		filepath.Join(solDir, "solution.go"):      f.Solution,
+		filepath.Join(solDir, "solution_test.go"): f.Test,
 	})
+	if err == nil {
+		var added []string
+		added, err = EnsurePracticeTests(root, p)
+		written = append(written, added...)
+		sort.Strings(written)
+	}
 	return written, f, err
 }
 
@@ -397,40 +423,40 @@ func writeNew(files map[string]string) ([]string, error) {
 // package compiling.
 const AttemptExt = ".go.txt"
 
-// AttemptsDir is where earlier attempts at a problem are kept.
-func AttemptsDir(root string, p catalog.Problem) string {
-	return filepath.Join(root, p.SolutionDir(), "attempts")
-}
-
-// Attempts lists the archived attempts for a problem, oldest first.
+// Attempts returns stable database references, oldest first.
 func Attempts(root string, p catalog.Problem) ([]string, error) {
-	des, err := os.ReadDir(AttemptsDir(root, p))
+	db, err := studydb.Open(root)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
 		return nil, err
 	}
-	var out []string
-	for _, de := range des {
-		if !de.IsDir() && strings.HasSuffix(de.Name(), AttemptExt) {
-			out = append(out, filepath.Join(AttemptsDir(root, p), de.Name()))
-		}
+	defer db.Close()
+	attempts, err := db.Attempts(p.Slug)
+	if err != nil {
+		return nil, err
 	}
-	sort.Strings(out)
-	return out, nil
+	var refs []string
+	for _, a := range attempts {
+		refs = append(refs, a.Ref())
+	}
+	return refs, nil
+}
+func ReadAttempt(root, ref string) (studydb.Attempt, error) {
+	db, err := studydb.Open(root)
+	if err != nil {
+		return studydb.Attempt{}, err
+	}
+	defer db.Close()
+	return db.Attempt(ref)
 }
 
-// attemptPath is the archive slot for now, suffixed if the day already has one.
-func attemptPath(dir string, now time.Time) string {
-	stamp := now.Format("2006-01-02")
-	path := filepath.Join(dir, stamp+AttemptExt)
-	for n := 2; ; n++ {
-		if _, err := os.Stat(path); err != nil {
-			return path
-		}
-		path = filepath.Join(dir, fmt.Sprintf("%s-%d%s", stamp, n, AttemptExt))
+// ArchiveAttempt preserves a snapshot without changing the working Go file.
+func ArchiveAttempt(root string, p catalog.Problem, code []byte, now time.Time) (string, error) {
+	db, err := studydb.Open(root)
+	if err != nil {
+		return "", err
 	}
+	defer db.Close()
+	return db.Archive(p.Slug, string(code), now)
 }
 
 // Reset archives the current solution and puts a blank scaffold in its place,
@@ -452,14 +478,8 @@ func Reset(root string, p catalog.Problem, signature, statement string, now time
 			filepath.ToSlash(filepath.Join(p.SolutionDir(), "solution.go")))
 	}
 
-	dir := AttemptsDir(root, p)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return "", f, err
-	}
-	archive = attemptPath(dir, now)
-	// The archive is written before the solution is overwritten, so a failure
-	// here cannot lose the work it was meant to preserve.
-	if err := os.WriteFile(archive, current, 0o644); err != nil {
+	archive, err = ArchiveAttempt(root, p, current, now)
+	if err != nil {
 		return "", f, err
 	}
 

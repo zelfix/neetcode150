@@ -1,0 +1,109 @@
+{
+  "slug": "number-of-connected-components-in-an-undirected-graph",
+  "entry": "countComponents",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        5,
+        [
+          [
+            0,
+            1
+          ],
+          [
+            1,
+            2
+          ],
+          [
+            3,
+            4
+          ]
+        ]
+      ],
+      "want": 2
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        5,
+        [
+          [
+            0,
+            1
+          ],
+          [
+            1,
+            2
+          ],
+          [
+            2,
+            3
+          ],
+          [
+            3,
+            4
+          ]
+        ]
+      ],
+      "want": 1
+    },
+    {
+      "name": "example 3",
+      "kind": "example",
+      "args": [
+        4,
+        []
+      ],
+      "want": 4
+    },
+    {
+      "name": "single vertex",
+      "kind": "edge",
+      "args": [
+        1,
+        []
+      ],
+      "want": 1
+    },
+    {
+      "name": "isolated vertices",
+      "kind": "edge",
+      "args": [
+        3,
+        [
+          [
+            0,
+            1
+          ]
+        ]
+      ],
+      "want": 2
+    },
+    {
+      "name": "cycle plus isolated",
+      "kind": "edge",
+      "args": [
+        4,
+        [
+          [
+            0,
+            1
+          ],
+          [
+            1,
+            2
+          ],
+          [
+            0,
+            2
+          ]
+        ]
+      ],
+      "want": 2
+    }
+  ]
+}

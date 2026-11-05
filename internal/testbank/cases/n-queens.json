@@ -1,0 +1,57 @@
+{
+  "slug": "n-queens",
+  "entry": "solveNQueens",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        4
+      ],
+      "want": [
+        [
+          ".Q..",
+          "...Q",
+          "Q...",
+          "..Q."
+        ],
+        [
+          "..Q.",
+          "Q...",
+          "...Q",
+          ".Q.."
+        ]
+      ]
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        1
+      ],
+      "want": [
+        [
+          "Q"
+        ]
+      ]
+    },
+    {
+      "name": "two has no solution",
+      "kind": "edge",
+      "args": [
+        2
+      ],
+      "want": []
+    },
+    {
+      "name": "three has no solution",
+      "kind": "edge",
+      "args": [
+        3
+      ],
+      "want": []
+    }
+  ],
+  "policy": "unordered"
+}

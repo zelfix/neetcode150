@@ -1,0 +1,61 @@
+{
+  "slug": "longest-repeating-character-replacement",
+  "entry": "characterReplacement",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        "ABAB",
+        2
+      ],
+      "want": 4
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        "AABABBA",
+        1
+      ],
+      "want": 4
+    },
+    {
+      "name": "zero replacements",
+      "kind": "edge",
+      "args": [
+        "ABAA",
+        0
+      ],
+      "want": 2
+    },
+    {
+      "name": "replace whole string",
+      "kind": "edge",
+      "args": [
+        "ABCD",
+        4
+      ],
+      "want": 4
+    },
+    {
+      "name": "single letter",
+      "kind": "edge",
+      "args": [
+        "Z",
+        0
+      ],
+      "want": 1
+    },
+    {
+      "name": "long repeated block",
+      "kind": "edge",
+      "args": [
+        "BAAAB",
+        1
+      ],
+      "want": 4
+    }
+  ]
+}

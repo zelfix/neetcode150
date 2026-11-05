@@ -1,0 +1,88 @@
+{
+  "slug": "regular-expression-matching",
+  "entry": "isMatch",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        "aa",
+        "a"
+      ],
+      "want": false
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        "aa",
+        "a*"
+      ],
+      "want": true
+    },
+    {
+      "name": "example 3",
+      "kind": "example",
+      "args": [
+        "ab",
+        ".*"
+      ],
+      "want": true
+    },
+    {
+      "name": "zero repetitions",
+      "kind": "edge",
+      "args": [
+        "b",
+        "a*b"
+      ],
+      "want": true
+    },
+    {
+      "name": "full match required",
+      "kind": "edge",
+      "args": [
+        "ab",
+        "a"
+      ],
+      "want": false
+    },
+    {
+      "name": "dot matches one not many",
+      "kind": "edge",
+      "args": [
+        "ab",
+        "."
+      ],
+      "want": false
+    },
+    {
+      "name": "repeated groups",
+      "kind": "edge",
+      "args": [
+        "aab",
+        "c*a*b"
+      ],
+      "want": true
+    },
+    {
+      "name": "trailing required character",
+      "kind": "edge",
+      "args": [
+        "ab",
+        ".*c"
+      ],
+      "want": false
+    },
+    {
+      "name": "classic false match",
+      "kind": "edge",
+      "args": [
+        "mississippi",
+        "mis*is*p*."
+      ],
+      "want": false
+    }
+  ]
+}

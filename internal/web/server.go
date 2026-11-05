@@ -5,6 +5,7 @@ package web
 import (
 	"context"
 	"embed"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"html/template"
@@ -16,18 +17,20 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"neetcode150/internal/catalog"
 	"neetcode150/internal/content"
 	"neetcode150/internal/progress"
+	"neetcode150/internal/tutor"
 )
 
 //go:embed templates/*.html static/*
 var assets embed.FS
 
 // pageNames are the templates that each compose with the layout.
-var pageNames = []string{"dashboard", "problems", "problem", "patterns", "pattern", "review", "solve"}
+var pageNames = []string{"dashboard", "problems", "problem", "patterns", "pattern", "review", "coach", "solve"}
 
 // Server serves the site.
 type Server struct {
@@ -40,19 +43,51 @@ type Server struct {
 
 	// runTests is injected the same way now is, so handler tests do not shell
 	// out to a real `go test` and inherit its speed and flakiness.
-	runTests func(ctx context.Context, root, pkgDir string) (output string, ok bool, err error)
+	runTests func(ctx context.Context, root, pkgDir string) (testRun, error)
+
+	// tutor owns the claude child processes. It is never nil: a Manager with no
+	// binary to run reports why through Available, and the rest of the site
+	// does not care.
+	tutor *tutor.Manager
+
+	submissionMu       sync.Mutex
+	pendingSubmissions map[string]pendingSubmission
 }
 
 // New builds a Server over the project at root.
 func New(root string, cat *catalog.Catalog, store *content.Store, prog *progress.Store) (*Server, error) {
 	s := &Server{
-		root:     root,
-		cat:      cat,
-		content:  store,
-		progress: prog,
-		pages:    map[string]*template.Template{},
-		now:      time.Now,
-		runTests: runGoTest,
+		root:               root,
+		cat:                cat,
+		content:            store,
+		progress:           prog,
+		pages:              map[string]*template.Template{},
+		now:                time.Now,
+		runTests:           runGoTest,
+		tutor:              tutor.New(root, tutor.ModeTutor, 0),
+		pendingSubmissions: make(map[string]pendingSubmission),
+	}
+	store.UseStudyDB(prog.DB())
+	s.tutor.UseStorage(prog.DB())
+	pending, err := prog.DB().Pending()
+	if err != nil {
+		return nil, err
+	}
+	for slug, raw := range pending {
+		var p pendingSubmission
+		if err := json.Unmarshal(raw, &p); err != nil {
+			return nil, err
+		}
+		// A worker cannot survive a process restart. Preserve the submitted source
+		// and let the next user reply retry the assessment.
+		wasChecking := p.Checking
+		p.Checking = false
+		s.pendingSubmissions[slug] = p
+		if wasChecking {
+			if session := s.tutor.Get(slug); session != nil {
+				session.PublishSubmissionQuestion("The review was interrupted by a server restart. Your solution is saved; send ‘continue’ to resume the review.")
+			}
+		}
 	}
 	for _, name := range pageNames {
 		t, err := template.New("layout.html").Funcs(s.funcs()).ParseFS(assets,
@@ -63,6 +98,24 @@ func New(root string, cat *catalog.Catalog, store *content.Store, prog *progress
 		s.pages[name] = t
 	}
 	return s, nil
+}
+
+// UseTutor replaces the tutor manager, so the command line can choose the
+// permission mode and budget without New growing more parameters.
+func (s *Server) UseTutor(m *tutor.Manager) {
+	if s.tutor != nil {
+		s.tutor.Close()
+	}
+	m.UseStorage(s.progress.DB())
+	s.tutor = m
+}
+
+// CloseTutor ends every tutor session. The server must call this on the way
+// down or the claude child processes outlive it.
+func (s *Server) CloseTutor() {
+	if s.tutor != nil {
+		s.tutor.Close()
+	}
 }
 
 // Handler returns the site's routes.
@@ -83,16 +136,25 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /patterns/{$}", s.handlePatterns)
 	mux.HandleFunc("GET /patterns/{slug}", s.handlePattern)
 	mux.HandleFunc("GET /review/{$}", s.handleReview)
+	mux.HandleFunc("GET /coach/{$}", s.handleCoach)
 	mux.HandleFunc("POST /problems/{slug}/status", guard(s.handleSetStatus))
 	mux.HandleFunc("POST /problems/{slug}/rate", guard(s.handleRate))
-	// These three write files and run code, so they carry the stricter guard.
+	// These write files and run code, so they carry the stricter guard.
 	mux.HandleFunc("POST /problems/{slug}/create", guardJSON(s.handleCreateSolution))
+	mux.HandleFunc("POST /problems/{slug}/start", guardJSON(s.handleStartAttempt))
+	mux.HandleFunc("POST /problems/{slug}/cancel", guardJSON(s.handleCancelAttempt))
 	mux.HandleFunc("POST /problems/{slug}/solution", guardJSON(s.handleSaveSolution))
+	mux.HandleFunc("POST /problems/{slug}/notes", guardJSON(s.handleSaveNotes))
 	mux.HandleFunc("POST /problems/{slug}/test", guardJSON(s.handleRunTests))
+	mux.HandleFunc("POST /problems/{slug}/submit", guardJSON(s.handleSubmit))
 	mux.HandleFunc("POST /problems/{slug}/resolve", guardJSON(s.handleResolve))
+	mux.HandleFunc("GET /problems/{slug}/tutor/events", guardStream(s.handleTutorEvents))
+	mux.HandleFunc("POST /problems/{slug}/tutor", guardJSON(s.handleTutorSend))
+	mux.HandleFunc("POST /problems/{slug}/tutor/reset", guardJSON(s.handleTutorReset))
+	mux.HandleFunc("POST /problems/{slug}/tutor/interrupt", guardJSON(s.handleTutorInterrupt))
 
 	// Accept the paths without the trailing slash too.
-	for _, p := range []string{"/problems", "/patterns", "/review"} {
+	for _, p := range []string{"/problems", "/patterns", "/review", "/coach"} {
 		target := p + "/"
 		mux.HandleFunc("GET "+p, func(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, target, http.StatusMovedPermanently)
@@ -127,6 +189,10 @@ type common struct {
 	// Wide widens the main column. The workspace runs two live panes side by
 	// side, which does not fit the measure a page of prose wants.
 	Wide bool
+	// Full hands the viewport to the page. The workspace pins a chat input and
+	// a button row to the bottom of their panes, which only reads as one screen
+	// if the page itself does not scroll.
+	Full bool
 }
 
 func (s *Server) common(title, nav string) common {
@@ -138,6 +204,12 @@ func (s *Server) common(title, nav string) common {
 func (s *Server) wideCommon(title, nav string) common {
 	c := s.common(title, nav)
 	c.Wide = true
+	return c
+}
+
+func (s *Server) fullCommon(title, nav string) common {
+	c := s.wideCommon(title, nav)
+	c.Full = true
 	return c
 }
 
@@ -257,18 +329,17 @@ func (s *Server) handleProblems(w http.ResponseWriter, r *http.Request) {
 
 // workAction is the label on the button that leads into the workspace.
 //
-// The verb has to describe what pressing it will actually do. In particular a
-// problem due for review does not get "Re-solve": the workspace opens on the
-// existing solution, and the review flow in tutor/TUTOR.md wants it archived
-// and the file blanked first, which only `nc resolve` can do today. Promising
-// a cold re-solve and then showing the old answer would be worse than saying
-// nothing.
+// The verb describes the workspace state: Start begins a cold attempt,
+// Continue returns to an active timer, and Open workspace opens an inactive
+// page where an earlier solution is kept behind a reveal.
 func workAction(v problemView, hasSolution bool) string {
 	switch {
 	case !hasSolution:
 		return "Start"
-	case v.Entry.Status == progress.Attempted:
+	case v.Entry.Status == progress.Attempted && v.Entry.AttemptStartedAt != nil:
 		return "Continue"
+	case v.Entry.Status == progress.Attempted:
+		return "Start"
 	default:
 		return "Open workspace"
 	}
@@ -333,7 +404,7 @@ func (s *Server) handleProblem(w http.ResponseWriter, r *http.Request) {
 		HasGuide:       s.hasGuide(p.PatternSlug),
 		Statuses:       progress.Statuses,
 		Topics:         p.Topics,
-		IntervalDays:   progress.IntervalDays(v.Entry.ReviewStage),
+		IntervalDays:   v.Entry.IntervalDays(),
 	}
 	if p.Order > 0 {
 		page.Prev = &s.cat.Problems[p.Order-1]
@@ -390,15 +461,15 @@ func (s *Server) handlePattern(w http.ResponseWriter, r *http.Request) {
 
 type reviewPage struct {
 	common
-	Due      []problemView
-	Upcoming []problemView
+	DueProblems []problemView
+	Upcoming    []problemView
 }
 
 func (s *Server) handleReview(w http.ResponseWriter, r *http.Request) {
 	now := s.now()
 	page := reviewPage{
-		common: s.common("Review queue", "review"),
-		Due:    s.views(s.progress.DueReview(s.cat.Problems, now), now),
+		common:      s.common("Review queue", "review"),
+		DueProblems: s.views(s.progress.DueReview(s.cat.Problems, now), now),
 	}
 	for _, p := range s.cat.Problems {
 		v := s.view(p, now)
@@ -503,11 +574,19 @@ func (s *Server) funcs() template.FuncMap {
 		},
 		"statusLabel": func(st progress.Status) string { return st.Label() },
 		"pct":         func(sum progress.Summary) int { return sum.Percent() },
-		"date": func(t *time.Time) string {
-			if t == nil {
-				return "—"
+		// Both shapes turn up: schedule fields are optional and so are
+		// pointers, while a recorded rating always has a date.
+		"date": func(v any) string {
+			switch t := v.(type) {
+			case time.Time:
+				return t.Format("2 Jan 2006")
+			case *time.Time:
+				if t == nil {
+					return "—"
+				}
+				return t.Format("2 Jan 2006")
 			}
-			return t.Format("2 Jan 2006")
+			return "—"
 		},
 		"ago": func(t *time.Time) string {
 			if t == nil {
@@ -573,13 +652,25 @@ func humanizeDuration(d time.Duration, suffix string) string {
 	return out
 }
 
-// Listen serves the site on addr until the process is stopped.
-func Listen(addr string, h http.Handler) error {
+// Listen serves the site on addr until ctx is cancelled.
+//
+// The context is what makes an orderly stop possible: the site now owns child
+// processes, and killing the server without ending them would leave claude
+// running with nothing attached to it.
+func Listen(ctx context.Context, addr string, h http.Handler) error {
 	srv := &http.Server{
 		Addr:              addr,
 		Handler:           h,
 		ReadHeaderTimeout: 10 * time.Second,
 	}
+	go func() {
+		<-ctx.Done()
+		// A short grace period: an open event stream should be let go of, not
+		// waited on, since it only ends when the browser does.
+		stop, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		_ = srv.Shutdown(stop)
+	}()
 	err := srv.ListenAndServe()
 	if errors.Is(err, http.ErrServerClosed) {
 		return nil

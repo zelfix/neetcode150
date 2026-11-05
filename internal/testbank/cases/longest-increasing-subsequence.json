@@ -1,0 +1,105 @@
+{
+  "slug": "longest-increasing-subsequence",
+  "entry": "lengthOfLIS",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        [
+          10,
+          9,
+          2,
+          5,
+          3,
+          7,
+          101,
+          18
+        ]
+      ],
+      "want": 4
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        [
+          0,
+          1,
+          0,
+          3,
+          2,
+          3
+        ]
+      ],
+      "want": 4
+    },
+    {
+      "name": "example 3",
+      "kind": "example",
+      "args": [
+        [
+          7,
+          7,
+          7,
+          7,
+          7,
+          7,
+          7
+        ]
+      ],
+      "want": 1
+    },
+    {
+      "name": "single",
+      "kind": "edge",
+      "args": [
+        [
+          0
+        ]
+      ],
+      "want": 1
+    },
+    {
+      "name": "strictly decreasing",
+      "kind": "edge",
+      "args": [
+        [
+          5,
+          4,
+          3,
+          2,
+          1
+        ]
+      ],
+      "want": 1
+    },
+    {
+      "name": "duplicates not increasing",
+      "kind": "edge",
+      "args": [
+        [
+          1,
+          1,
+          2,
+          2
+        ]
+      ],
+      "want": 2
+    },
+    {
+      "name": "negative values",
+      "kind": "edge",
+      "args": [
+        [
+          -3,
+          -2,
+          -1,
+          0
+        ]
+      ],
+      "want": 4
+    }
+  ]
+}

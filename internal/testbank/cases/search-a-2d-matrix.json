@@ -1,0 +1,126 @@
+{
+  "slug": "search-a-2d-matrix",
+  "entry": "searchMatrix",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        [
+          [
+            1,
+            3,
+            5,
+            7
+          ],
+          [
+            10,
+            11,
+            16,
+            20
+          ],
+          [
+            23,
+            30,
+            34,
+            60
+          ]
+        ],
+        3
+      ],
+      "want": true
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        [
+          [
+            1,
+            3,
+            5,
+            7
+          ],
+          [
+            10,
+            11,
+            16,
+            20
+          ],
+          [
+            23,
+            30,
+            34,
+            60
+          ]
+        ],
+        13
+      ],
+      "want": false
+    },
+    {
+      "name": "one cell found",
+      "kind": "edge",
+      "args": [
+        [
+          [
+            5
+          ]
+        ],
+        5
+      ],
+      "want": true
+    },
+    {
+      "name": "one cell missing",
+      "kind": "edge",
+      "args": [
+        [
+          [
+            5
+          ]
+        ],
+        4
+      ],
+      "want": false
+    },
+    {
+      "name": "one column",
+      "kind": "edge",
+      "args": [
+        [
+          [
+            -3
+          ],
+          [
+            0
+          ],
+          [
+            8
+          ]
+        ],
+        0
+      ],
+      "want": true
+    },
+    {
+      "name": "between rows",
+      "kind": "edge",
+      "args": [
+        [
+          [
+            1,
+            3
+          ],
+          [
+            7,
+            9
+          ]
+        ],
+        5
+      ],
+      "want": false
+    }
+  ]
+}

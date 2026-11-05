@@ -1,0 +1,147 @@
+{
+  "slug": "redundant-connection",
+  "entry": "findRedundantConnection",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        [
+          [
+            1,
+            2
+          ],
+          [
+            1,
+            3
+          ],
+          [
+            2,
+            3
+          ]
+        ]
+      ],
+      "want": [
+        2,
+        3
+      ]
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        [
+          [
+            1,
+            2
+          ],
+          [
+            2,
+            3
+          ],
+          [
+            3,
+            4
+          ],
+          [
+            1,
+            4
+          ],
+          [
+            1,
+            5
+          ]
+        ]
+      ],
+      "want": [
+        1,
+        4
+      ]
+    },
+    {
+      "name": "last edge closes triangle",
+      "kind": "edge",
+      "args": [
+        [
+          [
+            1,
+            2
+          ],
+          [
+            2,
+            3
+          ],
+          [
+            1,
+            3
+          ]
+        ]
+      ],
+      "want": [
+        1,
+        3
+      ]
+    },
+    {
+      "name": "redundant before final branch",
+      "kind": "edge",
+      "args": [
+        [
+          [
+            1,
+            2
+          ],
+          [
+            1,
+            3
+          ],
+          [
+            2,
+            3
+          ],
+          [
+            3,
+            4
+          ]
+        ]
+      ],
+      "want": [
+        2,
+        3
+      ]
+    },
+    {
+      "name": "long cycle",
+      "kind": "edge",
+      "args": [
+        [
+          [
+            1,
+            2
+          ],
+          [
+            2,
+            3
+          ],
+          [
+            3,
+            4
+          ],
+          [
+            4,
+            5
+          ],
+          [
+            1,
+            5
+          ]
+        ]
+      ],
+      "want": [
+        1,
+        5
+      ]
+    }
+  ]
+}

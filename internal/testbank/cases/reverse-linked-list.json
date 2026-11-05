@@ -1,0 +1,93 @@
+{
+  "slug": "reverse-linked-list",
+  "entry": "reverseList",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        [
+          1,
+          2,
+          3,
+          4,
+          5
+        ]
+      ],
+      "want": [
+        5,
+        4,
+        3,
+        2,
+        1
+      ]
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        [
+          1,
+          2
+        ]
+      ],
+      "want": [
+        2,
+        1
+      ]
+    },
+    {
+      "name": "example 3",
+      "kind": "example",
+      "args": [
+        []
+      ],
+      "want": []
+    },
+    {
+      "name": "single",
+      "kind": "edge",
+      "args": [
+        [
+          -1
+        ]
+      ],
+      "want": [
+        -1
+      ]
+    },
+    {
+      "name": "duplicate values",
+      "kind": "edge",
+      "args": [
+        [
+          2,
+          2,
+          3
+        ]
+      ],
+      "want": [
+        3,
+        2,
+        2
+      ]
+    },
+    {
+      "name": "negative and zero",
+      "kind": "edge",
+      "args": [
+        [
+          -2,
+          0,
+          4
+        ]
+      ],
+      "want": [
+        4,
+        0,
+        -2
+      ]
+    }
+  ]
+}

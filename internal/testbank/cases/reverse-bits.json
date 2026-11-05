@@ -1,0 +1,55 @@
+{
+  "slug": "reverse-bits",
+  "entry": "reverseBits",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        43261596
+      ],
+      "want": 964176192
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        2147483644
+      ],
+      "want": 1073741822
+    },
+    {
+      "name": "zero",
+      "kind": "edge",
+      "args": [
+        0
+      ],
+      "want": 0
+    },
+    {
+      "name": "low even bit",
+      "kind": "edge",
+      "args": [
+        2
+      ],
+      "want": 1073741824
+    },
+    {
+      "name": "high bit",
+      "kind": "edge",
+      "args": [
+        1073741824
+      ],
+      "want": 2
+    },
+    {
+      "name": "high and low bits",
+      "kind": "edge",
+      "args": [
+        1073741826
+      ],
+      "want": 1073741826
+    }
+  ]
+}

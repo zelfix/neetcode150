@@ -1,0 +1,70 @@
+{
+  "slug": "edit-distance",
+  "entry": "minDistance",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        "horse",
+        "ros"
+      ],
+      "want": 3
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        "intention",
+        "execution"
+      ],
+      "want": 5
+    },
+    {
+      "name": "both empty",
+      "kind": "edge",
+      "args": [
+        "",
+        ""
+      ],
+      "want": 0
+    },
+    {
+      "name": "insert into empty",
+      "kind": "edge",
+      "args": [
+        "",
+        "abc"
+      ],
+      "want": 3
+    },
+    {
+      "name": "delete to empty",
+      "kind": "edge",
+      "args": [
+        "abc",
+        ""
+      ],
+      "want": 3
+    },
+    {
+      "name": "equal strings",
+      "kind": "edge",
+      "args": [
+        "same",
+        "same"
+      ],
+      "want": 0
+    },
+    {
+      "name": "one replacement",
+      "kind": "edge",
+      "args": [
+        "a",
+        "b"
+      ],
+      "want": 1
+    }
+  ]
+}

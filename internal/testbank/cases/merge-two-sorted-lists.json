@@ -1,0 +1,106 @@
+{
+  "slug": "merge-two-sorted-lists",
+  "entry": "mergeTwoLists",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        [
+          1,
+          2,
+          4
+        ],
+        [
+          1,
+          3,
+          4
+        ]
+      ],
+      "want": [
+        1,
+        1,
+        2,
+        3,
+        4,
+        4
+      ]
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        [],
+        []
+      ],
+      "want": []
+    },
+    {
+      "name": "example 3",
+      "kind": "example",
+      "args": [
+        [],
+        [
+          0
+        ]
+      ],
+      "want": [
+        0
+      ]
+    },
+    {
+      "name": "all duplicates",
+      "kind": "edge",
+      "args": [
+        [
+          1,
+          1
+        ],
+        [
+          1
+        ]
+      ],
+      "want": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "name": "negative interleaving",
+      "kind": "edge",
+      "args": [
+        [
+          -3,
+          0
+        ],
+        [
+          -2,
+          4
+        ]
+      ],
+      "want": [
+        -3,
+        -2,
+        0,
+        4
+      ]
+    },
+    {
+      "name": "right empty",
+      "kind": "edge",
+      "args": [
+        [
+          1,
+          2
+        ],
+        []
+      ],
+      "want": [
+        1,
+        2
+      ]
+    }
+  ]
+}

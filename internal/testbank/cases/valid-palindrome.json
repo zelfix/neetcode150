@@ -1,0 +1,63 @@
+{
+  "slug": "valid-palindrome",
+  "entry": "isPalindrome",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        "A man, a plan, a canal: Panama"
+      ],
+      "want": true
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        "race a car"
+      ],
+      "want": false
+    },
+    {
+      "name": "example 3",
+      "kind": "example",
+      "args": [
+        " "
+      ],
+      "want": true
+    },
+    {
+      "name": "punctuation only",
+      "kind": "edge",
+      "args": [
+        ".,!"
+      ],
+      "want": true
+    },
+    {
+      "name": "mixed case and digits",
+      "kind": "edge",
+      "args": [
+        "0P"
+      ],
+      "want": false
+    },
+    {
+      "name": "single digit",
+      "kind": "edge",
+      "args": [
+        "7"
+      ],
+      "want": true
+    },
+    {
+      "name": "letters around digits",
+      "kind": "edge",
+      "args": [
+        "a1A"
+      ],
+      "want": true
+    }
+  ]
+}

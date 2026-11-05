@@ -1,0 +1,63 @@
+{
+  "slug": "longest-substring-without-repeating-characters",
+  "entry": "lengthOfLongestSubstring",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        "abcabcbb"
+      ],
+      "want": 3
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        "bbbbb"
+      ],
+      "want": 1
+    },
+    {
+      "name": "example 3",
+      "kind": "example",
+      "args": [
+        "pwwkew"
+      ],
+      "want": 3
+    },
+    {
+      "name": "empty string",
+      "kind": "edge",
+      "args": [
+        ""
+      ],
+      "want": 0
+    },
+    {
+      "name": "overlap must not move left backwards",
+      "kind": "edge",
+      "args": [
+        "abba"
+      ],
+      "want": 2
+    },
+    {
+      "name": "space counts as character",
+      "kind": "edge",
+      "args": [
+        "a b a"
+      ],
+      "want": 3
+    },
+    {
+      "name": "repeat after gap",
+      "kind": "edge",
+      "args": [
+        "dvdf"
+      ],
+      "want": 3
+    }
+  ]
+}

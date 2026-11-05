@@ -1,0 +1,173 @@
+{
+  "slug": "time-based-key-value-store",
+  "entry": "Constructor",
+  "mode": "operations",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "ops": [
+        "TimeMap",
+        "set",
+        "get",
+        "get",
+        "set",
+        "get",
+        "get"
+      ],
+      "calls": [
+        [],
+        [
+          "foo",
+          "bar",
+          1
+        ],
+        [
+          "foo",
+          1
+        ],
+        [
+          "foo",
+          3
+        ],
+        [
+          "foo",
+          "bar2",
+          4
+        ],
+        [
+          "foo",
+          4
+        ],
+        [
+          "foo",
+          5
+        ]
+      ],
+      "want": [
+        null,
+        null,
+        "bar",
+        "bar",
+        null,
+        "bar2",
+        "bar2"
+      ]
+    },
+    {
+      "name": "missing key and timestamps between writes",
+      "kind": "edge",
+      "ops": [
+        "Constructor",
+        "get",
+        "set",
+        "get",
+        "get",
+        "set",
+        "get",
+        "get",
+        "get"
+      ],
+      "calls": [
+        [],
+        [
+          "missing",
+          1
+        ],
+        [
+          "a",
+          "x",
+          2
+        ],
+        [
+          "a",
+          1
+        ],
+        [
+          "a",
+          2
+        ],
+        [
+          "a",
+          "y",
+          5
+        ],
+        [
+          "a",
+          4
+        ],
+        [
+          "a",
+          5
+        ],
+        [
+          "a",
+          9
+        ]
+      ],
+      "want": [
+        null,
+        "",
+        null,
+        "",
+        "x",
+        null,
+        "x",
+        "y",
+        "y"
+      ]
+    },
+    {
+      "name": "independent keys",
+      "kind": "edge",
+      "ops": [
+        "Constructor",
+        "set",
+        "set",
+        "set",
+        "get",
+        "get",
+        "get"
+      ],
+      "calls": [
+        [],
+        [
+          "a",
+          "one",
+          1
+        ],
+        [
+          "b",
+          "two",
+          2
+        ],
+        [
+          "a",
+          "three",
+          3
+        ],
+        [
+          "a",
+          2
+        ],
+        [
+          "b",
+          3
+        ],
+        [
+          "b",
+          1
+        ]
+      ],
+      "want": [
+        null,
+        null,
+        null,
+        null,
+        "one",
+        "two",
+        ""
+      ]
+    }
+  ]
+}

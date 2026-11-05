@@ -1,0 +1,222 @@
+{
+  "slug": "surrounded-regions",
+  "entry": "solve",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        [
+          [
+            "X",
+            "X",
+            "X",
+            "X"
+          ],
+          [
+            "X",
+            "O",
+            "O",
+            "X"
+          ],
+          [
+            "X",
+            "X",
+            "O",
+            "X"
+          ],
+          [
+            "X",
+            "O",
+            "X",
+            "X"
+          ]
+        ]
+      ],
+      "want": [
+        [
+          "X",
+          "X",
+          "X",
+          "X"
+        ],
+        [
+          "X",
+          "X",
+          "X",
+          "X"
+        ],
+        [
+          "X",
+          "X",
+          "X",
+          "X"
+        ],
+        [
+          "X",
+          "O",
+          "X",
+          "X"
+        ]
+      ]
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        [
+          [
+            "X"
+          ]
+        ]
+      ],
+      "want": [
+        [
+          "X"
+        ]
+      ]
+    },
+    {
+      "name": "all boundary O",
+      "kind": "edge",
+      "args": [
+        [
+          [
+            "O",
+            "O",
+            "O"
+          ]
+        ]
+      ],
+      "want": [
+        [
+          "O",
+          "O",
+          "O"
+        ]
+      ]
+    },
+    {
+      "name": "enclosed cell",
+      "kind": "edge",
+      "args": [
+        [
+          [
+            "X",
+            "X",
+            "X"
+          ],
+          [
+            "X",
+            "O",
+            "X"
+          ],
+          [
+            "X",
+            "X",
+            "X"
+          ]
+        ]
+      ],
+      "want": [
+        [
+          "X",
+          "X",
+          "X"
+        ],
+        [
+          "X",
+          "X",
+          "X"
+        ],
+        [
+          "X",
+          "X",
+          "X"
+        ]
+      ]
+    },
+    {
+      "name": "boundary connection protects region",
+      "kind": "edge",
+      "args": [
+        [
+          [
+            "X",
+            "O",
+            "X"
+          ],
+          [
+            "X",
+            "O",
+            "X"
+          ],
+          [
+            "X",
+            "X",
+            "X"
+          ]
+        ]
+      ],
+      "want": [
+        [
+          "X",
+          "O",
+          "X"
+        ],
+        [
+          "X",
+          "O",
+          "X"
+        ],
+        [
+          "X",
+          "X",
+          "X"
+        ]
+      ]
+    },
+    {
+      "name": "diagonal connection does not protect",
+      "kind": "edge",
+      "args": [
+        [
+          [
+            "O",
+            "X",
+            "X"
+          ],
+          [
+            "X",
+            "O",
+            "X"
+          ],
+          [
+            "X",
+            "X",
+            "X"
+          ]
+        ]
+      ],
+      "want": [
+        [
+          "O",
+          "X",
+          "X"
+        ],
+        [
+          "X",
+          "X",
+          "X"
+        ],
+        [
+          "X",
+          "X",
+          "X"
+        ]
+      ]
+    }
+  ],
+  "mutates": true
+}

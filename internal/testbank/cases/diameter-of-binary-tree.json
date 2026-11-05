@@ -1,0 +1,76 @@
+{
+  "slug": "diameter-of-binary-tree",
+  "entry": "diameterOfBinaryTree",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        [
+          1,
+          2,
+          3,
+          4,
+          5
+        ]
+      ],
+      "want": 3
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        [
+          1,
+          2
+        ]
+      ],
+      "want": 1
+    },
+    {
+      "name": "single",
+      "kind": "edge",
+      "args": [
+        [
+          1
+        ]
+      ],
+      "want": 0
+    },
+    {
+      "name": "skewed",
+      "kind": "edge",
+      "args": [
+        [
+          1,
+          null,
+          2,
+          null,
+          3,
+          null,
+          4
+        ]
+      ],
+      "want": 3
+    },
+    {
+      "name": "longest path below root",
+      "kind": "edge",
+      "args": [
+        [
+          1,
+          2,
+          null,
+          3,
+          4,
+          5,
+          null,
+          null,
+          6
+        ]
+      ],
+      "want": 4
+    }
+  ]
+}

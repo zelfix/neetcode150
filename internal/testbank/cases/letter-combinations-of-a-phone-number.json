@@ -1,0 +1,82 @@
+{
+  "slug": "letter-combinations-of-a-phone-number",
+  "entry": "letterCombinations",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        "23"
+      ],
+      "want": [
+        "ad",
+        "ae",
+        "af",
+        "bd",
+        "be",
+        "bf",
+        "cd",
+        "ce",
+        "cf"
+      ]
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        "2"
+      ],
+      "want": [
+        "a",
+        "b",
+        "c"
+      ]
+    },
+    {
+      "name": "four letters on seven",
+      "kind": "edge",
+      "args": [
+        "7"
+      ],
+      "want": [
+        "p",
+        "q",
+        "r",
+        "s"
+      ]
+    },
+    {
+      "name": "four letters on nine",
+      "kind": "edge",
+      "args": [
+        "9"
+      ],
+      "want": [
+        "w",
+        "x",
+        "y",
+        "z"
+      ]
+    },
+    {
+      "name": "repeated digits",
+      "kind": "edge",
+      "args": [
+        "22"
+      ],
+      "want": [
+        "aa",
+        "ab",
+        "ac",
+        "ba",
+        "bb",
+        "bc",
+        "ca",
+        "cb",
+        "cc"
+      ]
+    }
+  ],
+  "policy": "unordered"
+}

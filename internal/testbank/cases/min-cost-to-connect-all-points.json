@@ -1,0 +1,112 @@
+{
+  "slug": "min-cost-to-connect-all-points",
+  "entry": "minCostConnectPoints",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        [
+          [
+            0,
+            0
+          ],
+          [
+            2,
+            2
+          ],
+          [
+            3,
+            10
+          ],
+          [
+            5,
+            2
+          ],
+          [
+            7,
+            0
+          ]
+        ]
+      ],
+      "want": 20
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        [
+          [
+            3,
+            12
+          ],
+          [
+            -2,
+            5
+          ],
+          [
+            -4,
+            1
+          ]
+        ]
+      ],
+      "want": 18
+    },
+    {
+      "name": "one point",
+      "kind": "edge",
+      "args": [
+        [
+          [
+            4,
+            5
+          ]
+        ]
+      ],
+      "want": 0
+    },
+    {
+      "name": "negative coordinates",
+      "kind": "edge",
+      "args": [
+        [
+          [
+            -1,
+            -1
+          ],
+          [
+            1,
+            1
+          ]
+        ]
+      ],
+      "want": 4
+    },
+    {
+      "name": "collinear points",
+      "kind": "edge",
+      "args": [
+        [
+          [
+            0,
+            0
+          ],
+          [
+            2,
+            0
+          ],
+          [
+            3,
+            0
+          ],
+          [
+            10,
+            0
+          ]
+        ]
+      ],
+      "want": 10
+    }
+  ]
+}

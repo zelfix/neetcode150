@@ -1,0 +1,98 @@
+{
+  "slug": "hand-of-straights",
+  "entry": "isNStraightHand",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        [
+          1,
+          2,
+          3,
+          6,
+          2,
+          3,
+          4,
+          7,
+          8
+        ],
+        3
+      ],
+      "want": true
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        [
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        4
+      ],
+      "want": false
+    },
+    {
+      "name": "group size one",
+      "kind": "edge",
+      "args": [
+        [
+          4,
+          4,
+          1
+        ],
+        1
+      ],
+      "want": true
+    },
+    {
+      "name": "duplicates cannot fill missing ranks",
+      "kind": "edge",
+      "args": [
+        [
+          1,
+          1,
+          2,
+          2,
+          3,
+          4
+        ],
+        3
+      ],
+      "want": false
+    },
+    {
+      "name": "all duplicate consecutive groups",
+      "kind": "edge",
+      "args": [
+        [
+          1,
+          2,
+          3,
+          1,
+          2,
+          3
+        ],
+        3
+      ],
+      "want": true
+    },
+    {
+      "name": "large values",
+      "kind": "edge",
+      "args": [
+        [
+          999999999,
+          1000000000
+        ],
+        2
+      ],
+      "want": true
+    }
+  ]
+}

@@ -1,0 +1,70 @@
+{
+  "slug": "sum-of-two-integers",
+  "entry": "getSum",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        1,
+        2
+      ],
+      "want": 3
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        2,
+        3
+      ],
+      "want": 5
+    },
+    {
+      "name": "zero identity",
+      "kind": "edge",
+      "args": [
+        0,
+        -5
+      ],
+      "want": -5
+    },
+    {
+      "name": "cancellation",
+      "kind": "edge",
+      "args": [
+        -7,
+        7
+      ],
+      "want": 0
+    },
+    {
+      "name": "two negatives",
+      "kind": "edge",
+      "args": [
+        -5,
+        -8
+      ],
+      "want": -13
+    },
+    {
+      "name": "long carry",
+      "kind": "edge",
+      "args": [
+        511,
+        1
+      ],
+      "want": 512
+    },
+    {
+      "name": "value bounds",
+      "kind": "edge",
+      "args": [
+        -1000,
+        -1000
+      ],
+      "want": -2000
+    }
+  ]
+}

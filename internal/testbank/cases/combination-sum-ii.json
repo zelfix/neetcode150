@@ -1,0 +1,130 @@
+{
+  "slug": "combination-sum-ii",
+  "entry": "combinationSum2",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        [
+          10,
+          1,
+          2,
+          7,
+          6,
+          1,
+          5
+        ],
+        8
+      ],
+      "want": [
+        [
+          1,
+          1,
+          6
+        ],
+        [
+          1,
+          2,
+          5
+        ],
+        [
+          1,
+          7
+        ],
+        [
+          2,
+          6
+        ]
+      ]
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        [
+          2,
+          5,
+          2,
+          1,
+          2
+        ],
+        5
+      ],
+      "want": [
+        [
+          1,
+          2,
+          2
+        ],
+        [
+          5
+        ]
+      ]
+    },
+    {
+      "name": "each candidate used once",
+      "kind": "edge",
+      "args": [
+        [
+          2
+        ],
+        4
+      ],
+      "want": []
+    },
+    {
+      "name": "duplicates produce one combination",
+      "kind": "edge",
+      "args": [
+        [
+          1,
+          1,
+          1,
+          2
+        ],
+        3
+      ],
+      "want": [
+        [
+          1,
+          1,
+          1
+        ],
+        [
+          1,
+          2
+        ]
+      ]
+    },
+    {
+      "name": "no combination",
+      "kind": "edge",
+      "args": [
+        [
+          4,
+          5
+        ],
+        3
+      ],
+      "want": []
+    },
+    {
+      "name": "single exact candidate",
+      "kind": "edge",
+      "args": [
+        [
+          3
+        ],
+        3
+      ],
+      "want": [
+        [
+          3
+        ]
+      ]
+    }
+  ],
+  "policy": "unordered-groups"
+}

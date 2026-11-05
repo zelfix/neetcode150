@@ -1,19 +1,19 @@
 {{define "content"}}
 <div class="lede">
   <h1>Review queue</h1>
-  <p>Solving something once is not knowing it. These come back on a widening schedule: 1, 3, 7, 16, 35, then 90 days.</p>
+  <p>Solving something once is not knowing it. These come back on a widening schedule &mdash; 1, 3, 7, 16, 35, then 90 days &mdash; pulled in or stretched by how much help each one needed. Longest overdue first.</p>
 </div>
 
 <section class="block">
   <div class="block-head">
     <h2>Due now</h2>
-    <span class="meta">{{plural (len .Due) "problem" "problems"}}</span>
+    <span class="meta">{{plural (len .DueProblems) "problem" "problems"}}</span>
   </div>
-  {{if .Due}}
-  {{range .Due}}
+  {{if .DueProblems}}
+  {{range .DueProblems}}
   <div class="row" style="grid-template-columns: 3.2rem 1fr 5rem 6rem">
     <span class="row-id">{{.ID}}</span>
-    <span class="row-title"><a href="/problems/{{.Slug}}">{{.Title}}</a>{{if .Blind75}}<span class="b75">75</span>{{end}}</span>
+    <span class="row-title"><a href="/problems/{{.Slug}}/solve">{{.Title}}</a>{{if .Blind75}}<span class="b75">75</span>{{end}}</span>
     <span class="row-diff is-{{lower .Difficulty}}">{{.Difficulty}}</span>
     <span class="row-when">{{if .DaysOverdue}}{{plural .DaysOverdue "day" "days"}} over{{else}}today{{end}}</span>
   </div>

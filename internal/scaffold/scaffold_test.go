@@ -1,10 +1,13 @@
 package scaffold
 
 import (
+	"fmt"
 	"go/parser"
 	"go/token"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"neetcode150/internal/catalog"
 )
@@ -107,7 +110,7 @@ func TestGenerateSingleFunctionProducesATable(t *testing.T) {
 	if !strings.Contains(f.Solution, `panic("TODO: implement")`) {
 		t.Errorf("stub body has no panic:\n%s", f.Solution)
 	}
-	for _, want := range []string{"nums   []int", "target int", "want   []int", "twoSum(tc.nums, tc.target)"} {
+	for _, want := range []string{"testkit.Run(t,", `"kind": "example"`, `"kind": "edge"`, "twoSum)"} {
 		if !strings.Contains(f.Test, want) {
 			t.Errorf("test is missing %q:\n%s", want, f.Test)
 		}
@@ -141,8 +144,8 @@ func (this *LRUCache) Get(key int) int {
 	p.Slug, p.Title = "lru-cache", "LRU Cache"
 	f := Generate(p, sig, "")
 
-	if f.TableDriven {
-		t.Error("a design problem must not get a table-driven test built around its constructor")
+	if !f.TableDriven || f.PracticeCases == 0 {
+		t.Error("design problems need operation sequence cases")
 	}
 	if !strings.Contains(f.Solution, "type LRUCache struct") {
 		t.Error("the type declaration was dropped")
@@ -159,8 +162,8 @@ func TestGenerateHandlesTwoPlainFunctions(t *testing.T) {
 	p := twoSum
 	p.Slug, p.Title = "encode-and-decode-strings", "Encode and Decode Strings"
 	f := Generate(p, sig, "")
-	if f.TableDriven {
-		t.Error("two entry points cannot be driven from one table")
+	if !f.TableDriven || !strings.Contains(f.Test, "encode, decode") {
+		t.Error("codec needs round-trip cases using both entry points")
 	}
 	if strings.Count(f.Solution, "panic(") != 2 {
 		t.Errorf("both bodies should panic:\n%s", f.Solution)
@@ -174,8 +177,8 @@ func TestGenerateHandlesAVoidFunction(t *testing.T) {
 	p := twoSum
 	p.Slug, p.Title = "walls-and-gates", "Walls And Gates"
 	f := Generate(p, sig, "")
-	if f.TableDriven {
-		t.Error("a function with no result has nothing to compare")
+	if !f.TableDriven || !strings.Contains(f.Test, `"mutates": true`) {
+		t.Error("void functions need cases asserting the mutated argument")
 	}
 	compiles(t, "solution.go", f.Solution)
 	compiles(t, "solution_test.go", f.Test)
@@ -198,6 +201,42 @@ func TestNotesTemplateIsValidMarkdownWithFrontmatter(t *testing.T) {
 	for _, heading := range []string{"## Approach", "## Complexity", "## What tripped me up"} {
 		if !strings.Contains(out, heading) {
 			t.Errorf("missing %q", heading)
+		}
+	}
+}
+
+func TestAttemptsKeepStableIDsAndSnapshots(t *testing.T) {
+	root := t.TempDir()
+	p := catalog.Problem{Dir: "0001-two-sum"}
+	day := time.Date(2026, 10, 31, 12, 0, 0, 0, time.UTC)
+	var want []string
+	for i := 1; i <= 12; i++ {
+		path, err := ArchiveAttempt(root, p, []byte(fmt.Sprintf("attempt %d", i)), day)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want = append(want, path)
+	}
+	// Creation order must not override the dates encoded in the filenames.
+	earlier, err := ArchiveAttempt(root, p, nil, day.AddDate(0, 0, -1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	later, err := ArchiveAttempt(root, p, nil, day.AddDate(0, 0, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want = append(want, earlier, later)
+	got, err := Attempts(root, p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != len(want) {
+		t.Fatalf("got %d attempts, want %d", len(got), len(want))
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("attempt %d: got %s, want %s", i, filepath.Base(got[i]), filepath.Base(want[i]))
 		}
 	}
 }

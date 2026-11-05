@@ -1,0 +1,72 @@
+{
+  "slug": "partition-labels",
+  "entry": "partitionLabels",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        "ababcbacadefegdehijhklij"
+      ],
+      "want": [
+        9,
+        7,
+        8
+      ]
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        "eccbbbbdec"
+      ],
+      "want": [
+        10
+      ]
+    },
+    {
+      "name": "single",
+      "kind": "edge",
+      "args": [
+        "a"
+      ],
+      "want": [
+        1
+      ]
+    },
+    {
+      "name": "all identical",
+      "kind": "edge",
+      "args": [
+        "aaaa"
+      ],
+      "want": [
+        4
+      ]
+    },
+    {
+      "name": "all different",
+      "kind": "edge",
+      "args": [
+        "abc"
+      ],
+      "want": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "name": "nested repeats",
+      "kind": "edge",
+      "args": [
+        "abac"
+      ],
+      "want": [
+        3,
+        1
+      ]
+    }
+  ]
+}

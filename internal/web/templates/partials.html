@@ -3,7 +3,7 @@
 
 {{/* problemRow is the standard list row. The data attributes drive filtering. */}}
 {{define "problemRow"}}
-<a class="row" href="/problems/{{.Slug}}"
+<a class="row" href="/problems/{{.Slug}}/solve"
    data-title="{{lower .Title}}" data-id="{{.ID}}"
    data-difficulty="{{.Difficulty}}" data-status="{{statusClass .Entry.Status}}"
    data-blind="{{.Blind75}}" data-due="{{.IsDue}}">

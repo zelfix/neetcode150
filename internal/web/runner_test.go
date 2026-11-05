@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"neetcode150/internal/studydb"
 )
 
 // goModule writes a throwaway module so runGoTest has something real to run.
@@ -39,13 +41,51 @@ func TestRunGoTestClassifiesItsOutcomes(t *testing.T) {
 	t.Run("a passing package", func(t *testing.T) {
 		root := goModule(t, pkgDir,
 			"package twosum\n\nfunc add(a, b int) int { return a + b }\n",
-			"package twosum\n\nimport \"testing\"\n\nfunc TestAdd(t *testing.T) {\n\tif add(1, 2) != 3 {\n\t\tt.Fatal(\"no\")\n\t}\n}\n")
-		out, ok, err := runGoTest(t.Context(), root, pkgDir)
-		if err != nil {
-			t.Fatalf("err = %v, output:\n%s", err, out)
+			`package twosum
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
+
+func TestAdd(t *testing.T) {
+	if add(1, 2) != 3 {
+		t.Fatal("no")
+	}
+}
+
+func TestRunnerKeepsGoScratchDirsInWorkspace(t *testing.T) {
+	root, err := filepath.Abs(filepath.Join("..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{
+		"GOCACHE": filepath.Join(root, ".nc-cache", "go-build"),
+		"GOTMPDIR": filepath.Join(root, ".nc-cache", "tmp"),
+		"TMPDIR": filepath.Join(root, ".nc-cache", "tmp"),
+	}
+	// On macOS the temporary root is reached through a symlink, so the two
+	// sides have to be resolved before they can be compared.
+	resolve := func(path string) string {
+		if real, err := filepath.EvalSymlinks(path); err == nil {
+			return real
 		}
-		if !ok {
-			t.Errorf("ok = false on a passing package, output:\n%s", out)
+		return path
+	}
+	for name, path := range want {
+		if got := resolve(os.Getenv(name)); got != resolve(path) {
+			t.Errorf("%s = %q, want %q", name, got, resolve(path))
+		}
+	}
+}
+`)
+		run, err := runGoTest(t.Context(), root, pkgDir)
+		if err != nil {
+			t.Fatalf("err = %v, output:\n%s", err, run.Output)
+		}
+		if !run.OK {
+			t.Errorf("OK = false on a passing package, output:\n%s", run.Output)
 		}
 	})
 
@@ -53,15 +93,19 @@ func TestRunGoTestClassifiesItsOutcomes(t *testing.T) {
 		root := goModule(t, pkgDir,
 			"package twosum\n\nfunc add(a, b int) int { return a - b }\n",
 			"package twosum\n\nimport \"testing\"\n\nfunc TestAdd(t *testing.T) {\n\tif add(1, 2) != 3 {\n\t\tt.Fatal(\"wrong answer\")\n\t}\n}\n")
-		out, ok, err := runGoTest(t.Context(), root, pkgDir)
+		run, err := runGoTest(t.Context(), root, pkgDir)
 		if err != nil {
 			t.Fatalf("a failing test reported a runner error: %v", err)
 		}
-		if ok {
-			t.Error("ok = true on a failing test")
+		if run.OK {
+			t.Error("OK = true on a failing test")
 		}
-		if !strings.Contains(out, "FAIL") || !strings.Contains(out, "wrong answer") {
-			t.Errorf("the failure is not in the output:\n%s", out)
+		if !strings.Contains(run.Output, "FAIL") || !strings.Contains(run.Output, "wrong answer") {
+			t.Errorf("the failure is not in the output:\n%s", run.Output)
+		}
+		// The broken test is named for the record, not just counted.
+		if len(run.Cases) != 1 || run.Cases[0].Name != "TestAdd" {
+			t.Errorf("failed cases = %+v, want the one TestAdd", run.Cases)
 		}
 	})
 
@@ -69,29 +113,32 @@ func TestRunGoTestClassifiesItsOutcomes(t *testing.T) {
 		root := goModule(t, pkgDir,
 			"package twosum\n\nfunc add(a, b int) int { return a + }\n",
 			"package twosum\n")
-		out, ok, err := runGoTest(t.Context(), root, pkgDir)
+		run, err := runGoTest(t.Context(), root, pkgDir)
 		// A compile error is still `go test` having its say, so it reports as a
 		// failure with output rather than as a runner error — the user needs to
 		// read the compiler, not a wrapper's summary of it.
 		if err != nil {
 			t.Fatalf("a compile error reported a runner error: %v", err)
 		}
-		if ok {
-			t.Error("ok = true on source that does not compile")
+		if run.OK {
+			t.Error("OK = true on source that does not compile")
 		}
-		if !strings.Contains(out, "syntax error") && !strings.Contains(out, "expected") {
-			t.Errorf("the compiler's complaint is not in the output:\n%s", out)
+		if run.Ran {
+			t.Error("Ran = true although nothing compiled")
+		}
+		if !strings.Contains(run.Output, "syntax error") && !strings.Contains(run.Output, "expected") {
+			t.Errorf("the compiler's complaint is not in the output:\n%s", run.Output)
 		}
 	})
 
 	t.Run("a package that is not there", func(t *testing.T) {
 		root := goModule(t, pkgDir, "package twosum\n", "package twosum\n")
-		_, ok, err := runGoTest(t.Context(), root, "solutions/0999-nope")
+		run, err := runGoTest(t.Context(), root, "solutions/0999-nope")
 		if err != nil {
 			t.Fatalf("a missing package reported a runner error: %v", err)
 		}
-		if ok {
-			t.Error("ok = true for a package that does not exist")
+		if run.OK {
+			t.Error("OK = true for a package that does not exist")
 		}
 	})
 
@@ -102,12 +149,12 @@ func TestRunGoTestClassifiesItsOutcomes(t *testing.T) {
 		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 		defer cancel()
 
-		out, ok, err := runGoTest(ctx, root, pkgDir)
+		run, err := runGoTest(ctx, root, pkgDir)
 		if err == nil {
-			t.Fatalf("an endless test was reported as a result, ok = %v, output:\n%s", ok, out)
+			t.Fatalf("an endless test was reported as a result, OK = %v, output:\n%s", run.OK, run.Output)
 		}
-		if ok {
-			t.Error("ok = true on a cut-off run")
+		if run.OK {
+			t.Error("OK = true on a cut-off run")
 		}
 		if !strings.Contains(err.Error(), "cut off") {
 			t.Errorf("err = %v, want it to say the run was cut off", err)
@@ -136,4 +183,61 @@ func TestFormatGo(t *testing.T) {
 			t.Errorf("got %q, want the input back unchanged", got)
 		}
 	})
+}
+
+func TestRunGoTestRejectsMissingAndSkippedTests(t *testing.T) {
+	for name, tests := range map[string]string{
+		"missing": "package demo\n",
+		"skipped": `package demo
+import "testing"
+func TestDraft(t *testing.T){t.Skip("add cases")}
+`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			root := goModule(t, "solutions/demo", "package demo\n", tests)
+			run, err := runGoTest(t.Context(), root, "solutions/demo")
+			if run.OK || err == nil || !strings.Contains(err.Error(), "no tests ran") {
+				t.Fatalf("false pass: %v, %v, %s", run.OK, err, run.Output)
+			}
+			if name == "skipped" && !strings.Contains(run.Output, "1 skipped") {
+				t.Fatalf("missing skip count: %s", run.Output)
+			}
+		})
+	}
+}
+
+func TestReadTestEventsShowsCasesWithoutCountingTheParentTwice(t *testing.T) {
+	raw := []byte(`{"Action":"output","Output":"=== RUN TestSuite/case_one\n"}
+{"Action":"pass","Test":"TestSuite/case_one"}
+{"Action":"fail","Test":"TestSuite/case_two"}
+{"Action":"skip","Test":"TestSuite/case_three"}
+{"Action":"fail","Test":"TestSuite"}
+{"Action":"output","Output":"wrong answer\n"}`)
+	run := readTestEvents(raw)
+	if !run.Ran || !strings.Contains(run.Output, "1 passed, 1 failed, 1 skipped") ||
+		!strings.Contains(run.Output, "wrong answer") {
+		t.Fatalf("unexpected report: %s", run.Output)
+	}
+	// The parent failed only because a child did, so it is not a case of its own.
+	if len(run.Cases) != 1 || run.Cases[0].Name != "case two" {
+		t.Fatalf("failed cases = %+v, want just the one child", run.Cases)
+	}
+}
+
+// Go renders a subtest name with its spaces replaced by underscores, and the
+// fixtures are tagged example or edge. Both have to survive the round trip or
+// the counts are filed under names nobody recognises.
+func TestNamedCaseRecoversTheFixtureNameAndKind(t *testing.T) {
+	cases := map[string]studydb.FailedCase{
+		"TestPracticeCases/edge/empty_input":  {Kind: "edge", Name: "empty input"},
+		"TestPracticeCases/example/example_1": {Kind: "example", Name: "example 1"},
+		"TestPracticeCases/edge/single":       {Kind: "edge", Name: "single"},
+		"TestSolution/some_table_case":        {Kind: "other", Name: "some table case"},
+		"TestSolution":                        {Kind: "other", Name: "TestSolution"},
+	}
+	for test, want := range cases {
+		if got := namedCase(test); got != want {
+			t.Errorf("namedCase(%q) = %+v, want %+v", test, got, want)
+		}
+	}
 }

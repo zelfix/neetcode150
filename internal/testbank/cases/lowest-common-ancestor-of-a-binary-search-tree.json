@@ -1,0 +1,113 @@
+{
+  "slug": "lowest-common-ancestor-of-a-binary-search-tree",
+  "entry": "lowestCommonAncestor",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        [
+          6,
+          2,
+          8,
+          0,
+          4,
+          7,
+          9,
+          null,
+          null,
+          3,
+          5
+        ],
+        2,
+        8
+      ],
+      "want": 6
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        [
+          6,
+          2,
+          8,
+          0,
+          4,
+          7,
+          9,
+          null,
+          null,
+          3,
+          5
+        ],
+        2,
+        4
+      ],
+      "want": 2
+    },
+    {
+      "name": "example 3",
+      "kind": "example",
+      "args": [
+        [
+          2,
+          1
+        ],
+        2,
+        1
+      ],
+      "want": 2
+    },
+    {
+      "name": "both on left",
+      "kind": "edge",
+      "args": [
+        [
+          5,
+          3,
+          7,
+          2,
+          4
+        ],
+        2,
+        4
+      ],
+      "want": 3
+    },
+    {
+      "name": "both on right",
+      "kind": "edge",
+      "args": [
+        [
+          5,
+          3,
+          7,
+          null,
+          null,
+          6,
+          8
+        ],
+        6,
+        8
+      ],
+      "want": 7
+    },
+    {
+      "name": "negative values",
+      "kind": "edge",
+      "args": [
+        [
+          -2,
+          -3,
+          0
+        ],
+        -3,
+        0
+      ],
+      "want": -2
+    }
+  ],
+  "policy": "ancestor"
+}

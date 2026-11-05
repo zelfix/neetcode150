@@ -1,0 +1,89 @@
+{
+  "slug": "balanced-binary-tree",
+  "entry": "isBalanced",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        [
+          3,
+          9,
+          20,
+          null,
+          null,
+          15,
+          7
+        ]
+      ],
+      "want": true
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        [
+          1,
+          2,
+          2,
+          3,
+          3,
+          null,
+          null,
+          4,
+          4
+        ]
+      ],
+      "want": false
+    },
+    {
+      "name": "example 3",
+      "kind": "example",
+      "args": [
+        []
+      ],
+      "want": true
+    },
+    {
+      "name": "single",
+      "kind": "edge",
+      "args": [
+        [
+          0
+        ]
+      ],
+      "want": true
+    },
+    {
+      "name": "chain",
+      "kind": "edge",
+      "args": [
+        [
+          1,
+          2,
+          null,
+          3
+        ]
+      ],
+      "want": false
+    },
+    {
+      "name": "imbalance below root",
+      "kind": "edge",
+      "args": [
+        [
+          1,
+          2,
+          3,
+          4,
+          null,
+          5,
+          null,
+          6
+        ]
+      ],
+      "want": false
+    }
+  ]
+}

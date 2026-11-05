@@ -1,0 +1,79 @@
+{
+  "slug": "single-number",
+  "entry": "singleNumber",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        [
+          2,
+          2,
+          1
+        ]
+      ],
+      "want": 1
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        [
+          4,
+          1,
+          2,
+          1,
+          2
+        ]
+      ],
+      "want": 4
+    },
+    {
+      "name": "example 3",
+      "kind": "example",
+      "args": [
+        [
+          1
+        ]
+      ],
+      "want": 1
+    },
+    {
+      "name": "negative unique",
+      "kind": "edge",
+      "args": [
+        [
+          -1,
+          2,
+          2
+        ]
+      ],
+      "want": -1
+    },
+    {
+      "name": "zero unique",
+      "kind": "edge",
+      "args": [
+        [
+          1,
+          0,
+          1
+        ]
+      ],
+      "want": 0
+    },
+    {
+      "name": "negative pairs",
+      "kind": "edge",
+      "args": [
+        [
+          -2,
+          -2,
+          -3
+        ]
+      ],
+      "want": -3
+    }
+  ]
+}

@@ -1,7 +1,7 @@
 {{define "content"}}
 <nav class="pager">
-  {{if .Prev}}<a href="/problems/{{.Prev.Slug}}">← {{.Prev.ID}}. {{.Prev.Title}}</a>{{else}}<span class="spacer">—</span>{{end}}
-  {{if .Next}}<a href="/problems/{{.Next.Slug}}">{{.Next.ID}}. {{.Next.Title}} →</a>{{else}}<span class="spacer">—</span>{{end}}
+  {{if .Prev}}<a href="/problems/{{.Prev.Slug}}/solve">← {{.Prev.ID}}. {{.Prev.Title}}</a>{{else}}<span class="spacer">—</span>{{end}}
+  {{if .Next}}<a href="/problems/{{.Next.Slug}}/solve">{{.Next.ID}}. {{.Next.Title}} →</a>{{else}}<span class="spacer">—</span>{{end}}
 </nav>
 
 <header class="problem-head">

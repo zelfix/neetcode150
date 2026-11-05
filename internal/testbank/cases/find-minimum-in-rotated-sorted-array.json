@@ -1,0 +1,96 @@
+{
+  "slug": "find-minimum-in-rotated-sorted-array",
+  "entry": "findMin",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        [
+          3,
+          4,
+          5,
+          1,
+          2
+        ]
+      ],
+      "want": 1
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        [
+          4,
+          5,
+          6,
+          7,
+          0,
+          1,
+          2
+        ]
+      ],
+      "want": 0
+    },
+    {
+      "name": "example 3",
+      "kind": "example",
+      "args": [
+        [
+          11,
+          13,
+          15,
+          17
+        ]
+      ],
+      "want": 11
+    },
+    {
+      "name": "single",
+      "kind": "edge",
+      "args": [
+        [
+          3
+        ]
+      ],
+      "want": 3
+    },
+    {
+      "name": "two rotated",
+      "kind": "edge",
+      "args": [
+        [
+          2,
+          1
+        ]
+      ],
+      "want": 1
+    },
+    {
+      "name": "minimum at last",
+      "kind": "edge",
+      "args": [
+        [
+          2,
+          3,
+          4,
+          1
+        ]
+      ],
+      "want": 1
+    },
+    {
+      "name": "negative unrotated",
+      "kind": "edge",
+      "args": [
+        [
+          -5,
+          -2,
+          0
+        ]
+      ],
+      "want": -5
+    }
+  ]
+}

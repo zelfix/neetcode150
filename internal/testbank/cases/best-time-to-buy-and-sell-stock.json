@@ -1,0 +1,81 @@
+{
+  "slug": "best-time-to-buy-and-sell-stock",
+  "entry": "maxProfit",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        [
+          7,
+          1,
+          5,
+          3,
+          6,
+          4
+        ]
+      ],
+      "want": 5
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        [
+          7,
+          6,
+          4,
+          3,
+          1
+        ]
+      ],
+      "want": 0
+    },
+    {
+      "name": "one day",
+      "kind": "edge",
+      "args": [
+        [
+          4
+        ]
+      ],
+      "want": 0
+    },
+    {
+      "name": "flat prices",
+      "kind": "edge",
+      "args": [
+        [
+          3,
+          3,
+          3
+        ]
+      ],
+      "want": 0
+    },
+    {
+      "name": "zero purchase",
+      "kind": "edge",
+      "args": [
+        [
+          0,
+          5
+        ]
+      ],
+      "want": 5
+    },
+    {
+      "name": "buy before sell",
+      "kind": "edge",
+      "args": [
+        [
+          5,
+          1,
+          2
+        ]
+      ],
+      "want": 1
+    }
+  ]
+}

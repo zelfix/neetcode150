@@ -1,0 +1,84 @@
+{
+  "slug": "count-good-nodes-in-binary-tree",
+  "entry": "goodNodes",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        [
+          3,
+          1,
+          4,
+          3,
+          null,
+          1,
+          5
+        ]
+      ],
+      "want": 4
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        [
+          3,
+          3,
+          null,
+          4,
+          2
+        ]
+      ],
+      "want": 3
+    },
+    {
+      "name": "example 3",
+      "kind": "example",
+      "args": [
+        [
+          1
+        ]
+      ],
+      "want": 1
+    },
+    {
+      "name": "negative root",
+      "kind": "edge",
+      "args": [
+        [
+          -3,
+          -4,
+          -2
+        ]
+      ],
+      "want": 2
+    },
+    {
+      "name": "equal values count",
+      "kind": "edge",
+      "args": [
+        [
+          2,
+          2,
+          2
+        ]
+      ],
+      "want": 3
+    },
+    {
+      "name": "decreasing chain",
+      "kind": "edge",
+      "args": [
+        [
+          3,
+          2,
+          null,
+          1
+        ]
+      ],
+      "want": 1
+    }
+  ]
+}

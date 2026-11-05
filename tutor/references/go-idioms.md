@@ -48,6 +48,11 @@ delete(m, k)
 len(m)
 ```
 
+- The second argument of `make(map[K]V, n)` is an initial-space hint, not a fixed
+  size or a populated length. It can be useful when the expected entry count is known;
+  reserving for the full input can waste memory when only a few entries are inserted.
+  Treat it as an optional trade-off, not a correctness requirement or guaranteed speedup.
+  See the [Go specification](https://go.dev/ref/spec#Making_slices_maps_and_channels).
 - Iteration order is randomised on purpose. Sort the keys if you need order.
 - `map[T]struct{}` is a set with no value storage; `map[T]bool` reads better and the
   difference rarely matters at these sizes.

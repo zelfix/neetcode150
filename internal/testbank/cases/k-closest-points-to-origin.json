@@ -1,0 +1,143 @@
+{
+  "slug": "k-closest-points-to-origin",
+  "entry": "kClosest",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        [
+          [
+            1,
+            3
+          ],
+          [
+            -2,
+            2
+          ]
+        ],
+        1
+      ],
+      "want": [
+        [
+          -2,
+          2
+        ]
+      ]
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        [
+          [
+            3,
+            3
+          ],
+          [
+            5,
+            -1
+          ],
+          [
+            -2,
+            4
+          ]
+        ],
+        2
+      ],
+      "want": [
+        [
+          3,
+          3
+        ],
+        [
+          -2,
+          4
+        ]
+      ]
+    },
+    {
+      "name": "origin closest",
+      "kind": "edge",
+      "args": [
+        [
+          [
+            0,
+            0
+          ],
+          [
+            1,
+            1
+          ]
+        ],
+        1
+      ],
+      "want": [
+        [
+          0,
+          0
+        ]
+      ]
+    },
+    {
+      "name": "all points requested",
+      "kind": "edge",
+      "args": [
+        [
+          [
+            -1,
+            2
+          ],
+          [
+            3,
+            -4
+          ]
+        ],
+        2
+      ],
+      "want": [
+        [
+          -1,
+          2
+        ],
+        [
+          3,
+          -4
+        ]
+      ]
+    },
+    {
+      "name": "negative coordinates",
+      "kind": "edge",
+      "args": [
+        [
+          [
+            -2,
+            -2
+          ],
+          [
+            3,
+            0
+          ],
+          [
+            0,
+            -1
+          ]
+        ],
+        2
+      ],
+      "want": [
+        [
+          -2,
+          -2
+        ],
+        [
+          0,
+          -1
+        ]
+      ]
+    }
+  ],
+  "policy": "unordered"
+}

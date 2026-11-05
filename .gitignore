@@ -9,6 +9,8 @@
 /solutions/
 /progress.json
 /progress.json.lock
+/study*.sqlite3*
+/.nc-cache/
 content/problems/*/notes.md
 content/problems/*/hints.md
 

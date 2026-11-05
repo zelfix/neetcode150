@@ -1,0 +1,98 @@
+{
+  "slug": "remove-nth-node-from-end-of-list",
+  "entry": "removeNthFromEnd",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        [
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        2
+      ],
+      "want": [
+        1,
+        2,
+        3,
+        5
+      ]
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        [
+          1
+        ],
+        1
+      ],
+      "want": []
+    },
+    {
+      "name": "example 3",
+      "kind": "example",
+      "args": [
+        [
+          1,
+          2
+        ],
+        1
+      ],
+      "want": [
+        1
+      ]
+    },
+    {
+      "name": "remove head",
+      "kind": "edge",
+      "args": [
+        [
+          1,
+          2,
+          3
+        ],
+        3
+      ],
+      "want": [
+        2,
+        3
+      ]
+    },
+    {
+      "name": "remove middle",
+      "kind": "edge",
+      "args": [
+        [
+          1,
+          2,
+          3
+        ],
+        2
+      ],
+      "want": [
+        1,
+        3
+      ]
+    },
+    {
+      "name": "duplicate values",
+      "kind": "edge",
+      "args": [
+        [
+          2,
+          2
+        ],
+        1
+      ],
+      "want": [
+        2
+      ]
+    }
+  ]
+}

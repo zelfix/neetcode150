@@ -1,0 +1,164 @@
+{
+  "slug": "clone-graph",
+  "entry": "cloneGraph",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        [
+          [
+            2,
+            4
+          ],
+          [
+            1,
+            3
+          ],
+          [
+            2,
+            4
+          ],
+          [
+            1,
+            3
+          ]
+        ]
+      ],
+      "want": [
+        [
+          2,
+          4
+        ],
+        [
+          1,
+          3
+        ],
+        [
+          2,
+          4
+        ],
+        [
+          1,
+          3
+        ]
+      ]
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        [
+          []
+        ]
+      ],
+      "want": [
+        []
+      ]
+    },
+    {
+      "name": "example 3",
+      "kind": "example",
+      "args": [
+        []
+      ],
+      "want": []
+    },
+    {
+      "name": "two connected nodes",
+      "kind": "edge",
+      "args": [
+        [
+          [
+            2
+          ],
+          [
+            1
+          ]
+        ]
+      ],
+      "want": [
+        [
+          2
+        ],
+        [
+          1
+        ]
+      ]
+    },
+    {
+      "name": "triangle cycle",
+      "kind": "edge",
+      "args": [
+        [
+          [
+            2,
+            3
+          ],
+          [
+            1,
+            3
+          ],
+          [
+            1,
+            2
+          ]
+        ]
+      ],
+      "want": [
+        [
+          2,
+          3
+        ],
+        [
+          1,
+          3
+        ],
+        [
+          1,
+          2
+        ]
+      ]
+    },
+    {
+      "name": "star",
+      "kind": "edge",
+      "args": [
+        [
+          [
+            2,
+            3,
+            4
+          ],
+          [
+            1
+          ],
+          [
+            1
+          ],
+          [
+            1
+          ]
+        ]
+      ],
+      "want": [
+        [
+          2,
+          3,
+          4
+        ],
+        [
+          1
+        ],
+        [
+          1
+        ],
+        [
+          1
+        ]
+      ]
+    }
+  ],
+  "policy": "graph-clone"
+}

@@ -1,0 +1,117 @@
+{
+  "slug": "meeting-rooms",
+  "entry": "canAttendMeetings",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        [
+          [
+            0,
+            30
+          ],
+          [
+            5,
+            10
+          ],
+          [
+            15,
+            20
+          ]
+        ]
+      ],
+      "want": false
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        [
+          [
+            7,
+            10
+          ],
+          [
+            2,
+            4
+          ]
+        ]
+      ],
+      "want": true
+    },
+    {
+      "name": "example 3",
+      "kind": "example",
+      "args": [
+        [
+          [
+            0,
+            8
+          ],
+          [
+            8,
+            10
+          ]
+        ]
+      ],
+      "want": true
+    },
+    {
+      "name": "empty",
+      "kind": "edge",
+      "args": [
+        []
+      ],
+      "want": true
+    },
+    {
+      "name": "one meeting",
+      "kind": "edge",
+      "args": [
+        [
+          [
+            0,
+            1
+          ]
+        ]
+      ],
+      "want": true
+    },
+    {
+      "name": "same start",
+      "kind": "edge",
+      "args": [
+        [
+          [
+            1,
+            2
+          ],
+          [
+            1,
+            3
+          ]
+        ]
+      ],
+      "want": false
+    },
+    {
+      "name": "unsorted touching",
+      "kind": "edge",
+      "args": [
+        [
+          [
+            4,
+            5
+          ],
+          [
+            1,
+            4
+          ]
+        ]
+      ],
+      "want": true
+    }
+  ]
+}

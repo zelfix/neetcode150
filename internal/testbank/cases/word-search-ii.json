@@ -1,0 +1,137 @@
+{
+  "slug": "word-search-ii",
+  "entry": "findWords",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        [
+          [
+            "o",
+            "a",
+            "a",
+            "n"
+          ],
+          [
+            "e",
+            "t",
+            "a",
+            "e"
+          ],
+          [
+            "i",
+            "h",
+            "k",
+            "r"
+          ],
+          [
+            "i",
+            "f",
+            "l",
+            "v"
+          ]
+        ],
+        [
+          "oath",
+          "pea",
+          "eat",
+          "rain"
+        ]
+      ],
+      "want": [
+        "eat",
+        "oath"
+      ]
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        [
+          [
+            "a",
+            "b"
+          ],
+          [
+            "c",
+            "d"
+          ]
+        ],
+        [
+          "abcb"
+        ]
+      ],
+      "want": []
+    },
+    {
+      "name": "single cell",
+      "kind": "edge",
+      "args": [
+        [
+          [
+            "a"
+          ]
+        ],
+        [
+          "a",
+          "aa",
+          "b"
+        ]
+      ],
+      "want": [
+        "a"
+      ]
+    },
+    {
+      "name": "do not reuse cell",
+      "kind": "edge",
+      "args": [
+        [
+          [
+            "a",
+            "b"
+          ]
+        ],
+        [
+          "aba",
+          "ab",
+          "ba"
+        ]
+      ],
+      "want": [
+        "ab",
+        "ba"
+      ]
+    },
+    {
+      "name": "word found once despite many paths",
+      "kind": "edge",
+      "args": [
+        [
+          [
+            "a",
+            "a"
+          ],
+          [
+            "a",
+            "a"
+          ]
+        ],
+        [
+          "a",
+          "aa",
+          "aaaa",
+          "aaaaa"
+        ]
+      ],
+      "want": [
+        "a",
+        "aa",
+        "aaaa"
+      ]
+    }
+  ],
+  "policy": "unordered"
+}

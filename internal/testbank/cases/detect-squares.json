@@ -1,0 +1,206 @@
+{
+  "slug": "detect-squares",
+  "entry": "Constructor",
+  "mode": "operations",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "ops": [
+        "DetectSquares",
+        "add",
+        "add",
+        "add",
+        "count",
+        "count",
+        "add",
+        "count"
+      ],
+      "calls": [
+        [],
+        [
+          [
+            3,
+            10
+          ]
+        ],
+        [
+          [
+            11,
+            2
+          ]
+        ],
+        [
+          [
+            3,
+            2
+          ]
+        ],
+        [
+          [
+            11,
+            10
+          ]
+        ],
+        [
+          [
+            14,
+            8
+          ]
+        ],
+        [
+          [
+            11,
+            2
+          ]
+        ],
+        [
+          [
+            11,
+            10
+          ]
+        ]
+      ],
+      "want": [
+        null,
+        null,
+        null,
+        null,
+        1,
+        0,
+        null,
+        2
+      ]
+    },
+    {
+      "name": "duplicates multiply square count",
+      "kind": "edge",
+      "ops": [
+        "Constructor",
+        "add",
+        "add",
+        "add",
+        "add",
+        "count",
+        "count"
+      ],
+      "calls": [
+        [],
+        [
+          [
+            0,
+            0
+          ]
+        ],
+        [
+          [
+            0,
+            1
+          ]
+        ],
+        [
+          [
+            1,
+            0
+          ]
+        ],
+        [
+          [
+            1,
+            0
+          ]
+        ],
+        [
+          [
+            1,
+            1
+          ]
+        ],
+        [
+          [
+            0,
+            0
+          ]
+        ]
+      ],
+      "want": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        2,
+        0
+      ]
+    },
+    {
+      "name": "both sides and no degenerate square",
+      "kind": "edge",
+      "ops": [
+        "Constructor",
+        "add",
+        "add",
+        "add",
+        "add",
+        "add",
+        "count",
+        "count"
+      ],
+      "calls": [
+        [],
+        [
+          [
+            0,
+            0
+          ]
+        ],
+        [
+          [
+            0,
+            2
+          ]
+        ],
+        [
+          [
+            2,
+            0
+          ]
+        ],
+        [
+          [
+            2,
+            2
+          ]
+        ],
+        [
+          [
+            0,
+            0
+          ]
+        ],
+        [
+          [
+            0,
+            0
+          ]
+        ],
+        [
+          [
+            1,
+            1
+          ]
+        ]
+      ],
+      "want": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        1,
+        0
+      ]
+    }
+  ]
+}

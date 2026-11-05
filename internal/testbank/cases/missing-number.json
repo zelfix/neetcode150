@@ -1,0 +1,94 @@
+{
+  "slug": "missing-number",
+  "entry": "missingNumber",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        [
+          3,
+          0,
+          1
+        ]
+      ],
+      "want": 2
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        [
+          0,
+          1
+        ]
+      ],
+      "want": 2
+    },
+    {
+      "name": "example 3",
+      "kind": "example",
+      "args": [
+        [
+          9,
+          6,
+          4,
+          2,
+          3,
+          5,
+          7,
+          0,
+          1
+        ]
+      ],
+      "want": 8
+    },
+    {
+      "name": "missing zero",
+      "kind": "edge",
+      "args": [
+        [
+          1
+        ]
+      ],
+      "want": 0
+    },
+    {
+      "name": "missing one",
+      "kind": "edge",
+      "args": [
+        [
+          0
+        ]
+      ],
+      "want": 1
+    },
+    {
+      "name": "missing last",
+      "kind": "edge",
+      "args": [
+        [
+          0,
+          1,
+          2,
+          3
+        ]
+      ],
+      "want": 4
+    },
+    {
+      "name": "missing middle unsorted",
+      "kind": "edge",
+      "args": [
+        [
+          4,
+          0,
+          1,
+          3
+        ]
+      ],
+      "want": 2
+    }
+  ]
+}

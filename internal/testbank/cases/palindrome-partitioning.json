@@ -1,0 +1,94 @@
+{
+  "slug": "palindrome-partitioning",
+  "entry": "partition",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        "aab"
+      ],
+      "want": [
+        [
+          "a",
+          "a",
+          "b"
+        ],
+        [
+          "aa",
+          "b"
+        ]
+      ]
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        "a"
+      ],
+      "want": [
+        [
+          "a"
+        ]
+      ]
+    },
+    {
+      "name": "all identical",
+      "kind": "edge",
+      "args": [
+        "aaa"
+      ],
+      "want": [
+        [
+          "a",
+          "a",
+          "a"
+        ],
+        [
+          "a",
+          "aa"
+        ],
+        [
+          "aa",
+          "a"
+        ],
+        [
+          "aaa"
+        ]
+      ]
+    },
+    {
+      "name": "no long palindromes",
+      "kind": "edge",
+      "args": [
+        "abc"
+      ],
+      "want": [
+        [
+          "a",
+          "b",
+          "c"
+        ]
+      ]
+    },
+    {
+      "name": "whole palindrome",
+      "kind": "edge",
+      "args": [
+        "aba"
+      ],
+      "want": [
+        [
+          "a",
+          "b",
+          "a"
+        ],
+        [
+          "aba"
+        ]
+      ]
+    }
+  ],
+  "policy": "unordered"
+}

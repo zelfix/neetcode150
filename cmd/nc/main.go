@@ -4,13 +4,14 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
+	"math"
 	"math/rand/v2"
 	"os"
 	"os/signal"
 	"path/filepath"
-	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -22,26 +23,37 @@ import (
 	"neetcode150/internal/fetcher"
 	"neetcode150/internal/progress"
 	"neetcode150/internal/scaffold"
+	"neetcode150/internal/studydb"
 	"neetcode150/internal/textdiff"
+	"neetcode150/internal/tutor"
 	"neetcode150/internal/web"
 )
 
 const usage = `nc — local NeetCode 150 study kit
 
 Usage:
+  nc migrate                   import existing personal data into SQLite once
+  nc backup <file.sqlite3>      create a consistent database backup
+  nc notes <problem>           read notes (--file path to replace)
+  nc hints <problem>           read hint ladder (--file path to replace)
+  nc log                       read the study log (--append-file path to append)
   nc fetch [--force]           download the problem list, statements and Go signatures
-  nc serve [--port 8150]       serve the study site
+  nc serve [--port 8150]       serve the study site and the tutor panel
+                               --tutor-provider claude|codex (default claude)
+                               --tutor-mode full|tutor, --tutor-budget <usd>
   nc next                      what to work on now
   nc start <problem>           scaffold the Go solution and notes, mark it in progress
+  nc tests <problem>|--all     add example and corner-case tests to existing workspaces
   nc status <problem> <state>  set state: new | attempted | solved | shaky
   nc rate <problem> <1-5>      record how it went and reschedule the review
                                --rung <0-5> notes the highest hint you needed
+                               --amend <1-5> corrects the last rating, --undo drops it
   nc resolve <problem>         archive the current solution and start a cold re-solve
   nc diff <problem>            the last archived attempt against the current one
   nc drill [--pattern p]       a problem at random, pattern withheld (--solved to revise)
   nc weak [-n 10]              what is least secure, and why
   nc time <problem> <minutes>  add time spent
-  nc review                    what is due for review
+  nc review [--limit 8]        what is due for review, most overdue first
   nc stats                     progress by pattern
   nc info <problem>            paths and state for one problem
   nc history <problem>         every recorded rating for one problem
@@ -70,6 +82,12 @@ func run(args []string) error {
 	}
 
 	switch cmd {
+	case "migrate":
+		return cmdDatabase(root, rest, false)
+	case "backup":
+		return cmdDatabase(root, rest, true)
+	case "notes", "hints", "log":
+		return cmdDocument(root, cmd, rest)
 	case "fetch":
 		return cmdFetch(root, rest)
 	case "serve":
@@ -78,6 +96,8 @@ func run(args []string) error {
 		return cmdNext(root)
 	case "start":
 		return cmdStart(root, rest)
+	case "tests":
+		return cmdTests(root, rest)
 	case "status":
 		return cmdStatus(root, rest)
 	case "rate":
@@ -85,7 +105,7 @@ func run(args []string) error {
 	case "time":
 		return cmdTime(root, rest)
 	case "review":
-		return cmdReview(root)
+		return cmdReview(root, rest)
 	case "stats":
 		return cmdStats(root)
 	case "info":
@@ -108,7 +128,7 @@ func run(args []string) error {
 // ---------- shared loading ----------
 
 func catalogPath(root string) string  { return filepath.Join(root, "content", "problems.json") }
-func progressPath(root string) string { return filepath.Join(root, "progress.json") }
+func progressPath(root string) string { return filepath.Join(root, studydb.Filename) }
 
 func load(root string) (*catalog.Catalog, *progress.Store, error) {
 	cat, err := catalog.Load(catalogPath(root))
@@ -120,6 +140,98 @@ func load(root string) (*catalog.Catalog, *progress.Store, error) {
 		return nil, nil, err
 	}
 	return cat, prog, nil
+}
+
+// Document commands expose personal Markdown without making legacy files live again.
+func cmdDocument(root, kind string, args []string) error {
+	cat, prog, err := load(root)
+	if err != nil {
+		return err
+	}
+	defer prog.Close()
+	slug := ""
+	if kind != "log" {
+		if len(args) == 0 {
+			return fmt.Errorf("usage: nc %s <problem> [--file path | --append-file path]", kind)
+		}
+		p, err := cat.Resolve(args[0])
+		if err != nil {
+			return err
+		}
+		slug = p.Slug
+		args = args[1:]
+	}
+	if len(args) == 0 {
+		text, err := prog.DB().Document(slug, kind)
+		if err != nil {
+			return err
+		}
+		fmt.Print(text)
+		return nil
+	}
+	if len(args) != 2 || (args[0] != "--file" && args[0] != "--append-file") {
+		return fmt.Errorf("expected --file path or --append-file path")
+	}
+	data, err := os.ReadFile(args[1])
+	if err != nil {
+		return err
+	}
+	if args[0] == "--append-file" {
+		_, err = prog.DB().SQL.Exec("INSERT INTO documents VALUES(?,?,?) ON CONFLICT(slug,kind) DO UPDATE SET text=documents.text || excluded.text", slug, kind, string(data))
+	} else {
+		err = prog.DB().SaveDocument(slug, kind, string(data))
+	}
+	return err
+}
+
+func cmdDatabase(root string, args []string, backup bool) error {
+	db, err := studydb.Open(root)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	var check string
+	if err = db.SQL.QueryRow("PRAGMA integrity_check").Scan(&check); err != nil {
+		return err
+	}
+	if check != "ok" {
+		return fmt.Errorf("SQLite integrity check: %s", check)
+	}
+	if backup {
+		if len(args) != 1 {
+			return fmt.Errorf("usage: nc backup <new-file.sqlite3>")
+		}
+		path, err := filepath.Abs(args[0])
+		if err != nil {
+			return err
+		}
+		if _, err = os.Stat(path); err == nil {
+			return fmt.Errorf("backup already exists: %s", path)
+		} else if !os.IsNotExist(err) {
+			return err
+		}
+		if _, err = db.SQL.Exec("VACUUM INTO ?", path); err != nil {
+			return err
+		}
+		if err = os.Chmod(path, 0600); err != nil {
+			return err
+		}
+		fmt.Println("Backup:", path)
+		return nil
+	}
+	if len(args) > 0 {
+		return fmt.Errorf("usage: nc migrate")
+	}
+	var audit string
+	if err = db.SQL.QueryRow("SELECT value FROM metadata WHERE key='legacy_import_v1'").Scan(&audit); err != nil {
+		return err
+	}
+	var counts map[string]int
+	if err = json.Unmarshal([]byte(audit), &counts); err != nil {
+		return err
+	}
+	fmt.Printf("Database: %s\nImport verified: %d progress entries, %d documents, %d archived attempts\nIntegrity: %s\nLegacy files are preserved and no longer updated.\n", filepath.Join(root, studydb.Filename), counts["progress"], counts["documents"], counts["attempts"], check)
+	return nil
 }
 
 // resolve looks up one problem from a loose command-line reference.
@@ -190,21 +302,55 @@ func cmdServe(root string, args []string) error {
 	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
 	port := fs.Int("port", 8150, "port to listen on")
 	host := fs.String("host", "127.0.0.1", "address to bind")
+	provider := fs.String("tutor-provider", string(tutor.ProviderClaude),
+		"agent CLI: claude or codex")
+	mode := fs.String("tutor-mode", string(tutor.ModeTutor),
+		"tutor permissions: tutor (read-only, default) or full")
+	budget := fs.Float64("tutor-budget", 0, "dollar ceiling per tutor session, 0 for none")
 	if err := fs.Parse(args); err != nil {
 		return err
+	}
+	if p := tutor.Provider(*provider); !p.Valid() {
+		return fmt.Errorf("--tutor-provider must be %q or %q, got %q", tutor.ProviderClaude, tutor.ProviderCodex, *provider)
+	}
+	if m := tutor.Mode(*mode); !m.Valid() {
+		return fmt.Errorf("--tutor-mode must be %q or %q, got %q", tutor.ModeFull, tutor.ModeTutor, *mode)
+	}
+	if *budget < 0 || math.IsNaN(*budget) || math.IsInf(*budget, 0) {
+		return fmt.Errorf("--tutor-budget must be a finite number greater than or equal to 0")
+	}
+	if tutor.Provider(*provider) == tutor.ProviderCodex && *budget > 0 {
+		return fmt.Errorf("--tutor-budget only applies to the Claude provider")
 	}
 	cat, prog, err := load(root)
 	if err != nil {
 		return err
 	}
+	defer prog.Close()
 	store := content.NewStore(root, content.NewRenderer())
 	srv, err := web.New(root, cat, store, prog)
 	if err != nil {
 		return err
 	}
+	coach := tutor.NewForProvider(root, tutor.Provider(*provider), tutor.Mode(*mode), *budget)
+	srv.UseTutor(coach)
+	// The server owns claude child processes now, so it has to be stopped in
+	// order rather than killed where it stands.
+	defer srv.CloseTutor()
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
 	addr := fmt.Sprintf("%s:%d", *host, *port)
 	fmt.Printf("neetcode150 on http://%s  (%d problems, Ctrl-C to stop)\n", addr, len(cat.Problems))
-	return web.Listen(addr, srv.Handler())
+	if ok, why := coach.Available(); ok {
+		fmt.Printf("tutor panel: %s, %s mode\n", *provider, *mode)
+	} else {
+		fmt.Printf("tutor panel off — %s\n", why)
+	}
+	err = web.Listen(ctx, addr, srv.Handler())
+	fmt.Println("stopping tutor sessions…")
+	return err
 }
 
 func cmdNext(root string) error {
@@ -265,6 +411,8 @@ func cmdStart(root string, args []string) error {
 		fmt.Printf("  created %s\n", rel)
 	}
 	switch {
+	case files.PracticeCases > 0:
+		fmt.Printf("  %d practice cases — examples and corner cases\n", files.PracticeCases)
 	case files.TableDriven:
 		fmt.Printf("  entry point %s() — the test is a table, fill in the cases\n", files.FuncName)
 	case strings.TrimSpace(string(signature)) == "":
@@ -274,6 +422,36 @@ func cmdStart(root string, args []string) error {
 	}
 	fmt.Printf("  read   %s/problem.md\n", p.ContentDir())
 	fmt.Printf("  test   go test ./%s/\n", filepath.ToSlash(p.SolutionDir()))
+	return nil
+}
+
+// cmdTests only writes tests: it does not open or change personal study data.
+func cmdTests(root string, args []string) error {
+	cat, err := catalog.Load(catalogPath(root))
+	if err != nil {
+		return err
+	}
+	problems := cat.Problems
+	if len(args) != 1 || args[0] != "--all" {
+		p, err := resolve(cat, args)
+		if err != nil {
+			return err
+		}
+		problems = []catalog.Problem{p}
+	}
+	added := 0
+	for _, p := range problems {
+		paths, err := scaffold.EnsurePracticeTests(root, p)
+		if err != nil {
+			return err
+		}
+		for _, path := range paths {
+			rel, _ := filepath.Rel(root, path)
+			fmt.Printf("  created %s\n", rel)
+			added++
+		}
+	}
+	fmt.Printf("Added %d test suites. Unstarted problems receive their tests on Start.\n", added)
 	return nil
 }
 
@@ -310,6 +488,20 @@ func cmdStatus(root string, args []string) error {
 // The flag package stops parsing at the first non-flag argument, which would
 // force `nc rate --rung 2 two-sum 4`. The rating belongs at the end, so the
 // flag has to be extracted by hand.
+// takeBoolFlag pulls a valueless flag out of args, wherever it sits, so that
+// the problem reference can stay where it reads naturally.
+func takeBoolFlag(args []string, name string) (rest []string, found bool) {
+	long, short := "--"+name, "-"+name
+	for _, a := range args {
+		if a == long || a == short {
+			found = true
+			continue
+		}
+		rest = append(rest, a)
+	}
+	return rest, found
+}
+
 func takeIntFlag(args []string, name string) (rest []string, value int, found bool, err error) {
 	long, short := "--"+name, "-"+name
 	for i := 0; i < len(args); i++ {
@@ -348,13 +540,64 @@ func takeIntFlag(args []string, name string) (rest []string, value int, found bo
 // `nc weak` reads.
 const maxSitting = 6 * time.Hour
 
+// printSchedule reports when a problem comes back, using the interval the
+// schedule is actually holding to rather than the nominal ladder rung — ease
+// and the per-problem spread both move it.
+func printSchedule(e progress.Entry) {
+	if e.NextReview == nil {
+		return
+	}
+	fmt.Printf("  back in %s (%s)\n", plural(e.IntervalDays(), "day", "days"),
+		e.NextReview.Format("2 Jan 2006"))
+}
+
+// cmdRateUndo drops the last rating. Ratings drive the whole schedule, so a
+// mistyped one is worth being able to take back.
+func cmdRateUndo(root string, args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("usage: nc rate <problem> --undo")
+	}
+	cat, prog, err := load(root)
+	if err != nil {
+		return err
+	}
+	p, err := resolve(cat, args)
+	if err != nil {
+		return err
+	}
+	e, dropped, ok, err := prog.Undo(p.Slug, time.Now())
+	if err != nil {
+		return err
+	}
+	if !ok {
+		fmt.Printf("%d. %s — no rating to undo.\n", p.ID, p.Title)
+		return nil
+	}
+	fmt.Printf("%d. %s — dropped the %d from %s, now %s\n", p.ID, p.Title,
+		dropped.Confidence, dropped.Date.Format("2 Jan 2006"), e.Status.Label())
+	if e.MinutesSpent > 0 {
+		fmt.Printf("  %s stays logged: the sitting happened either way\n",
+			plural(e.MinutesSpent, "minute", "minutes"))
+	}
+	printSchedule(e)
+	return nil
+}
+
 func cmdRate(root string, args []string) error {
+	args, undo := takeBoolFlag(args, "undo")
+	if undo {
+		return cmdRateUndo(root, args)
+	}
+	args, amend := takeBoolFlag(args, "amend")
 	args, rung, haveRung, err := takeIntFlag(args, "rung")
 	if err != nil {
 		return err
 	}
 	if len(args) < 2 {
-		return fmt.Errorf("usage: nc rate <problem> <1-5> [--rung <0-5>]")
+		if amend {
+			return fmt.Errorf("usage: nc rate <problem> --amend <1-5> [--rung <0-5>]")
+		}
+		return fmt.Errorf("usage: nc rate <problem> <1-5> [--rung <0-5>] | --amend <1-5> | --undo")
 	}
 	n, err := strconv.Atoi(args[len(args)-1])
 	if err != nil {
@@ -370,8 +613,25 @@ func cmdRate(root string, args []string) error {
 	}
 
 	now := time.Now()
-	// Read the clock before rating, because Rate stops it.
-	elapsed, running := prog.Get(p.Slug).Elapsed(now)
+	if amend {
+		e, ok, err := prog.Amend(p.Slug, n, rung, now)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			fmt.Printf("%d. %s — no rating to amend; `nc rate %s %d` records the first one.\n",
+				p.ID, p.Title, p.Slug, n)
+			return nil
+		}
+		fmt.Printf("%d. %s — last rating corrected to %d, now %s\n", p.ID, p.Title, n, e.Status.Label())
+		printSchedule(e)
+		return nil
+	}
+
+	// Read the clock and the stage before rating, because Rate stops the one
+	// and moves the other.
+	prev := prog.Get(p.Slug)
+	elapsed, running := prev.Elapsed(now)
 	logged := 0
 	switch {
 	case running && elapsed > maxSitting:
@@ -400,18 +660,20 @@ func cmdRate(root string, args []string) error {
 		} else {
 			fmt.Printf("  needed hint rung %d\n", rung)
 		}
-		if n >= 4 && rung >= 3 {
-			fmt.Printf("  a %d with rung %d is worth a second look: the rating is the felt\n", n, rung)
-			fmt.Println("  measure and the rung is the honest one")
+		// The rating is the felt measure and the rung is the honest one, so say
+		// plainly when the rung is what decided the schedule.
+		held := max(1, prev.ReviewStage)
+		switch {
+		case e.ReviewStage < held:
+			fmt.Printf("  rung %d is not recall — stage %d, down from %d\n", rung, e.ReviewStage, held)
+		case rung >= 3 && n >= 4:
+			fmt.Printf("  rung %d held it at stage %d rather than earning the next one\n", rung, e.ReviewStage)
 		}
 	}
 	if e.Slipped() {
 		fmt.Println("  this fell since last time — the interval it was given was too long")
 	}
-	if e.NextReview != nil {
-		fmt.Printf("  back in %s (%s)\n", plural(progress.IntervalDays(e.ReviewStage), "day", "days"),
-			e.NextReview.Format("2 Jan 2006"))
-	}
+	printSchedule(e)
 	return nil
 }
 
@@ -443,35 +705,34 @@ func cmdHistory(root string, args []string) error {
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(w, "  date\trating\trung\tstage\tinterval\tsitting\t")
-	prevMinutes, prevRating := 0, 0
-	for i, r := range e.History {
+	for _, st := range progress.Sittings(e) {
 		sitting := "—"
-		if d := r.MinutesTotal - prevMinutes; d > 0 {
-			sitting = fmt.Sprintf("%d min", d)
+		if st.Minutes > 0 {
+			sitting = fmt.Sprintf("%d min", st.Minutes)
 		}
 		note := ""
-		if i > 0 && r.Confidence < prevRating {
+		if st.Slipped {
 			note = "slipped"
 		}
 		// A high rating next to a high rung is the signature of an inflated
 		// self-assessment, so the two sit side by side.
-		if r.Confidence >= 4 && r.Rung >= 3 {
+		if st.Generous {
 			note = strings.TrimSpace(note + " rating looks generous")
 		}
 		rung := "—"
-		if r.Rung > 0 {
-			rung = strconv.Itoa(r.Rung)
+		if st.Rung > 0 {
+			rung = strconv.Itoa(st.Rung)
 		}
 		fmt.Fprintf(w, "  %s\t%d\t%s\t%d\t%s\t%s\t%s\n",
-			r.Date.Format("2 Jan 2006"), r.Confidence, rung, r.Stage,
-			plural(progress.IntervalDays(r.Stage), "day", "days"), sitting, note)
-		prevMinutes, prevRating = r.MinutesTotal, r.Confidence
+			st.Date.Format("2 Jan 2006"), st.Confidence, rung, st.Stage,
+			plural(st.IntervalDays, "day", "days"), sitting, note)
 	}
 	if err := w.Flush(); err != nil {
 		return err
 	}
 	if e.NextReview != nil {
-		fmt.Printf("\n  next review %s\n", e.NextReview.Format("2 Jan 2006"))
+		fmt.Printf("\n  next review %s, in %s\n", e.NextReview.Format("2 Jan 2006"),
+			plural(e.IntervalDays(), "day", "days"))
 	}
 	return nil
 }
@@ -500,18 +761,32 @@ func cmdTime(root string, args []string) error {
 	return nil
 }
 
-func cmdReview(root string) error {
+// reviewLimit is how many due reviews one sitting is asked to carry. Reviews
+// arrive in heaps, and a list of thirty is a list nobody starts.
+const reviewLimit = 8
+
+func cmdReview(root string, args []string) error {
+	fs := flag.NewFlagSet("review", flag.ContinueOnError)
+	limit := fs.Int("limit", reviewLimit, "how many to list; 0 for all")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
 	cat, prog, err := load(root)
 	if err != nil {
 		return err
 	}
 	now := time.Now()
-	due := prog.DueReview(cat.Problems, now)
-	if len(due) == 0 {
+	total := len(prog.DueReview(cat.Problems, now))
+	if total == 0 {
 		fmt.Println("Nothing due for review.")
 		return nil
 	}
-	fmt.Printf("%s due:\n", plural(len(due), "problem", "problems"))
+	due := prog.ReviewQueue(cat.Problems, now, *limit)
+	if len(due) < total {
+		fmt.Printf("%s due, the %d most overdue first:\n", plural(total, "problem", "problems"), len(due))
+	} else {
+		fmt.Printf("%s due, most overdue first:\n", plural(total, "problem", "problems"))
+	}
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	for _, p := range due {
 		e := prog.Get(p.Slug)
@@ -531,10 +806,18 @@ func cmdStats(root string) error {
 		return err
 	}
 	now := time.Now()
+	reports := prog.Patterns(cat.Problems, now)
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	for _, g := range cat.Groups() {
-		sum := prog.Summarize(g.Problems, now)
-		fmt.Fprintf(w, "  %s\t%d/%d\t%s\n", g.Pattern, sum.Done(), sum.Total, bar(sum.Done(), sum.Total))
+	for _, r := range reports {
+		// The rung and the unaided share are blank rather than zero where
+		// nothing is rated: a pattern not started has not scored 0%.
+		held, rung := "", ""
+		if r.Rated > 0 {
+			held = fmt.Sprintf("%d%% unaided", r.UnaidedShare())
+			rung = fmt.Sprintf("rung %.1f", r.Rung)
+		}
+		fmt.Fprintf(w, "  %s\t%d/%d\t%s\t%s\t%s\n",
+			r.Pattern, r.Solved, r.Total, bar(r.Solved, r.Total), held, rung)
 	}
 	if err := w.Flush(); err != nil {
 		return err
@@ -544,6 +827,16 @@ func cmdStats(root string) error {
 		total.Done(), total.Total, total.Percent(), total.Attempted, total.DueNow)
 	if total.Minutes > 0 {
 		fmt.Printf("%s logged\n", plural(total.Minutes, "minute", "minutes"))
+	}
+	if concerns := progress.ByConcern(reports); len(concerns) > 0 {
+		fmt.Printf("\nworth going back to: ")
+		for i, r := range concerns[:min(len(concerns), 3)] {
+			if i > 0 {
+				fmt.Print(", ")
+			}
+			fmt.Print(r.Pattern)
+		}
+		fmt.Println("\n  `nc weak` names the problems; the Coach page on the site shows the whole picture")
 	}
 	return nil
 }
@@ -566,8 +859,8 @@ func cmdInfo(root string, args []string) error {
 		fmt.Printf("  lists      NeetCode 150, Blind 75\n")
 	}
 	fmt.Printf("  statement  %s/problem.md\n", p.ContentDir())
-	fmt.Printf("  hints      %s/hints.md\n", p.ContentDir())
-	fmt.Printf("  notes      %s/notes.md\n", p.ContentDir())
+	fmt.Printf("  hints      nc hints %s (SQLite)\n", p.Slug)
+	fmt.Printf("  notes      nc notes %s (SQLite)\n", p.Slug)
 	fmt.Printf("  signature  %s/signature.txt\n", p.ContentDir())
 	fmt.Printf("  solution   %s/solution.go\n", p.SolutionDir())
 	fmt.Printf("  leetcode   %s\n", p.LeetCodeURL)
@@ -583,7 +876,11 @@ func cmdInfo(root string, args []string) error {
 	}
 	fmt.Println()
 	if e.NextReview != nil {
-		fmt.Printf("  review     %s\n", e.NextReview.Format("2 Jan 2006"))
+		fmt.Printf("  review     %s, %s after the last sitting\n",
+			e.NextReview.Format("2 Jan 2006"), plural(e.IntervalDays(), "day", "days"))
+	}
+	if e.Ease != 0 {
+		fmt.Printf("  ease       %.2f (stage %d of %d)\n", e.Ease, e.ReviewStage, progress.MaxStage)
 	}
 	return nil
 }
@@ -649,7 +946,7 @@ func cmdResolve(root string, args []string) error {
 		return err
 	}
 
-	rel, _ := filepath.Rel(root, archive)
+	rel := archive
 	fmt.Printf("%d. %s — %s, %s\n", p.ID, p.Title, p.Difficulty, p.Pattern)
 	fmt.Printf("  archived %s\n", filepath.ToSlash(rel))
 	fmt.Printf("  reset    %s\n", filepath.ToSlash(filepath.Join(p.SolutionDir(), "solution.go")))
@@ -680,7 +977,8 @@ func cmdDiff(root string, args []string) error {
 	}
 	previous := attempts[len(attempts)-1]
 
-	oldSrc, err := os.ReadFile(previous)
+	oldAttempt, err := scaffold.ReadAttempt(root, previous)
+	oldSrc := []byte(oldAttempt.Code)
 	if err != nil {
 		return err
 	}
@@ -689,7 +987,7 @@ func cmdDiff(root string, args []string) error {
 		return err
 	}
 
-	rel, _ := filepath.Rel(root, previous)
+	rel := previous
 	fmt.Printf("%d. %s — %s against the current solution\n", p.ID, p.Title, filepath.ToSlash(rel))
 	if len(attempts) > 1 {
 		fmt.Printf("  (%s archived in total)\n", plural(len(attempts), "attempt", "attempts"))
@@ -783,12 +1081,6 @@ func cmdDrill(root string, args []string) error {
 
 // ---------- weak spots ----------
 
-type weakness struct {
-	problem catalog.Problem
-	score   int
-	reasons []string
-}
-
 // cmdWeak ranks what is least secure, and says why for each one.
 //
 // The score is only a sort key; the reasons are the output. A number without
@@ -803,77 +1095,18 @@ func cmdWeak(root string, args []string) error {
 	if err != nil {
 		return err
 	}
-
-	var minutes []int
-	for _, p := range cat.Problems {
-		if e := prog.Get(p.Slug); e.MinutesSpent > 0 {
-			minutes = append(minutes, e.MinutesSpent)
-		}
-	}
-	slices.Sort(minutes)
-	median := 0
-	if n := len(minutes); n > 0 {
-		median = minutes[n/2]
-	}
-
-	var weak []weakness
-	for _, p := range cat.Problems {
-		e := prog.Get(p.Slug)
-		if e.Status != progress.Solved && e.Status != progress.Shaky {
-			continue
-		}
-		w := weakness{problem: p}
-		if e.Slipped() {
-			w.score += 3
-			w.reasons = append(w.reasons, "rating fell since last time")
-		}
-		if e.Status == progress.Shaky {
-			w.score += 2
-			w.reasons = append(w.reasons, "flagged shaky")
-		}
-		switch e.Confidence {
-		case 1, 2:
-			w.score += 3
-			w.reasons = append(w.reasons, fmt.Sprintf("last rated %d", e.Confidence))
-		case 3:
-			w.score++
-			w.reasons = append(w.reasons, "last rated 3")
-		}
-		if r, ok := e.LastReview(); ok && r.Rung >= 4 {
-			w.score += 3
-			w.reasons = append(w.reasons, fmt.Sprintf("needed hint rung %d", r.Rung))
-		} else if ok && r.Rung >= 2 {
-			w.score++
-			w.reasons = append(w.reasons, fmt.Sprintf("needed hint rung %d", r.Rung))
-		}
-		if e.Attempts >= 2 {
-			w.score++
-			w.reasons = append(w.reasons, plural(e.Attempts, "attempt", "attempts"))
-		}
-		if median > 0 && e.MinutesSpent >= 2*median {
-			w.score++
-			w.reasons = append(w.reasons, fmt.Sprintf("%s, well over the %d-minute median", plural(e.MinutesSpent, "minute", "minutes"), median))
-		}
-		if w.score > 0 {
-			weak = append(weak, w)
-		}
-	}
+	weak := prog.Weakest(cat.Problems, *limit)
 
 	if len(weak) == 0 {
 		fmt.Println("Nothing is flagged. Either it is all solid, or there is not enough history yet —")
 		fmt.Println("`nc rate` after every sitting is what fills this in.")
 		return nil
 	}
-	slices.SortStableFunc(weak, func(a, b weakness) int { return b.score - a.score })
-	if len(weak) > *limit {
-		weak = weak[:*limit]
-	}
-
 	fmt.Printf("%s to shore up, weakest first:\n\n", plural(len(weak), "problem", "problems"))
 	for _, w := range weak {
-		fmt.Printf("  %d. %s — %s\n", w.problem.ID, w.problem.Title, w.problem.Pattern)
-		fmt.Printf("     %s\n", strings.Join(w.reasons, "; "))
-		fmt.Printf("     nc resolve %s\n", w.problem.Slug)
+		fmt.Printf("  %d. %s — %s\n", w.Problem.ID, w.Problem.Title, w.Problem.Pattern)
+		fmt.Printf("     %s\n", strings.Join(w.Reasons, "; "))
+		fmt.Printf("     nc resolve %s\n", w.Problem.Slug)
 	}
 	return nil
 }

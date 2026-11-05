@@ -1,0 +1,47 @@
+{
+  "slug": "climbing-stairs",
+  "entry": "climbStairs",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        2
+      ],
+      "want": 2
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        3
+      ],
+      "want": 3
+    },
+    {
+      "name": "one stair",
+      "kind": "edge",
+      "args": [
+        1
+      ],
+      "want": 1
+    },
+    {
+      "name": "four stairs",
+      "kind": "edge",
+      "args": [
+        4
+      ],
+      "want": 5
+    },
+    {
+      "name": "upper bound",
+      "kind": "edge",
+      "args": [
+        45
+      ],
+      "want": 1836311903
+    }
+  ]
+}

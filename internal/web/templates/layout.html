@@ -4,11 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{.Title}} — neetcode150</title>
-<link rel="stylesheet" href="/static/app.css">
 <link rel="stylesheet" href="/highlight.css">
+<link rel="stylesheet" href="/static/app.css">
 <link rel="icon" href="/static/favicon.svg">
 </head>
-<body>
+<body{{if .Full}} class="app-full"{{end}}>
 <header class="bar">
   <a class="brand" href="/">neetcode150</a>
   <nav class="nav">
@@ -16,6 +16,7 @@
     <a href="/problems/" {{if eq .Nav "problems"}}class="on"{{end}}>Problems</a>
     <a href="/patterns/" {{if eq .Nav "patterns"}}class="on"{{end}}>Patterns</a>
     <a href="/review/" {{if eq .Nav "review"}}class="on"{{end}}>Review{{if .Due}} <span class="count">{{.Due}}</span>{{end}}</a>
+    <a href="/coach/" {{if eq .Nav "coach"}}class="on"{{end}}>Coach</a>
   </nav>
   <span class="tally">{{.Summary.Done}}<span class="tally-sep">/</span>{{.Summary.Total}}</span>
 </header>

@@ -1,0 +1,91 @@
+{
+  "slug": "coin-change-ii",
+  "entry": "change",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        5,
+        [
+          1,
+          2,
+          5
+        ]
+      ],
+      "want": 4
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        3,
+        [
+          2
+        ]
+      ],
+      "want": 0
+    },
+    {
+      "name": "example 3",
+      "kind": "example",
+      "args": [
+        10,
+        [
+          10
+        ]
+      ],
+      "want": 1
+    },
+    {
+      "name": "zero amount",
+      "kind": "edge",
+      "args": [
+        0,
+        [
+          2,
+          3
+        ]
+      ],
+      "want": 1
+    },
+    {
+      "name": "order does not create new combination",
+      "kind": "edge",
+      "args": [
+        4,
+        [
+          1,
+          2
+        ]
+      ],
+      "want": 3
+    },
+    {
+      "name": "unreachable",
+      "kind": "edge",
+      "args": [
+        7,
+        [
+          2,
+          4
+        ]
+      ],
+      "want": 0
+    },
+    {
+      "name": "unsorted coins",
+      "kind": "edge",
+      "args": [
+        5,
+        [
+          5,
+          1,
+          2
+        ]
+      ],
+      "want": 4
+    }
+  ]
+}

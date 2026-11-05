@@ -1,0 +1,64 @@
+{
+  "slug": "longest-palindromic-substring",
+  "entry": "longestPalindrome",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        "babad"
+      ],
+      "want": "bab"
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        "cbbd"
+      ],
+      "want": "bb"
+    },
+    {
+      "name": "single",
+      "kind": "edge",
+      "args": [
+        "a"
+      ],
+      "want": "a"
+    },
+    {
+      "name": "all identical",
+      "kind": "edge",
+      "args": [
+        "aaaa"
+      ],
+      "want": "aaaa"
+    },
+    {
+      "name": "even palindrome",
+      "kind": "edge",
+      "args": [
+        "abba"
+      ],
+      "want": "abba"
+    },
+    {
+      "name": "several optimal singletons",
+      "kind": "edge",
+      "args": [
+        "abc"
+      ],
+      "want": "a"
+    },
+    {
+      "name": "mixed case",
+      "kind": "edge",
+      "args": [
+        "aA"
+      ],
+      "want": "a"
+    }
+  ],
+  "policy": "palindrome"
+}

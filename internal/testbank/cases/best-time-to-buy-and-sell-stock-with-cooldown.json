@@ -1,0 +1,79 @@
+{
+  "slug": "best-time-to-buy-and-sell-stock-with-cooldown",
+  "entry": "maxProfit",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        [
+          1,
+          2,
+          3,
+          0,
+          2
+        ]
+      ],
+      "want": 3
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        [
+          1
+        ]
+      ],
+      "want": 0
+    },
+    {
+      "name": "decreasing prices",
+      "kind": "edge",
+      "args": [
+        [
+          3,
+          2,
+          1
+        ]
+      ],
+      "want": 0
+    },
+    {
+      "name": "two days",
+      "kind": "edge",
+      "args": [
+        [
+          1,
+          2
+        ]
+      ],
+      "want": 1
+    },
+    {
+      "name": "cooldown forbids next day purchase",
+      "kind": "edge",
+      "args": [
+        [
+          1,
+          2,
+          0,
+          2
+        ]
+      ],
+      "want": 2
+    },
+    {
+      "name": "flat prices",
+      "kind": "edge",
+      "args": [
+        [
+          0,
+          0,
+          0
+        ]
+      ],
+      "want": 0
+    }
+  ]
+}

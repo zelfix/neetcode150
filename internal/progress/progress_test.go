@@ -16,6 +16,7 @@ func newStore(t *testing.T) *Store {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
+	t.Cleanup(func() { s.Close() })
 	return s
 }
 
@@ -60,16 +61,28 @@ func TestConfidentReviewsWalkUpTheLadder(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	wantDays := []int{3, 7, 16, 35, 90, 90}
-	for i, want := range wantDays {
-		now = now.AddDate(0, 0, want)
+	wantStages := []int{2, 3, 4, 5, 6, 6}
+	nominal := []int{3, 7, 16, 35, 90, 90}
+	previous := 1
+	for i, wantStage := range wantStages {
+		now = now.AddDate(0, 0, nominal[i])
 		e, err := s.Rate("two-sum", 5, now)
 		if err != nil {
 			t.Fatalf("Rate %d: %v", i, err)
 		}
-		if got := days(e, now); got != want {
-			t.Errorf("review %d: next in %d days, want %d (stage %d)", i+1, got, want, e.ReviewStage)
+		if e.ReviewStage != wantStage {
+			t.Errorf("review %d: stage = %d, want %d", i+1, e.ReviewStage, wantStage)
 		}
+		// Unaided fives earn ease, so each interval is the nominal rung or
+		// wider, and never narrower than the one before it.
+		got := days(e, now)
+		if got < nominal[i] {
+			t.Errorf("review %d: next in %d days, want at least the %d-day rung", i+1, got, nominal[i])
+		}
+		if got < previous {
+			t.Errorf("review %d: next in %d days, narrower than the previous %d", i+1, got, previous)
+		}
+		previous = got
 	}
 	if e := s.Get("two-sum"); e.ReviewStage != MaxStage {
 		t.Errorf("stage = %d, want the ladder to cap at %d", e.ReviewStage, MaxStage)
@@ -414,7 +427,6 @@ func TestStoreSeesAnotherProcessWrite(t *testing.T) {
 	if _, err := cli.SetStatus("two-sum", Solved, now); err != nil {
 		t.Fatal(err)
 	}
-	bumpMTime(t, path)
 
 	if got := site.Get("two-sum").Status; got != Solved {
 		t.Errorf("the site still reads %q — it did not reload the file", got)
@@ -445,7 +457,6 @@ func TestWritesDoNotClobberAnotherProcess(t *testing.T) {
 	if _, err := cli.SetStatus("contains-duplicate", Solved, now); err != nil {
 		t.Fatal(err)
 	}
-	bumpMTime(t, path)
 
 	// The site writes a different problem; the CLI's entry must survive.
 	if _, err := site.SetStatus("two-sum", Attempted, now); err != nil {
@@ -479,20 +490,9 @@ func TestReloadIgnoresACorruptFile(t *testing.T) {
 	if err := os.WriteFile(path, []byte(`{"two-sum": {"stat`), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	bumpMTime(t, path)
 
 	if got := s.Get("two-sum").Status; got != Solved {
 		t.Errorf("a corrupt file dropped the in-memory entry: %q", got)
-	}
-}
-
-// bumpMTime pushes the file's modification time forward, so the change is
-// visible regardless of the filesystem's timestamp granularity.
-func bumpMTime(t *testing.T, path string) {
-	t.Helper()
-	ahead := time.Now().Add(2 * time.Second)
-	if err := os.Chtimes(path, ahead, ahead); err != nil {
-		t.Fatal(err)
 	}
 }
 
@@ -662,75 +662,34 @@ func TestHistoryIsBackwardCompatible(t *testing.T) {
 	}
 }
 
-// Two processes read, then both write. The second write serialises the whole
-// map, so a change it never saw is silently reverted.
-//
-// The freshness check in syncFromDisk compares modification time and size, and
-// this test aims straight at its blind spot: bumping minutesSpent from 10 to 11
-// leaves the file exactly as long as it was, and Chtimes puts the timestamp
-// back to stand in for a filesystem with coarse mtime granularity. Both halves
-// are realistic — a one-digit rating change is the same length too, and HFS+
-// keeps mtime to the second.
-func TestWritesMergeWhenTheTimestampLooksUnchanged(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "progress.json")
-	now := time.Date(2026, 3, 1, 9, 0, 0, 0, time.UTC)
-
-	// Seed the file so both stores cache a real mtime and size.
-	seed, err := Load(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := seed.AddMinutes("contains-duplicate", 10, now); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := seed.SetStatus("two-sum", Attempted, now); err != nil {
-		t.Fatal(err)
-	}
-	info, err := os.Stat(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	stamp, size := info.ModTime(), info.Size()
-
+// Independent connections must merge writes without filesystem freshness checks.
+func TestWritesMergeAcrossDatabaseConnections(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "progress.json")
 	site, err := Load(path)
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer site.Close()
 	cli, err := Load(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	// The CLI's change keeps the file the same length.
-	if _, err := cli.Update("contains-duplicate", func(e *Entry) { e.MinutesSpent = 11 }); err != nil {
+	defer cli.Close()
+	now := time.Now()
+	if _, err := site.AddMinutes("contains-duplicate", 10, now); err != nil {
 		t.Fatal(err)
 	}
-	after, err := os.Stat(path)
-	if err != nil {
+	if _, err := cli.AddMinutes("contains-duplicate", 1, now); err != nil {
 		t.Fatal(err)
 	}
-	if after.Size() != size {
-		t.Fatalf("setup: file is %d bytes, want the original %d — the collision this test needs did not happen", after.Size(), size)
-	}
-	if err := os.Chtimes(path, stamp, stamp); err != nil {
-		t.Fatal(err)
-	}
-
-	// The site now writes a different problem out of its stale map.
 	if _, err := site.SetStatus("two-sum", Solved, now); err != nil {
 		t.Fatal(err)
 	}
-
-	reloaded, err := Load(path)
-	if err != nil {
-		t.Fatal(err)
+	if got := site.Get("contains-duplicate").MinutesSpent; got != 11 {
+		t.Fatalf("lost another connection's write: %d", got)
 	}
-	if got := reloaded.Get("contains-duplicate").MinutesSpent; got != 11 {
-		t.Errorf("the CLI's change was reverted: minutesSpent = %d, want 11", got)
-	}
-	if got := reloaded.Get("two-sum").Status; got != Solved {
-		t.Errorf("the site's change was lost: status = %q, want %q", got, Solved)
+	if got := cli.Get("two-sum").Status; got != Solved {
+		t.Fatalf("stale status: %s", got)
 	}
 }
 
@@ -810,5 +769,480 @@ func TestConcurrentWritersOnDifferentProblemsAllLand(t *testing.T) {
 		if got := reloaded.Get(slug).MinutesSpent; got != perSlug {
 			t.Errorf("%s has %d minutes, want %d — writes were lost", slug, got, perSlug)
 		}
+	}
+}
+
+func TestSittingsDerivesPerSittingFactsFromTheHistory(t *testing.T) {
+	e := Entry{History: []Review{
+		{Date: time.Date(2026, 3, 1, 9, 0, 0, 0, time.UTC), Confidence: 3, Stage: 2, MinutesTotal: 26, Rung: 3},
+		{Date: time.Date(2026, 3, 18, 9, 0, 0, 0, time.UTC), Confidence: 4, Stage: 3, MinutesTotal: 47, Rung: 3},
+		{Date: time.Date(2026, 4, 2, 9, 0, 0, 0, time.UTC), Confidence: 2, Stage: 1, MinutesTotal: 47, Rung: 5},
+	}}
+
+	got := Sittings(e)
+	if len(got) != 3 {
+		t.Fatalf("got %d sittings, want 3", len(got))
+	}
+
+	// The stored total is cumulative, so a sitting is the difference.
+	if got[0].Minutes != 26 || got[1].Minutes != 21 {
+		t.Errorf("minutes = %d, %d; want 26, 21", got[0].Minutes, got[1].Minutes)
+	}
+	// A total that did not move means the clock was not running.
+	if got[2].Minutes != 0 {
+		t.Errorf("minutes = %d on a sitting the clock missed, want 0", got[2].Minutes)
+	}
+
+	// The first rating has nothing to have slipped from.
+	if got[0].Slipped {
+		t.Error("the first rating cannot have slipped")
+	}
+	if got[1].Slipped {
+		t.Error("a rating that rose was reported as slipped")
+	}
+	if !got[2].Slipped {
+		t.Error("a rating that fell was not reported as slipped")
+	}
+
+	// A 4 that needed rung 3 is the signature of an inflated self-assessment.
+	if got[0].Generous {
+		t.Error("a 3 at rung 3 is honest, not generous")
+	}
+	if !got[1].Generous {
+		t.Error("a 4 at rung 3 should be flagged")
+	}
+
+	if got[1].IntervalDays != IntervalDays(3) {
+		t.Errorf("intervalDays = %d, want %d", got[1].IntervalDays, IntervalDays(3))
+	}
+}
+
+func TestSittingsOnAnEmptyHistory(t *testing.T) {
+	if got := Sittings(Entry{}); len(got) != 0 {
+		t.Errorf("got %d sittings from no history, want none", len(got))
+	}
+}
+
+// The ladder is the documented promise — 1, 3, 7, 16, 35, 90 — and a problem
+// with no history to stretch it should land on exactly those days, give or take
+// the spread that stops reviews piling onto one date.
+func TestNeutralEaseFollowsTheDocumentedLadder(t *testing.T) {
+	for stage := 1; stage <= MaxStage; stage++ {
+		want := reviewIntervals[stage]
+		got := interval(Entry{ReviewStage: stage}, "two-sum")
+		spread := want * jitterPercent / 100
+		if got < want-spread || got > want+spread {
+			t.Errorf("stage %d: interval %d days, want %d ± %d", stage, got, want, spread)
+		}
+	}
+}
+
+// Rung 3 is the invariant spelled out and rung 4 is pseudocode handed over.
+// Neither is recall, so neither may buy a longer interval, however good the
+// sitting felt afterwards.
+func TestRungThreeHoldsTheStageAndRungFourLapses(t *testing.T) {
+	cases := []struct {
+		rung      int
+		wantStage int
+		why       string
+	}{
+		{0, 5, "unaided, so it advances"},
+		{2, 5, "a nudge is still recall"},
+		{3, 4, "the invariant was supplied, so it holds"},
+		{4, 2, "pseudocode was handed over, so it falls"},
+		{5, 2, "the answer was handed over, so it falls"},
+	}
+	for _, c := range cases {
+		s := newStore(t)
+		now := time.Date(2026, 3, 1, 9, 0, 0, 0, time.UTC)
+		// Walk up to stage 4 without hints, then rate once at the rung.
+		if _, err := s.SetStatus("two-sum", Solved, now); err != nil {
+			t.Fatal(err)
+		}
+		for range 3 {
+			now = now.AddDate(0, 0, 30)
+			if _, err := s.RateHinted("two-sum", 5, 0, now); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if e := s.Get("two-sum"); e.ReviewStage != 4 {
+			t.Fatalf("setup left stage %d, want 4", e.ReviewStage)
+		}
+		now = now.AddDate(0, 0, 30)
+		e, err := s.RateHinted("two-sum", 4, c.rung, now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if e.ReviewStage != c.wantStage {
+			t.Errorf("rung %d: stage = %d, want %d — %s", c.rung, e.ReviewStage, c.wantStage, c.why)
+		}
+	}
+}
+
+// Two problems can sit on the same rung of the ladder without being equally
+// secure. Ease is what tells them apart.
+func TestEaseStretchesTheLadderPerProblem(t *testing.T) {
+	s := newStore(t)
+	now := time.Date(2026, 3, 1, 9, 0, 0, 0, time.UTC)
+	for _, slug := range []string{"two-sum", "valid-anagram"} {
+		if _, err := s.SetStatus(slug, Solved, now); err != nil {
+			t.Fatal(err)
+		}
+	}
+	now = now.AddDate(0, 0, 1)
+	// Same rating, same resulting stage; one needed the invariant, one did not.
+	easy, err := s.RateHinted("two-sum", 4, 0, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hard, err := s.RateHinted("valid-anagram", 4, 3, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hard.Ease >= easy.Ease {
+		t.Errorf("ease: hinted %.2f, unaided %.2f — the hinted one should be trusted less", hard.Ease, easy.Ease)
+	}
+	if got := days(hard, now); got >= days(easy, now) {
+		t.Errorf("hinted comes back in %d days, unaided in %d — the hinted one should come back sooner",
+			got, days(easy, now))
+	}
+}
+
+// Ease is bounded so that the ladder stays recognisable: no amount of history
+// may invert it or run an interval away.
+func TestEaseStaysWithinItsBounds(t *testing.T) {
+	s := newStore(t)
+	now := time.Date(2026, 3, 1, 9, 0, 0, 0, time.UTC)
+	if _, err := s.SetStatus("two-sum", Solved, now); err != nil {
+		t.Fatal(err)
+	}
+	for range 30 {
+		now = now.AddDate(0, 0, 1)
+		if _, err := s.RateHinted("two-sum", 5, 0, now); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if e := s.Get("two-sum"); e.Ease > easeMax {
+		t.Errorf("ease ran to %.2f, want no more than %.2f", e.Ease, easeMax)
+	}
+	for range 30 {
+		now = now.AddDate(0, 0, 1)
+		if _, err := s.RateHinted("two-sum", 1, 5, now); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if e := s.Get("two-sum"); e.Ease < easeMin {
+		t.Errorf("ease fell to %.2f, want no less than %.2f", e.Ease, easeMin)
+	}
+}
+
+// The spread must come from the problem, not from a random source: a date
+// already shown to the user cannot move when the entry is read again.
+func TestTheSpreadIsStableForTheSameProblem(t *testing.T) {
+	e := Entry{ReviewStage: MaxStage}
+	first := interval(e, "two-sum")
+	for range 5 {
+		if got := interval(e, "two-sum"); got != first {
+			t.Fatalf("interval moved between reads: %d then %d", first, got)
+		}
+	}
+	// And it must actually spread: some other problem on the same rung should
+	// land on a different day.
+	same := 0
+	others := []string{"valid-anagram", "contains-duplicate", "group-anagrams", "top-k-frequent-elements"}
+	for _, slug := range others {
+		if interval(e, slug) == first {
+			same++
+		}
+	}
+	if same == len(others) {
+		t.Errorf("every problem on stage %d landed on day %d — nothing is being spread", MaxStage, first)
+	}
+}
+
+func TestUndoRestoresThePreviousSchedule(t *testing.T) {
+	s := newStore(t)
+	now := time.Date(2026, 3, 1, 9, 0, 0, 0, time.UTC)
+	if _, err := s.SetStatus("two-sum", Solved, now); err != nil {
+		t.Fatal(err)
+	}
+	now = now.AddDate(0, 0, 1)
+	before, err := s.RateHinted("two-sum", 4, 0, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The slip: a 5 that should have been a 2.
+	later := now.AddDate(0, 0, 3)
+	if _, err := s.RateHinted("two-sum", 5, 0, later); err != nil {
+		t.Fatal(err)
+	}
+	after, dropped, ok, err := s.Undo("two-sum", later)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok {
+		t.Fatal("Undo reported nothing to undo")
+	}
+	if dropped.Confidence != 5 {
+		t.Errorf("dropped rating %d, want the 5", dropped.Confidence)
+	}
+	if len(after.History) != len(before.History) {
+		t.Errorf("history has %d ratings, want %d", len(after.History), len(before.History))
+	}
+	if after.ReviewStage != before.ReviewStage {
+		t.Errorf("stage = %d, want %d back", after.ReviewStage, before.ReviewStage)
+	}
+	if after.Confidence != before.Confidence {
+		t.Errorf("confidence = %d, want %d back", after.Confidence, before.Confidence)
+	}
+	if after.NextReview == nil || before.NextReview == nil || !after.NextReview.Equal(*before.NextReview) {
+		t.Errorf("next review = %v, want %v back", after.NextReview, before.NextReview)
+	}
+}
+
+// Time spent is not given back by an undo: the sitting happened whichever
+// rating was recorded for it.
+func TestUndoKeepsTheMinutesAndThePerSittingSplit(t *testing.T) {
+	s := newStore(t)
+	now := time.Date(2026, 3, 1, 9, 0, 0, 0, time.UTC)
+	if _, err := s.AddMinutes("two-sum", 20, now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.RateHinted("two-sum", 4, 0, now); err != nil {
+		t.Fatal(err)
+	}
+	now = now.AddDate(0, 0, 3)
+	if _, err := s.AddMinutes("two-sum", 15, now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.RateHinted("two-sum", 5, 0, now); err != nil {
+		t.Fatal(err)
+	}
+	e, _, _, err := s.Undo("two-sum", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if e.MinutesSpent != 35 {
+		t.Errorf("MinutesSpent = %d, want the 35 actually spent", e.MinutesSpent)
+	}
+	sit := Sittings(e)
+	if len(sit) != 1 {
+		t.Fatalf("got %d sittings, want 1", len(sit))
+	}
+	if sit[0].Minutes != 20 {
+		t.Errorf("first sitting = %d minutes, want 20", sit[0].Minutes)
+	}
+}
+
+func TestUndoOnAProblemWithNoHistory(t *testing.T) {
+	s := newStore(t)
+	now := time.Date(2026, 3, 1, 9, 0, 0, 0, time.UTC)
+	_, _, ok, err := s.Undo("two-sum", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok {
+		t.Error("Undo claimed to undo something on an untouched problem")
+	}
+}
+
+func TestAmendReplacesTheLastRating(t *testing.T) {
+	s := newStore(t)
+	now := time.Date(2026, 3, 1, 9, 0, 0, 0, time.UTC)
+	if _, err := s.SetStatus("two-sum", Solved, now); err != nil {
+		t.Fatal(err)
+	}
+	now = now.AddDate(0, 0, 1)
+	if _, err := s.RateHinted("two-sum", 5, 0, now); err != nil {
+		t.Fatal(err)
+	}
+	e, ok, err := s.Amend("two-sum", 2, 4, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok {
+		t.Fatal("Amend reported nothing to amend")
+	}
+	if len(e.History) != 1 {
+		t.Errorf("history has %d ratings, want the one amended in place", len(e.History))
+	}
+	r, _ := e.LastReview()
+	if r.Confidence != 2 || r.Rung != 4 {
+		t.Errorf("last rating = %d at rung %d, want 2 at rung 4", r.Confidence, r.Rung)
+	}
+	if e.Status != Shaky {
+		t.Errorf("status = %s, want shaky after a 2", e.Status)
+	}
+}
+
+func TestAmendRejectsAnOutOfRangeRating(t *testing.T) {
+	s := newStore(t)
+	now := time.Date(2026, 3, 1, 9, 0, 0, 0, time.UTC)
+	if _, err := s.RateHinted("two-sum", 4, 0, now); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.Amend("two-sum", 6, 0, now); err == nil {
+		t.Error("Amend accepted a confidence of 6")
+	}
+	if _, _, err := s.Amend("two-sum", 4, 9, now); err == nil {
+		t.Error("Amend accepted a rung of 9")
+	}
+}
+
+// Entries written before ease existed carry none. Replaying their history is
+// what fills it in, so an undo or amend on old data schedules like new data.
+func TestEaseIsDerivedForHistoryWithoutIt(t *testing.T) {
+	now := time.Date(2026, 3, 1, 9, 0, 0, 0, time.UTC)
+	e := Entry{
+		Status:      Solved,
+		Attempts:    2,
+		Confidence:  4,
+		ReviewStage: 3,
+		History: []Review{
+			{Date: now.AddDate(0, 0, -10), Confidence: 4, Stage: 2, Rung: 3},
+			{Date: now, Confidence: 4, Stage: 3, Rung: 3},
+		},
+	}
+	if e.ease() != easeDefault {
+		t.Fatalf("ease() = %.2f on an entry without one, want the neutral %.2f", e.ease(), easeDefault)
+	}
+	replay(&e, "two-sum")
+	if e.Ease == 0 {
+		t.Error("replay left the ease unset")
+	}
+	if e.Ease >= easeDefault {
+		t.Errorf("ease = %.2f after two hinted sittings, want below %.2f", e.Ease, easeDefault)
+	}
+	if len(e.History) != 2 {
+		t.Errorf("replay left %d ratings, want 2", len(e.History))
+	}
+	// Both sittings needed the invariant, so the stage should have been held
+	// rather than walked up twice.
+	if e.ReviewStage != 1 {
+		t.Errorf("stage = %d, want 1 — neither sitting was recall", e.ReviewStage)
+	}
+}
+
+func TestWeakestRanksTheLeastSecureAndSaysWhy(t *testing.T) {
+	s := newStore(t)
+	now := time.Date(2026, 3, 1, 9, 0, 0, 0, time.UTC)
+	// Solid: unaided and comfortable.
+	if _, err := s.RateHinted("contains-duplicate", 5, 0, now); err != nil {
+		t.Fatal(err)
+	}
+	// Weak: handed the answer, and it fell since last time.
+	if _, err := s.RateHinted("two-sum", 4, 0, now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.RateHinted("two-sum", 2, 5, now.AddDate(0, 0, 3)); err != nil {
+		t.Fatal(err)
+	}
+
+	weak := s.Weakest(testProblems, 0)
+	if len(weak) == 0 {
+		t.Fatal("nothing was flagged")
+	}
+	if weak[0].Problem.Slug != "two-sum" {
+		t.Errorf("weakest is %q, want two-sum", weak[0].Problem.Slug)
+	}
+	if len(weak[0].Reasons) == 0 {
+		t.Error("the weakest problem came with no reasons")
+	}
+	for _, w := range weak {
+		if w.Problem.Slug == "contains-duplicate" {
+			t.Error("an unaided 5 was flagged as weak")
+		}
+	}
+	if got := s.Weakest(testProblems, 1); len(got) != 1 {
+		t.Errorf("limit 1 returned %d", len(got))
+	}
+}
+
+func TestReviewQueuePutsTheMostOverdueFirstAndCapsTheDay(t *testing.T) {
+	s := newStore(t)
+	now := time.Date(2026, 3, 1, 9, 0, 0, 0, time.UTC)
+	// Solved two days ago, so the first 1-day interval has already come due.
+	for _, slug := range []string{"contains-duplicate", "valid-anagram", "two-sum"} {
+		if _, err := s.SetStatus(slug, Solved, now.AddDate(0, 0, -2)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Push two of them further into the past so the order is unambiguous.
+	if _, err := s.RateHinted("two-sum", 4, 0, now.AddDate(0, 0, -30)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.RateHinted("valid-anagram", 4, 0, now.AddDate(0, 0, -10)); err != nil {
+		t.Fatal(err)
+	}
+
+	queue := s.ReviewQueue(testProblems, now, 0)
+	if len(queue) != 3 {
+		t.Fatalf("queue has %d problems, want all 3 due", len(queue))
+	}
+	if queue[0].Slug != "two-sum" {
+		t.Errorf("queue starts with %q, want the longest overdue two-sum", queue[0].Slug)
+	}
+	if capped := s.ReviewQueue(testProblems, now, 2); len(capped) != 2 {
+		t.Errorf("limit 2 returned %d", len(capped))
+	}
+}
+
+func TestPatternsReportHowSecurelyEachIsHeld(t *testing.T) {
+	s := newStore(t)
+	now := time.Date(2026, 3, 1, 9, 0, 0, 0, time.UTC)
+	// Two of the three are in one pattern: one unaided, one on a strong hint.
+	if _, err := s.RateHinted("contains-duplicate", 5, 0, now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.RateHinted("valid-anagram", 2, 5, now); err != nil {
+		t.Fatal(err)
+	}
+
+	reports := s.Patterns(testProblems, now)
+	if len(reports) != 1 {
+		t.Fatalf("got %d patterns, want the one the fixture has", len(reports))
+	}
+	r := reports[0]
+	if r.Total != 3 {
+		t.Errorf("Total = %d, want 3", r.Total)
+	}
+	if r.Rated != 2 {
+		t.Errorf("Rated = %d, want 2 — the untouched problem is not rated", r.Rated)
+	}
+	if r.Unaided != 1 || r.UnaidedShare() != 50 {
+		t.Errorf("Unaided = %d (%d%%), want 1 of 2", r.Unaided, r.UnaidedShare())
+	}
+	if r.Rung != 2.5 {
+		t.Errorf("mean rung = %.2f, want 2.5 across rungs 0 and 5", r.Rung)
+	}
+	if r.Confidence != 3.5 {
+		t.Errorf("mean confidence = %.2f, want 3.5 across 5 and 2", r.Confidence)
+	}
+	if r.Shaky != 1 {
+		t.Errorf("Shaky = %d, want the one rated 2", r.Shaky)
+	}
+}
+
+// A pattern going well must not be offered as something to go back to, or the
+// list stops being worth reading.
+func TestByConcernKeepsOnlyWhatNeedsWork(t *testing.T) {
+	solid := PatternReport{Pattern: "solid", Total: 5, Rated: 5, Confidence: 4.6, Rung: 0}
+	hinted := PatternReport{Pattern: "hinted", Total: 5, Rated: 5, Confidence: 3.4, Rung: 2.2, Slipped: 2}
+	untouched := PatternReport{Pattern: "untouched", Total: 5}
+
+	got := ByConcern([]PatternReport{solid, hinted, untouched})
+	if len(got) != 1 || got[0].Pattern != "hinted" {
+		names := []string{}
+		for _, r := range got {
+			names = append(names, r.Pattern)
+		}
+		t.Fatalf("ByConcern kept %v, want just the hinted one", names)
+	}
+	if untouched.Concern() != 0 {
+		t.Errorf("an untouched pattern scored %.2f, want 0", untouched.Concern())
+	}
+	if solid.NeedsWork() {
+		t.Error("a pattern averaging 4.6 unaided was flagged as needing work")
 	}
 }

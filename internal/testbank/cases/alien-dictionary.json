@@ -1,0 +1,99 @@
+{
+  "slug": "alien-dictionary",
+  "entry": "alienOrder",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        [
+          "wrt",
+          "wrf",
+          "er",
+          "ett",
+          "rftt"
+        ]
+      ],
+      "want": "wertf"
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        [
+          "z",
+          "x"
+        ]
+      ],
+      "want": "zx"
+    },
+    {
+      "name": "example 3",
+      "kind": "example",
+      "args": [
+        [
+          "z",
+          "x",
+          "z"
+        ]
+      ],
+      "want": ""
+    },
+    {
+      "name": "example 4",
+      "kind": "example",
+      "args": [
+        [
+          "abc",
+          "ab"
+        ]
+      ],
+      "want": ""
+    },
+    {
+      "name": "single word all characters included",
+      "kind": "edge",
+      "args": [
+        [
+          "abc"
+        ]
+      ],
+      "want": "abc"
+    },
+    {
+      "name": "repeated word",
+      "kind": "edge",
+      "args": [
+        [
+          "aa",
+          "aa"
+        ]
+      ],
+      "want": "a"
+    },
+    {
+      "name": "valid prefix",
+      "kind": "edge",
+      "args": [
+        [
+          "ab",
+          "abc"
+        ]
+      ],
+      "want": "abc"
+    },
+    {
+      "name": "disconnected letters",
+      "kind": "edge",
+      "args": [
+        [
+          "za",
+          "zb"
+        ]
+      ],
+      "want": "zab"
+    }
+  ],
+  "policy": "alphabet"
+}

@@ -1,0 +1,66 @@
+{
+  "slug": "generate-parentheses",
+  "entry": "generateParenthesis",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        3
+      ],
+      "want": [
+        "((()))",
+        "(()())",
+        "(())()",
+        "()(())",
+        "()()()"
+      ]
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        1
+      ],
+      "want": [
+        "()"
+      ]
+    },
+    {
+      "name": "two pairs",
+      "kind": "edge",
+      "args": [
+        2
+      ],
+      "want": [
+        "(())",
+        "()()"
+      ]
+    },
+    {
+      "name": "four pairs",
+      "kind": "edge",
+      "args": [
+        4
+      ],
+      "want": [
+        "(((())))",
+        "((()()))",
+        "((())())",
+        "((()))()",
+        "(()(()))",
+        "(()()())",
+        "(()())()",
+        "(())(())",
+        "(())()()",
+        "()((()))",
+        "()(()())",
+        "()(())()",
+        "()()(())",
+        "()()()()"
+      ]
+    }
+  ],
+  "policy": "unordered"
+}

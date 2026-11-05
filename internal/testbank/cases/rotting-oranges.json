@@ -1,0 +1,120 @@
+{
+  "slug": "rotting-oranges",
+  "entry": "orangesRotting",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        [
+          [
+            2,
+            1,
+            1
+          ],
+          [
+            1,
+            1,
+            0
+          ],
+          [
+            0,
+            1,
+            1
+          ]
+        ]
+      ],
+      "want": 4
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        [
+          [
+            2,
+            1,
+            1
+          ],
+          [
+            0,
+            1,
+            1
+          ],
+          [
+            1,
+            0,
+            1
+          ]
+        ]
+      ],
+      "want": -1
+    },
+    {
+      "name": "example 3",
+      "kind": "example",
+      "args": [
+        [
+          [
+            0,
+            2
+          ]
+        ]
+      ],
+      "want": 0
+    },
+    {
+      "name": "no oranges",
+      "kind": "edge",
+      "args": [
+        [
+          [
+            0
+          ]
+        ]
+      ],
+      "want": 0
+    },
+    {
+      "name": "fresh without rotten",
+      "kind": "edge",
+      "args": [
+        [
+          [
+            1
+          ]
+        ]
+      ],
+      "want": -1
+    },
+    {
+      "name": "already rotten",
+      "kind": "edge",
+      "args": [
+        [
+          [
+            2
+          ]
+        ]
+      ],
+      "want": 0
+    },
+    {
+      "name": "two sources",
+      "kind": "edge",
+      "args": [
+        [
+          [
+            2,
+            1,
+            1,
+            1,
+            2
+          ]
+        ]
+      ],
+      "want": 2
+    }
+  ]
+}

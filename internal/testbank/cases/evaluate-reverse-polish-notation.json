@@ -1,0 +1,103 @@
+{
+  "slug": "evaluate-reverse-polish-notation",
+  "entry": "evalRPN",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        [
+          "2",
+          "1",
+          "+",
+          "3",
+          "*"
+        ]
+      ],
+      "want": 9
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        [
+          "4",
+          "13",
+          "5",
+          "/",
+          "+"
+        ]
+      ],
+      "want": 6
+    },
+    {
+      "name": "example 3",
+      "kind": "example",
+      "args": [
+        [
+          "10",
+          "6",
+          "9",
+          "3",
+          "+",
+          "-11",
+          "*",
+          "/",
+          "*",
+          "17",
+          "+",
+          "5",
+          "+"
+        ]
+      ],
+      "want": 22
+    },
+    {
+      "name": "negative division truncates toward zero",
+      "kind": "edge",
+      "args": [
+        [
+          "-7",
+          "3",
+          "/"
+        ]
+      ],
+      "want": -2
+    },
+    {
+      "name": "subtraction operand order",
+      "kind": "edge",
+      "args": [
+        [
+          "3",
+          "8",
+          "-"
+        ]
+      ],
+      "want": -5
+    },
+    {
+      "name": "single operand",
+      "kind": "edge",
+      "args": [
+        [
+          "-4"
+        ]
+      ],
+      "want": -4
+    },
+    {
+      "name": "zero product",
+      "kind": "edge",
+      "args": [
+        [
+          "0",
+          "5",
+          "*"
+        ]
+      ],
+      "want": 0
+    }
+  ]
+}

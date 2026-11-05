@@ -1,0 +1,55 @@
+{
+  "slug": "happy-number",
+  "entry": "isHappy",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        19
+      ],
+      "want": true
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        2
+      ],
+      "want": false
+    },
+    {
+      "name": "already one",
+      "kind": "edge",
+      "args": [
+        1
+      ],
+      "want": true
+    },
+    {
+      "name": "power of ten",
+      "kind": "edge",
+      "args": [
+        100
+      ],
+      "want": true
+    },
+    {
+      "name": "unhappy cycle",
+      "kind": "edge",
+      "args": [
+        4
+      ],
+      "want": false
+    },
+    {
+      "name": "integer upper bound",
+      "kind": "edge",
+      "args": [
+        2147483647
+      ],
+      "want": false
+    }
+  ]
+}

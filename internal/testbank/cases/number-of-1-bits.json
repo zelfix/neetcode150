@@ -1,0 +1,55 @@
+{
+  "slug": "number-of-1-bits",
+  "entry": "hammingWeight",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        11
+      ],
+      "want": 3
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        128
+      ],
+      "want": 1
+    },
+    {
+      "name": "example 3",
+      "kind": "example",
+      "args": [
+        2147483645
+      ],
+      "want": 30
+    },
+    {
+      "name": "one",
+      "kind": "edge",
+      "args": [
+        1
+      ],
+      "want": 1
+    },
+    {
+      "name": "highest allowed single bit",
+      "kind": "edge",
+      "args": [
+        1073741824
+      ],
+      "want": 1
+    },
+    {
+      "name": "all thirty one bits",
+      "kind": "edge",
+      "args": [
+        2147483647
+      ],
+      "want": 31
+    }
+  ]
+}

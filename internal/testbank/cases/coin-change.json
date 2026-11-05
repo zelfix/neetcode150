@@ -1,0 +1,89 @@
+{
+  "slug": "coin-change",
+  "entry": "coinChange",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        [
+          1,
+          2,
+          5
+        ],
+        11
+      ],
+      "want": 3
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        [
+          2
+        ],
+        3
+      ],
+      "want": -1
+    },
+    {
+      "name": "example 3",
+      "kind": "example",
+      "args": [
+        [
+          1
+        ],
+        0
+      ],
+      "want": 0
+    },
+    {
+      "name": "zero with large coin",
+      "kind": "edge",
+      "args": [
+        [
+          2147483647
+        ],
+        0
+      ],
+      "want": 0
+    },
+    {
+      "name": "greedy choice fails",
+      "kind": "edge",
+      "args": [
+        [
+          1,
+          3,
+          4
+        ],
+        6
+      ],
+      "want": 2
+    },
+    {
+      "name": "unreachable by parity",
+      "kind": "edge",
+      "args": [
+        [
+          2,
+          4
+        ],
+        7
+      ],
+      "want": -1
+    },
+    {
+      "name": "exact coin",
+      "kind": "edge",
+      "args": [
+        [
+          5
+        ],
+        5
+      ],
+      "want": 1
+    }
+  ]
+}

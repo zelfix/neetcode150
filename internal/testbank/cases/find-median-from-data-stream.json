@@ -1,0 +1,117 @@
+{
+  "slug": "find-median-from-data-stream",
+  "entry": "Constructor",
+  "mode": "operations",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "ops": [
+        "MedianFinder",
+        "addNum",
+        "addNum",
+        "findMedian",
+        "addNum",
+        "findMedian"
+      ],
+      "calls": [
+        [],
+        [
+          1
+        ],
+        [
+          2
+        ],
+        [],
+        [
+          3
+        ],
+        []
+      ],
+      "want": [
+        null,
+        null,
+        null,
+        1.5,
+        null,
+        2.0
+      ]
+    },
+    {
+      "name": "negative even and odd medians",
+      "kind": "edge",
+      "ops": [
+        "Constructor",
+        "addNum",
+        "findMedian",
+        "addNum",
+        "findMedian",
+        "addNum",
+        "findMedian"
+      ],
+      "calls": [
+        [],
+        [
+          -3
+        ],
+        [],
+        [
+          -2
+        ],
+        [],
+        [
+          -1
+        ],
+        []
+      ],
+      "want": [
+        null,
+        null,
+        -3,
+        null,
+        -2.5,
+        null,
+        -2
+      ]
+    },
+    {
+      "name": "duplicates and balanced extremes",
+      "kind": "edge",
+      "ops": [
+        "Constructor",
+        "addNum",
+        "addNum",
+        "findMedian",
+        "addNum",
+        "addNum",
+        "findMedian"
+      ],
+      "calls": [
+        [],
+        [
+          100000
+        ],
+        [
+          -100000
+        ],
+        [],
+        [
+          0
+        ],
+        [
+          0
+        ],
+        []
+      ],
+      "want": [
+        null,
+        null,
+        null,
+        0,
+        null,
+        null,
+        0
+      ]
+    }
+  ]
+}

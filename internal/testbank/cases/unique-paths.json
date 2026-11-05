@@ -1,0 +1,61 @@
+{
+  "slug": "unique-paths",
+  "entry": "uniquePaths",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        3,
+        7
+      ],
+      "want": 28
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        3,
+        2
+      ],
+      "want": 3
+    },
+    {
+      "name": "single cell",
+      "kind": "edge",
+      "args": [
+        1,
+        1
+      ],
+      "want": 1
+    },
+    {
+      "name": "one row",
+      "kind": "edge",
+      "args": [
+        1,
+        7
+      ],
+      "want": 1
+    },
+    {
+      "name": "one column",
+      "kind": "edge",
+      "args": [
+        7,
+        1
+      ],
+      "want": 1
+    },
+    {
+      "name": "square",
+      "kind": "edge",
+      "args": [
+        3,
+        3
+      ],
+      "want": 6
+    }
+  ]
+}

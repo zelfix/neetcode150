@@ -1,0 +1,134 @@
+{
+  "slug": "longest-increasing-path-in-a-matrix",
+  "entry": "longestIncreasingPath",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        [
+          [
+            9,
+            9,
+            4
+          ],
+          [
+            6,
+            6,
+            8
+          ],
+          [
+            2,
+            1,
+            1
+          ]
+        ]
+      ],
+      "want": 4
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        [
+          [
+            3,
+            4,
+            5
+          ],
+          [
+            3,
+            2,
+            6
+          ],
+          [
+            2,
+            2,
+            1
+          ]
+        ]
+      ],
+      "want": 4
+    },
+    {
+      "name": "example 3",
+      "kind": "example",
+      "args": [
+        [
+          [
+            1
+          ]
+        ]
+      ],
+      "want": 1
+    },
+    {
+      "name": "equal plateau",
+      "kind": "edge",
+      "args": [
+        [
+          [
+            5,
+            5
+          ],
+          [
+            5,
+            5
+          ]
+        ]
+      ],
+      "want": 1
+    },
+    {
+      "name": "one row",
+      "kind": "edge",
+      "args": [
+        [
+          [
+            1,
+            2,
+            3
+          ]
+        ]
+      ],
+      "want": 3
+    },
+    {
+      "name": "snake path",
+      "kind": "edge",
+      "args": [
+        [
+          [
+            1,
+            2,
+            3
+          ],
+          [
+            6,
+            5,
+            4
+          ]
+        ]
+      ],
+      "want": 6
+    },
+    {
+      "name": "no diagonal moves",
+      "kind": "edge",
+      "args": [
+        [
+          [
+            1,
+            4
+          ],
+          [
+            3,
+            2
+          ]
+        ]
+      ],
+      "want": 2
+    }
+  ]
+}

@@ -1,0 +1,144 @@
+{
+  "slug": "network-delay-time",
+  "entry": "networkDelayTime",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        [
+          [
+            2,
+            1,
+            1
+          ],
+          [
+            2,
+            3,
+            1
+          ],
+          [
+            3,
+            4,
+            1
+          ]
+        ],
+        4,
+        2
+      ],
+      "want": 2
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        [
+          [
+            1,
+            2,
+            1
+          ]
+        ],
+        2,
+        1
+      ],
+      "want": 1
+    },
+    {
+      "name": "example 3",
+      "kind": "example",
+      "args": [
+        [
+          [
+            1,
+            2,
+            1
+          ]
+        ],
+        2,
+        2
+      ],
+      "want": -1
+    },
+    {
+      "name": "zero weight",
+      "kind": "edge",
+      "args": [
+        [
+          [
+            1,
+            2,
+            0
+          ]
+        ],
+        2,
+        1
+      ],
+      "want": 0
+    },
+    {
+      "name": "indirect route faster",
+      "kind": "edge",
+      "args": [
+        [
+          [
+            1,
+            2,
+            5
+          ],
+          [
+            1,
+            3,
+            1
+          ],
+          [
+            3,
+            2,
+            1
+          ]
+        ],
+        3,
+        1
+      ],
+      "want": 2
+    },
+    {
+      "name": "unreachable vertex",
+      "kind": "edge",
+      "args": [
+        [
+          [
+            1,
+            2,
+            1
+          ]
+        ],
+        3,
+        1
+      ],
+      "want": -1
+    },
+    {
+      "name": "cycle does not loop forever",
+      "kind": "edge",
+      "args": [
+        [
+          [
+            1,
+            2,
+            1
+          ],
+          [
+            2,
+            1,
+            1
+          ]
+        ],
+        2,
+        1
+      ],
+      "want": 1
+    }
+  ]
+}

@@ -59,29 +59,46 @@ Everything runs through the `nc` CLI. From the project root:
 ```sh
 go run ./cmd/nc next                  # what the user should work on now
 go run ./cmd/nc info <ref>            # paths and state for one problem
-go run ./cmd/nc start <ref>           # scaffold solution.go + solution_test.go
+go run ./cmd/nc start <ref>           # scaffold solution + example/corner-case tests
+go run ./cmd/nc tests --all           # add suites to existing workspaces; preserve personal tests
 go run ./cmd/nc status <ref> <state>  # new | attempted | solved | shaky
 go run ./cmd/nc rate <ref> <1-5>      # record how it went, reschedule the review
-                                      #   --rung <0-5> notes the highest hint needed
+                                      #   --rung <0-5> notes the highest hint needed;
+                                      #   rung 3 holds the stage, rung 4-5 drops it
+                                      #   --amend <1-5> corrects the last rating
+                                      #   --undo drops it and rebuilds the schedule
 go run ./cmd/nc time <ref> <minutes>  # log time spent, if the clock missed it
 go run ./cmd/nc resolve <ref>         # archive the solution, reset it for a cold re-solve
 go run ./cmd/nc diff <ref>            # last archived attempt vs the current one
 go run ./cmd/nc drill [--pattern p]   # a problem at random, pattern withheld
 go run ./cmd/nc weak [-n 10]          # what is least secure, and why
-go run ./cmd/nc review                # what is due
-go run ./cmd/nc stats                 # progress by pattern
+go run ./cmd/nc review [--limit 8]    # what is due, most overdue first
+go run ./cmd/nc stats                 # progress by pattern, and how securely each is held
 go run ./cmd/nc history <ref>         # every rating one problem has had
 go run ./cmd/nc fetch [--force]       # download statements and signatures
 go run ./cmd/nc serve [--port 8150]   # the study site, incl. the browser workspace
 ```
+
+The site's Coach page at `/coach/` reports what is not secure yet: the share of problems
+last solved unaided, which patterns to go back to, and which test fixtures keep breaking.
+It is read-only, and reuses `progress.Patterns`, `progress.Weakest` and the run records
+that `handleRunTests` files — do not re-derive weakness anywhere else.
 
 The site's workspace at `/problems/<slug>/solve` writes `solution.go` and runs `go test`.
 Those endpoints require a same-origin JSON request (`internal/web/guard.go`) — a plain
 `curl` is refused by design, so reach for the CLI rather than trying to work around it.
 
 `<ref>` accepts a slug, a LeetCode number, a directory name, or part of a title:
-`two-sum`, `1` and `"valid anag"` all resolve. Prefer the CLI over hand-editing
-`progress.json`.
+`two-sum`, `1` and `"valid anag"` all resolve. Prefer the CLI and browser over editing `study.sqlite3` directly.
+
+Mutable study data lives in the gitignored SQLite database: progress, snapshots, ratings,
+notes, hint ladders, session logs, tutor events, pending submissions, test runs and the
+fixtures they broke. The first open
+imports legacy JSON/Markdown/archives once; those files remain untouched backups.
+Use `nc notes <ref>`, `nc hints <ref>`, and `nc log` to read personal Markdown.
+`--file <path>` replaces it; `nc log --append-file <path>` appends a session entry.
+`nc backup <new-file.sqlite3>` makes a consistent backup; do not copy a live WAL database
+as a single file. Never hand-edit legacy files expecting the site to read them.
 
 Verification, and what CI enforces:
 
@@ -102,30 +119,32 @@ content/
   problems/<NNNN>-<slug>/
     problem.md                   the statement          (fetched; gitignored)
     signature.txt                official Go signature  (fetched; gitignored)
-    hints.md                     the hint ladder, written as the user needs it
-    notes.md                     the user's approach and retro
 solutions/<NNNN>-<slug>/         the user's solution and tests  (gitignored)
-progress.json                    status and review schedule     (gitignored)
+study.sqlite3                    all personal study data        (gitignored)
 
 cmd/nc/                          the CLI
 internal/catalog/                problem list, lookup by slug/number/title
 internal/fetcher/                LeetCode + neetcode-gh download, HTML → Markdown
 internal/content/                Markdown rendering, content store
 internal/progress/               status, ratings, review schedule
+internal/studydb/                SQLite schema, import and storage
 internal/scaffold/               solution/test generation from a Go signature
+internal/testbank/               examples and corner-case fixtures for all 150
+internal/testkit/                standard-library practice test helpers
 internal/web/                    the study site
 tutor/                           the tutoring protocol and its references
 ```
 
 Note what is gitignored: on a fresh clone there are no statements until `nc fetch` runs,
-and `solutions/`, `progress.json`, `hints.md` and `notes.md` never leave the machine.
+and `solutions/`, `study.sqlite3` (including WAL/SHM), and legacy personal data never
+leave the machine.
 Do not add them to version control, and do not propose committing them.
 
 ## Conventions
 
 - **Go 1.26.** `gofmt` is not negotiable and CI fails on an unformatted file.
-- **The standard library.** `cmd/` and `internal/` depend only on goldmark, chroma and
-  `golang.org/x/net`. Solutions depend on nothing — if a solution needs a third-party
+- **Dependencies.** Tooling uses goldmark, chroma, `golang.org/x/net`, and the pure-Go
+  `modernc.org/sqlite` driver. Solutions depend on nothing — if a solution needs a third-party
   package, the solution is wrong.
 - **Table-driven tests**, matching what `nc start` generates.
 - Match the surrounding comment density. This codebase explains *why*, not *what*; do not

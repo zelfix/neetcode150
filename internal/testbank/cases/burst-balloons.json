@@ -1,0 +1,76 @@
+{
+  "slug": "burst-balloons",
+  "entry": "maxCoins",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        [
+          3,
+          1,
+          5,
+          8
+        ]
+      ],
+      "want": 167
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        [
+          1,
+          5
+        ]
+      ],
+      "want": 10
+    },
+    {
+      "name": "single balloon",
+      "kind": "edge",
+      "args": [
+        [
+          7
+        ]
+      ],
+      "want": 7
+    },
+    {
+      "name": "zero balloons",
+      "kind": "edge",
+      "args": [
+        [
+          0,
+          0
+        ]
+      ],
+      "want": 0
+    },
+    {
+      "name": "zero between positives",
+      "kind": "edge",
+      "args": [
+        [
+          2,
+          0,
+          3
+        ]
+      ],
+      "want": 9
+    },
+    {
+      "name": "all ones",
+      "kind": "edge",
+      "args": [
+        [
+          1,
+          1,
+          1
+        ]
+      ],
+      "want": 3
+    }
+  ]
+}

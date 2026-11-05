@@ -1,0 +1,103 @@
+{
+  "slug": "gas-station",
+  "entry": "canCompleteCircuit",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        [
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        [
+          3,
+          4,
+          5,
+          1,
+          2
+        ]
+      ],
+      "want": 3
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        [
+          2,
+          3,
+          4
+        ],
+        [
+          3,
+          4,
+          3
+        ]
+      ],
+      "want": -1
+    },
+    {
+      "name": "single sufficient",
+      "kind": "edge",
+      "args": [
+        [
+          2
+        ],
+        [
+          1
+        ]
+      ],
+      "want": 0
+    },
+    {
+      "name": "single insufficient",
+      "kind": "edge",
+      "args": [
+        [
+          1
+        ],
+        [
+          2
+        ]
+      ],
+      "want": -1
+    },
+    {
+      "name": "only last station works",
+      "kind": "edge",
+      "args": [
+        [
+          1,
+          1,
+          4
+        ],
+        [
+          2,
+          2,
+          2
+        ]
+      ],
+      "want": 2
+    },
+    {
+      "name": "total deficit",
+      "kind": "edge",
+      "args": [
+        [
+          0,
+          1
+        ],
+        [
+          1,
+          1
+        ]
+      ],
+      "want": -1
+    }
+  ]
+}

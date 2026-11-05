@@ -1,0 +1,108 @@
+{
+  "slug": "reverse-nodes-in-k-group",
+  "entry": "reverseKGroup",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        [
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        2
+      ],
+      "want": [
+        2,
+        1,
+        4,
+        3,
+        5
+      ]
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        [
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        3
+      ],
+      "want": [
+        3,
+        2,
+        1,
+        4,
+        5
+      ]
+    },
+    {
+      "name": "k one",
+      "kind": "edge",
+      "args": [
+        [
+          1,
+          2,
+          3
+        ],
+        1
+      ],
+      "want": [
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "name": "whole list",
+      "kind": "edge",
+      "args": [
+        [
+          1,
+          2,
+          3
+        ],
+        3
+      ],
+      "want": [
+        3,
+        2,
+        1
+      ]
+    },
+    {
+      "name": "partial group unchanged",
+      "kind": "edge",
+      "args": [
+        [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        3
+      ],
+      "want": [
+        3,
+        2,
+        1,
+        6,
+        5,
+        4,
+        7
+      ]
+    }
+  ]
+}

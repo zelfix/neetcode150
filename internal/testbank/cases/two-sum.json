@@ -1,0 +1,120 @@
+{
+  "slug": "two-sum",
+  "entry": "twoSum",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        [
+          2,
+          7,
+          11,
+          15
+        ],
+        9
+      ],
+      "want": [
+        0,
+        1
+      ]
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        [
+          3,
+          2,
+          4
+        ],
+        6
+      ],
+      "want": [
+        1,
+        2
+      ]
+    },
+    {
+      "name": "example 3",
+      "kind": "example",
+      "args": [
+        [
+          3,
+          3
+        ],
+        6
+      ],
+      "want": [
+        0,
+        1
+      ]
+    },
+    {
+      "name": "negative pair",
+      "kind": "edge",
+      "args": [
+        [
+          -5,
+          -3,
+          2,
+          8
+        ],
+        -8
+      ],
+      "want": [
+        0,
+        1
+      ]
+    },
+    {
+      "name": "zero pair",
+      "kind": "edge",
+      "args": [
+        [
+          0,
+          4,
+          0
+        ],
+        0
+      ],
+      "want": [
+        0,
+        2
+      ]
+    },
+    {
+      "name": "cannot reuse same index",
+      "kind": "edge",
+      "args": [
+        [
+          3,
+          2,
+          4
+        ],
+        6
+      ],
+      "want": [
+        1,
+        2
+      ]
+    },
+    {
+      "name": "value bounds",
+      "kind": "edge",
+      "args": [
+        [
+          -1000000000,
+          1000000000
+        ],
+        0
+      ],
+      "want": [
+        0,
+        1
+      ]
+    }
+  ],
+  "policy": "unordered"
+}

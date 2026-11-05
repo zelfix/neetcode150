@@ -1,91 +1,192 @@
 {{define "content"}}
-<header class="solve-head">
-  <div>
-    <h1>{{.P.ID}}. {{.P.Title}}</h1>
-    <div class="facts">
-      <span class="is-{{lower .P.Difficulty}}">{{.P.Difficulty}}</span>
-      <span>{{.P.Pattern}}</span>
-      {{if .Archived}}<span>{{plural .Archived "earlier attempt" "earlier attempts"}} archived</span>{{end}}
+<div class="lesson" data-solve data-slug="{{.P.Slug}}" data-active="{{.Active}}"
+  data-pending-submit="{{.PendingSubmit}}" data-pending-seq="{{.PendingSubmitSeq}}">
+  <section class="chat"{{if .ChatEnabled}} data-tutor data-slug="{{.P.Slug}}" data-provider="{{.Tutor.Provider}}" data-active="{{.Tutor.Active}}"{{end}}>
+    <div class="chat-log" data-tutor-log aria-live="polite">
+      {{/* The opening message is deterministic: the fetched statement, not an AI paraphrase. */}}
+      <article class="tutor-turn is-tutor statement-turn" data-statement-message>
+        <header class="statement-head">
+          <p class="message-author">Tutor <span>· Problem statement</span></p>
+          <h1>{{.P.ID}}. {{.P.Title}}</h1>
+          <p class="brief-facts"><span class="is-{{lower .P.Difficulty}}">{{.P.Difficulty}}</span><span>{{.P.Pattern}}</span></p>
+        </header>
+        {{if .Statement.Empty}}
+        <p class="notes-empty">No statement on disk. Run <code>nc fetch</code> first.</p>
+        {{else}}
+        <div class="prose">{{.Statement.HTMLBody}}</div>
+        {{end}}
+      </article>
+      {{if and .Active (not .Tutor.Available)}}<p class="notes-empty">{{.Tutor.Why}}</p>{{end}}
     </div>
-  </div>
-  <a class="solve-exit" href="/problems/{{.P.Slug}}">Reading view →</a>
-</header>
+    {{if .ChatEnabled}}
+    {{if .Tutor.Available}}
+    <div class="tutor-presets" data-study-presets{{if not .Active}} hidden{{end}}>
+      <button type="button" class="chip" data-ask="What pattern is this, and why that one?">Which pattern?</button>
+      <button type="button" class="chip" data-ask="I have written something. Review my solution — complexity and Go idioms — but do not rewrite it for me.">Review mine</button>
+      <button type="button" class="chip" data-ask="The test is failing. Give me the failing case and one question, not a fix.">Why is it failing?</button>
+      <button type="button" class="chip" data-ask="Give me the next hint, one rung only.">Next hint</button>
+    </div>
 
-<div class="solve" data-solve data-slug="{{.P.Slug}}">
-  <section class="solve-statement">
-    {{if .Statement.Empty}}
-    <p class="notes-empty">No statement on disk. Run <code>nc fetch</code> first.</p>
-    {{else}}
-    <article class="prose">{{.Statement.HTMLBody}}</article>
+    <div class="tutor-presets" data-review-presets{{if .Active}} hidden{{end}}>
+      <button type="button" class="chip" data-ask="What useful Go idioms or small improvements are worth discussing in my completed solution? Explain the trade-offs without rewriting it.">Go idioms</button>
+      <button type="button" class="chip" data-ask="What time, memory, or readability trade-offs are worth exploring in my solution?">Trade-offs</button>
+      <button type="button" class="chip" data-ask="Explain your last feedback in more detail. Keep my completed attempt's rating unchanged.">Explain feedback</button>
+    </div>
+
+    <form class="chat-ask" data-tutor-form>
+      <textarea data-tutor-input rows="2" aria-label="Ask the tutor"
+        placeholder="{{if .Active}}Ask a question{{else}}Continue discussing your solution{{end}} — ⌘↵ to send"></textarea>
+      <div class="tutor-actions">
+        <span class="solve-state" data-tutor-state></span>
+        <span class="meta" data-tutor-meta>{{.Tutor.Provider}} · {{.Tutor.Mode}} mode</span>
+        <button type="button" data-tutor-stop hidden>Stop</button>
+        <button type="button" data-tutor-reset {{if .PendingSubmit}}disabled{{end}}
+          {{if .PendingSubmit}}title="The tutor is finishing this submission"{{end}}>Start over</button>
+        <button type="submit" class="primary" data-tutor-send>Ask</button>
+      </div>
+    </form>
     {{end}}
-
-    {{if .Hints}}
-    <section class="hints">
-      <div class="block-head"><h2>Hints</h2></div>
-      {{if .HintPreamble}}<div class="prose hint-intro">{{.HintPreamble}}</div>{{end}}
-      {{range .Hints}}
-      <details class="hint">
-        <summary>{{.Title}}</summary>
-        <div class="prose hint-body">{{.HTML}}</div>
-      </details>
-      {{end}}
-    </section>
     {{end}}
   </section>
 
-  <section class="solve-work">
-    {{if .SolutionExists}}
-    {{if .Reviewing}}
-    <div class="solve-warn">
-      <p>Due for review, and your previous solution is in the editor below. A review is a
-        re-solve from scratch: archiving puts this attempt aside under
-        <code>attempts/</code> and hands you a blank file. Nothing is lost —
-        <code>nc diff {{.P.Slug}}</code> reads it back once the tests pass.</p>
-      <button type="button" class="primary" data-resolve>Archive it and start over</button>
-    </div>
-    {{end}}
-    <div class="solve-bar">
+  {{/* The right pane is the code and the two moves that matter: run them, hand
+       them in. Saving is not a decision, so it happens on its own. */}}
+  <section class="workspace">
+    <header class="work-head">
       <span class="path there">{{.SolutionPath}}</span>
+      <time class="solve-clock"{{if .Active}} data-clock{{end}} data-seconds="{{.ElapsedSeconds}}">{{.ElapsedLabel}}</time>
+      {{if and .Active (not .PendingSubmit)}}<button type="button" class="link" data-cancel>Cancel attempt</button>{{end}}
+    </header>
+
+    <div class="work-tabs" role="tablist" aria-label="Workspace">
+      <button type="button" role="tab" id="solution-tab" aria-controls="solution-panel" aria-selected="true" data-work-tab="solution">Solution</button>
+      <button type="button" role="tab" id="tests-tab" aria-controls="tests-panel" aria-selected="false" tabindex="-1" data-work-tab="tests">Tests</button>
+      <button type="button" role="tab" id="history-tab" aria-controls="history-panel" aria-selected="false" tabindex="-1" data-work-tab="history">History</button>
+      <button type="button" role="tab" id="notes-tab" aria-controls="notes-panel" aria-selected="false" tabindex="-1" data-work-tab="notes">My notes</button>
+    </div>
+    <section class="work-panel" id="solution-panel" role="tabpanel" aria-labelledby="solution-tab" data-work-panel="solution">
+    <div class="work-bar">
       <span class="solve-state" data-state></span>
-      <button type="button" data-save>Save <kbd>⌘S</kbd></button>
-      <button type="button" class="primary" data-run>Run tests <kbd>⌘↵</kbd></button>
     </div>
 
+    {{if .Active}}
     <textarea data-editor spellcheck="false" autocomplete="off" autocapitalize="off"
-      wrap="off" aria-label="Your solution">{{.Code}}</textarea>
+      wrap="off" aria-label="Your solution" {{if .PendingSubmit}}disabled{{end}}>{{.Code}}</textarea>
+    {{else}}
+    {{/* The record sits in the editor's box, so beginning the attempt swaps the
+         contents of the pane without moving the pane. */}}
+    <section class="record" aria-label="Your record on this problem">
+      {{if .LatestReview}}
+      <section class="latest-review" aria-label="Latest tutor feedback">
+        <h2>Latest tutor feedback · {{.LatestReview.Confidence}}/5</h2>
+        <p>{{.LatestReview.Feedback}}</p>
+        {{if .LatestReview.Followup}}<p><strong>Explore next</strong><br>{{.LatestReview.Followup}}</p>{{end}}
+      </section>
+      {{end}}
+      <div class="start-gate{{if .P.IsDue}} solve-warn{{end}}">
+        <button type="button" class="primary" data-start>{{if .PreviousAvailable}}Start again{{else}}Start attempt{{end}}</button>
+        <p>{{if .PreviousAvailable}}Begin a fresh attempt. Your previous work stays in History.{{else}}Start when you’re ready. Your timer and tutor will begin.{{end}}</p>
+      </div>
+      <div class="record-head">
+        <h2>{{.Record.Headline}}</h2>
+        <p class="record-facts">
+          {{if .Record.Attempts}}<span>{{plural .Record.Attempts "attempt" "attempts"}}</span>{{end}}
+          {{if .Record.MinutesSpent}}<span>{{plural .Record.MinutesSpent "minute" "minutes"}} total</span>{{end}}
+          {{if .Record.Stage}}<span>stage {{.Record.Stage}} · {{plural .Record.IntervalDays "day" "days"}}</span>{{end}}
+          {{if .Record.PatternCount}}<span>{{.Record.PatternIndex}} of {{.Record.PatternCount}} in {{.P.Pattern}}</span>{{end}}
+        </p>
+      </div>
+
+      {{if .Record.Sittings}}
+      <table class="record-table">
+        <thead>
+          <tr><th>Date</th><th>Rating</th><th>Rung</th><th>Stage</th><th>Sitting</th></tr>
+        </thead>
+        <tbody>
+          {{range .Record.Sittings}}
+          <tr>
+            <td>{{date .Date}}</td>
+            <td>{{.Confidence}}<span class="record-of">/5</span></td>
+            <td>{{if .Rung}}{{.Rung}}{{else}}<span class="record-of">—</span>{{end}}</td>
+            <td>{{.Stage}}<span class="record-of"> · {{.IntervalDays}}d</span></td>
+            <td>{{if .Minutes}}{{.Minutes}}<span class="record-of"> min</span>{{else}}<span class="record-of">—</span>{{end}}</td>
+          </tr>
+          {{if or .Slipped .Generous}}
+          <tr class="record-flag">
+            <td colspan="5">{{if .Slipped}}rating slipped{{end}}{{if and .Slipped .Generous}} · {{end}}{{if .Generous}}rating looks generous next to that rung{{end}}</td>
+          </tr>
+          {{end}}
+          {{end}}
+        </tbody>
+      </table>
+      {{end}}
+
+      {{range .Record.Notes}}<p class="record-note">{{.}}</p>{{end}}
+
+      {{if .Record.MedianMinutes}}
+      <p class="record-note">Your median solved problem took {{plural .Record.MedianMinutes "minute" "minutes"}}.</p>
+      {{end}}
+
+      {{if .Record.NextReview}}
+      <p class="record-note">Next review {{date .Record.NextReview}}.</p>
+      {{end}}
+    </section>
+    {{end}}
 
     <div class="solve-out" data-output hidden></div>
 
-    <details class="solve-tests">
-      <summary>{{.TestPath}}</summary>
-      <p class="notes-empty">Edit the test table in your editor of choice — this pane is read-only,
-        because a test you can change from here is a test you can make pass by changing it.</p>
-      <pre><code>{{.TestCode}}</code></pre>
-    </details>
-
-    {{if and .CanResolve (not .Reviewing)}}
-    <p class="solve-again">
-      Solved already. <button type="button" class="link" data-resolve>Re-solve it from scratch</button>
-      — archives this attempt and blanks the file.
-    </p>
-    {{end}}
-
-    <section class="solve-finish">
-      <div class="block-head"><h2>Finish</h2></div>
-      {{template "rateForm" dict "P" .P "BackTo" (printf "/problems/%s/solve" .P.Slug)}}
-      <p class="notes-empty">Rate on the help you needed, not on how it feels now that it passes.
-        The clock started when the scaffold did, and the rating logs it.</p>
-    </section>
-    {{else}}
-    <div class="solve-empty">
-      <h2>No solution file yet</h2>
-      <p>Creating it scaffolds <code>solution.go</code> and <code>solution_test.go</code> from the
-        official Go signature, marks the problem in progress and starts the clock — the same thing
-        <code>nc start {{.P.Slug}}</code> does.</p>
-      <button type="button" class="primary" data-create>Start</button>
-      <p class="solve-state" data-state></p>
+    {{if .Active}}
+    <div class="solve-actions">
+      <button type="button" class="primary" data-run {{if .PendingSubmit}}disabled{{end}}>Run tests <kbd>⌘↵</kbd></button>
+      {{if .Tutor.Available}}<button type="button" class="primary" data-submit data-pending="{{.PendingSubmit}}" disabled
+        title="Run tests and pass them before submitting">{{if .PendingSubmit}}Tutor follow-up in progress{{else}}Submit{{end}}</button>{{end}}
     </div>
     {{end}}
+    </section>
+    <section class="work-panel" id="tests-panel" role="tabpanel" aria-labelledby="tests-tab" data-work-panel="tests" hidden>
+      <div class="panel-scroll">
+        <p class="path there">{{.TestPath}}</p>
+        {{if .TestCode}}
+        <p class="panel-note">Read-only test cases. Edit this file in your editor.</p>
+        <pre class="source-code"><code>{{.TestCode}}</code></pre>
+        {{else}}
+        <p class="notes-empty">Tests will appear when you start an attempt.</p>
+        {{end}}
+      </div>
+    </section>
+    <section class="work-panel" id="history-panel" role="tabpanel" aria-labelledby="history-tab" data-work-panel="history" hidden>
+      <div class="panel-scroll">
+        {{if .Archived}}<p class="panel-note">{{plural .Archived "earlier attempt" "earlier attempts"}} archived</p>{{end}}
+        {{if .PreviousCode}}
+        <details class="submission">
+          <summary>Saved solution</summary>
+          <pre class="source-code"><code>{{.PreviousCode}}</code></pre>
+        </details>
+        {{end}}
+        {{range .Submissions}}
+        <details class="submission">
+          <summary>{{.Name}}{{if .Review}} · rating {{.Review.Confidence}}/5 · rung {{.Review.Rung}}{{if .Review.Passed}} · tests passed{{else}} · tests failed{{end}}{{end}}</summary>
+          {{if .Review}}
+          <p><strong>Tutor:</strong> {{.Review.Feedback}}</p>
+          {{if .Review.Followup}}<p><strong>Explore next:</strong> {{.Review.Followup}}</p>{{end}}
+          <p class="panel-note">{{.Review.Rationale}} · {{.Review.ElapsedSecond}} seconds · {{.Review.Provider}}</p>
+          {{else}}<p class="panel-note">No tutor report for this archive.</p>{{end}}
+          <pre class="source-code"><code>{{.Code}}</code></pre>
+        </details>
+        {{end}}
+        {{if not (or .PreviousCode .Submissions)}}<p class="notes-empty">No earlier attempts yet.</p>{{end}}
+      </div>
+    </section>
+    <section class="work-panel notes-panel" id="notes-panel" role="tabpanel" aria-labelledby="notes-tab" data-work-panel="notes" hidden>
+      <form data-notes-form>
+        <label for="study-notes">My notes · {{.P.Title}}</label>
+        <textarea id="study-notes" data-notes-input aria-label="My notes" placeholder="Your approach, what tripped you up, and what you want to remember. Markdown is supported.">{{.NotesRaw}}</textarea>
+        <div class="notes-actions">
+          <span class="solve-state" data-notes-state role="status"></span>
+          <span class="meta">Saved automatically · ⌘S to save now</span>
+        </div>
+      </form>
+    </section>
   </section>
 </div>
 

@@ -1,0 +1,105 @@
+{
+  "slug": "task-scheduler",
+  "entry": "leastInterval",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        [
+          "A",
+          "A",
+          "A",
+          "B",
+          "B",
+          "B"
+        ],
+        2
+      ],
+      "want": 8
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        [
+          "A",
+          "C",
+          "A",
+          "B",
+          "D",
+          "B"
+        ],
+        1
+      ],
+      "want": 6
+    },
+    {
+      "name": "example 3",
+      "kind": "example",
+      "args": [
+        [
+          "A",
+          "A",
+          "A",
+          "B",
+          "B",
+          "B"
+        ],
+        3
+      ],
+      "want": 10
+    },
+    {
+      "name": "zero cooldown",
+      "kind": "edge",
+      "args": [
+        [
+          "A",
+          "A",
+          "B"
+        ],
+        0
+      ],
+      "want": 3
+    },
+    {
+      "name": "one task type",
+      "kind": "edge",
+      "args": [
+        [
+          "A",
+          "A",
+          "A"
+        ],
+        2
+      ],
+      "want": 7
+    },
+    {
+      "name": "all distinct",
+      "kind": "edge",
+      "args": [
+        [
+          "A",
+          "B",
+          "C"
+        ],
+        100
+      ],
+      "want": 3
+    },
+    {
+      "name": "single task",
+      "kind": "edge",
+      "args": [
+        [
+          "Z"
+        ],
+        100
+      ],
+      "want": 1
+    }
+  ]
+}

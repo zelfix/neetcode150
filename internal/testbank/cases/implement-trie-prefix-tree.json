@@ -1,0 +1,146 @@
+{
+  "slug": "implement-trie-prefix-tree",
+  "entry": "Constructor",
+  "mode": "operations",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "ops": [
+        "Trie",
+        "insert",
+        "search",
+        "search",
+        "startsWith",
+        "insert",
+        "search"
+      ],
+      "calls": [
+        [],
+        [
+          "apple"
+        ],
+        [
+          "apple"
+        ],
+        [
+          "app"
+        ],
+        [
+          "app"
+        ],
+        [
+          "app"
+        ],
+        [
+          "app"
+        ]
+      ],
+      "want": [
+        null,
+        null,
+        true,
+        false,
+        true,
+        null,
+        true
+      ]
+    },
+    {
+      "name": "prefix differs from full word",
+      "kind": "edge",
+      "ops": [
+        "Constructor",
+        "search",
+        "startsWith",
+        "insert",
+        "search",
+        "startsWith",
+        "insert",
+        "search"
+      ],
+      "calls": [
+        [],
+        [
+          "a"
+        ],
+        [
+          "a"
+        ],
+        [
+          "abc"
+        ],
+        [
+          "ab"
+        ],
+        [
+          "ab"
+        ],
+        [
+          "ab"
+        ],
+        [
+          "ab"
+        ]
+      ],
+      "want": [
+        null,
+        false,
+        false,
+        null,
+        false,
+        true,
+        null,
+        true
+      ]
+    },
+    {
+      "name": "branching and duplicate insert",
+      "kind": "edge",
+      "ops": [
+        "Constructor",
+        "insert",
+        "insert",
+        "insert",
+        "search",
+        "search",
+        "search",
+        "startsWith"
+      ],
+      "calls": [
+        [],
+        [
+          "cat"
+        ],
+        [
+          "car"
+        ],
+        [
+          "cat"
+        ],
+        [
+          "cat"
+        ],
+        [
+          "car"
+        ],
+        [
+          "cap"
+        ],
+        [
+          "ca"
+        ]
+      ],
+      "want": [
+        null,
+        null,
+        null,
+        null,
+        true,
+        true,
+        false,
+        true
+      ]
+    }
+  ]
+}

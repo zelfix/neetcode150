@@ -1,0 +1,61 @@
+{
+  "slug": "multiply-strings",
+  "entry": "multiply",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        "2",
+        "3"
+      ],
+      "want": "6"
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        "123",
+        "456"
+      ],
+      "want": "56088"
+    },
+    {
+      "name": "multiply by zero",
+      "kind": "edge",
+      "args": [
+        "0",
+        "12345"
+      ],
+      "want": "0"
+    },
+    {
+      "name": "carry propagation",
+      "kind": "edge",
+      "args": [
+        "99",
+        "99"
+      ],
+      "want": "9801"
+    },
+    {
+      "name": "one identity",
+      "kind": "edge",
+      "args": [
+        "1",
+        "999"
+      ],
+      "want": "999"
+    },
+    {
+      "name": "long multiplication",
+      "kind": "edge",
+      "args": [
+        "9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999",
+        "9"
+      ],
+      "want": "89999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999991"
+    }
+  ]
+}

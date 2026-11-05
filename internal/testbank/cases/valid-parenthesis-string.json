@@ -1,0 +1,87 @@
+{
+  "slug": "valid-parenthesis-string",
+  "entry": "checkValidString",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        "()"
+      ],
+      "want": true
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        "(*)"
+      ],
+      "want": true
+    },
+    {
+      "name": "example 3",
+      "kind": "example",
+      "args": [
+        "(*))"
+      ],
+      "want": true
+    },
+    {
+      "name": "example 4",
+      "kind": "example",
+      "args": [
+        "("
+      ],
+      "want": false
+    },
+    {
+      "name": "only star",
+      "kind": "edge",
+      "args": [
+        "*"
+      ],
+      "want": true
+    },
+    {
+      "name": "star closes",
+      "kind": "edge",
+      "args": [
+        "(*"
+      ],
+      "want": true
+    },
+    {
+      "name": "star opens",
+      "kind": "edge",
+      "args": [
+        "*)"
+      ],
+      "want": true
+    },
+    {
+      "name": "star too early",
+      "kind": "edge",
+      "args": [
+        "*("
+      ],
+      "want": false
+    },
+    {
+      "name": "unmatched closing prefix",
+      "kind": "edge",
+      "args": [
+        ")*("
+      ],
+      "want": false
+    },
+    {
+      "name": "many stars",
+      "kind": "edge",
+      "args": [
+        "***"
+      ],
+      "want": true
+    }
+  ]
+}

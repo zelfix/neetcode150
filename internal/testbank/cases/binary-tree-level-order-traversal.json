@@ -1,0 +1,120 @@
+{
+  "slug": "binary-tree-level-order-traversal",
+  "entry": "levelOrder",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        [
+          3,
+          9,
+          20,
+          null,
+          null,
+          15,
+          7
+        ]
+      ],
+      "want": [
+        [
+          3
+        ],
+        [
+          9,
+          20
+        ],
+        [
+          15,
+          7
+        ]
+      ]
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        [
+          1
+        ]
+      ],
+      "want": [
+        [
+          1
+        ]
+      ]
+    },
+    {
+      "name": "example 3",
+      "kind": "example",
+      "args": [
+        []
+      ],
+      "want": []
+    },
+    {
+      "name": "skewed",
+      "kind": "edge",
+      "args": [
+        [
+          1,
+          null,
+          2,
+          3
+        ]
+      ],
+      "want": [
+        [
+          1
+        ],
+        [
+          2
+        ],
+        [
+          3
+        ]
+      ]
+    },
+    {
+      "name": "negative values",
+      "kind": "edge",
+      "args": [
+        [
+          -1,
+          -2,
+          -3
+        ]
+      ],
+      "want": [
+        [
+          -1
+        ],
+        [
+          -2,
+          -3
+        ]
+      ]
+    },
+    {
+      "name": "duplicate values",
+      "kind": "edge",
+      "args": [
+        [
+          1,
+          1,
+          1
+        ]
+      ],
+      "want": [
+        [
+          1
+        ],
+        [
+          1,
+          1
+        ]
+      ]
+    }
+  ]
+}

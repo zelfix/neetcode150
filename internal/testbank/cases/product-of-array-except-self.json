@@ -1,0 +1,111 @@
+{
+  "slug": "product-of-array-except-self",
+  "entry": "productExceptSelf",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        [
+          1,
+          2,
+          3,
+          4
+        ]
+      ],
+      "want": [
+        24,
+        12,
+        8,
+        6
+      ]
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        [
+          -1,
+          1,
+          0,
+          -3,
+          3
+        ]
+      ],
+      "want": [
+        0,
+        0,
+        9,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "two zeroes",
+      "kind": "edge",
+      "args": [
+        [
+          0,
+          2,
+          0,
+          4
+        ]
+      ],
+      "want": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "one zero",
+      "kind": "edge",
+      "args": [
+        [
+          0,
+          2,
+          3
+        ]
+      ],
+      "want": [
+        6,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "negative signs",
+      "kind": "edge",
+      "args": [
+        [
+          -1,
+          -2,
+          -3,
+          -4
+        ]
+      ],
+      "want": [
+        -24,
+        -12,
+        -8,
+        -6
+      ]
+    },
+    {
+      "name": "minimum length",
+      "kind": "edge",
+      "args": [
+        [
+          2,
+          3
+        ]
+      ],
+      "want": [
+        3,
+        2
+      ]
+    }
+  ]
+}

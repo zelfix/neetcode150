@@ -1,0 +1,130 @@
+{
+  "slug": "min-stack",
+  "entry": "Constructor",
+  "mode": "operations",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "ops": [
+        "MinStack",
+        "push",
+        "push",
+        "push",
+        "getMin",
+        "pop",
+        "top",
+        "getMin"
+      ],
+      "calls": [
+        [],
+        [
+          -2
+        ],
+        [
+          0
+        ],
+        [
+          -3
+        ],
+        [],
+        [],
+        [],
+        []
+      ],
+      "want": [
+        null,
+        null,
+        null,
+        null,
+        -3,
+        null,
+        0,
+        -2
+      ]
+    },
+    {
+      "name": "duplicate minimum survives pop",
+      "kind": "edge",
+      "ops": [
+        "Constructor",
+        "push",
+        "push",
+        "push",
+        "pop",
+        "getMin",
+        "pop",
+        "getMin"
+      ],
+      "calls": [
+        [],
+        [
+          2
+        ],
+        [
+          1
+        ],
+        [
+          1
+        ],
+        [],
+        [],
+        [],
+        []
+      ],
+      "want": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        1,
+        null,
+        2
+      ]
+    },
+    {
+      "name": "integer bounds and stack reuse",
+      "kind": "edge",
+      "ops": [
+        "Constructor",
+        "push",
+        "push",
+        "getMin",
+        "pop",
+        "top",
+        "pop",
+        "push",
+        "getMin"
+      ],
+      "calls": [
+        [],
+        [
+          2147483647
+        ],
+        [
+          -2147483648
+        ],
+        [],
+        [],
+        [],
+        [],
+        [
+          0
+        ],
+        []
+      ],
+      "want": [
+        null,
+        null,
+        null,
+        -2147483648,
+        null,
+        2147483647,
+        null,
+        null,
+        0
+      ]
+    }
+  ]
+}

@@ -3,6 +3,7 @@ package content
 import (
 	"errors"
 	"html/template"
+	"neetcode150/internal/studydb"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -44,6 +45,7 @@ func (d *Doc) Empty() bool { return d == nil || d.Missing || strings.TrimSpace(d
 // Store reads documents from disk, caching each by modification time so files
 // written mid-session show up on the next page load without a restart.
 type Store struct {
+	study    *studydb.DB
 	root     string
 	renderer *Renderer
 	mu       sync.RWMutex
@@ -55,6 +57,14 @@ func NewStore(root string, r *Renderer) *Store {
 	return &Store{root: root, renderer: r, cache: map[string]*Doc{}}
 }
 
+func (s *Store) UseStudyDB(db *studydb.DB) { s.study = db }
+
+// StudyDoc renders mutable Markdown without caching a legacy file's mtime.
+func (s *Store) StudyDoc(path, raw string) *Doc {
+	fm, body := SplitFrontmatter(raw)
+	return &Doc{Path: path, Frontmatter: fm, Body: body, HTML: s.renderer.MustRender(body), HTMLBody: s.renderer.MustRender(StripLeadingH1(body))}
+}
+
 // Renderer exposes the underlying Markdown renderer.
 func (s *Store) Renderer() *Renderer { return s.renderer }
 
@@ -62,6 +72,14 @@ func (s *Store) Renderer() *Renderer { return s.renderer }
 // back as a Doc with Missing set, not as an error, because hints and notes are
 // written as you go.
 func (s *Store) Doc(relPath string) (*Doc, error) {
+	if s.study != nil && (filepath.Base(relPath) == "notes.md" || filepath.Base(relPath) == "hints.md") {
+		_, slug, _ := strings.Cut(filepath.Base(filepath.Dir(relPath)), "-")
+		raw, err := s.study.Document(slug, strings.TrimSuffix(filepath.Base(relPath), ".md"))
+		if err != nil {
+			return nil, err
+		}
+		return s.StudyDoc(relPath, raw), nil
+	}
 	full := filepath.Join(s.root, relPath)
 	info, err := os.Stat(full)
 	if err != nil {

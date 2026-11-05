@@ -1,0 +1,142 @@
+{
+  "slug": "reconstruct-itinerary",
+  "entry": "findItinerary",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        [
+          [
+            "MUC",
+            "LHR"
+          ],
+          [
+            "JFK",
+            "MUC"
+          ],
+          [
+            "SFO",
+            "SJC"
+          ],
+          [
+            "LHR",
+            "SFO"
+          ]
+        ]
+      ],
+      "want": [
+        "JFK",
+        "MUC",
+        "LHR",
+        "SFO",
+        "SJC"
+      ]
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        [
+          [
+            "JFK",
+            "SFO"
+          ],
+          [
+            "JFK",
+            "ATL"
+          ],
+          [
+            "SFO",
+            "ATL"
+          ],
+          [
+            "ATL",
+            "JFK"
+          ],
+          [
+            "ATL",
+            "SFO"
+          ]
+        ]
+      ],
+      "want": [
+        "JFK",
+        "ATL",
+        "JFK",
+        "SFO",
+        "ATL",
+        "SFO"
+      ]
+    },
+    {
+      "name": "single ticket",
+      "kind": "edge",
+      "args": [
+        [
+          [
+            "JFK",
+            "AAA"
+          ]
+        ]
+      ],
+      "want": [
+        "JFK",
+        "AAA"
+      ]
+    },
+    {
+      "name": "lexical dead end requires return",
+      "kind": "edge",
+      "args": [
+        [
+          [
+            "JFK",
+            "KUL"
+          ],
+          [
+            "JFK",
+            "NRT"
+          ],
+          [
+            "NRT",
+            "JFK"
+          ]
+        ]
+      ],
+      "want": [
+        "JFK",
+        "NRT",
+        "JFK",
+        "KUL"
+      ]
+    },
+    {
+      "name": "duplicate tickets",
+      "kind": "edge",
+      "args": [
+        [
+          [
+            "JFK",
+            "AAA"
+          ],
+          [
+            "JFK",
+            "AAA"
+          ],
+          [
+            "AAA",
+            "JFK"
+          ]
+        ]
+      ],
+      "want": [
+        "JFK",
+        "AAA",
+        "JFK",
+        "AAA"
+      ]
+    }
+  ]
+}

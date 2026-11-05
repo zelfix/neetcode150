@@ -1,0 +1,111 @@
+{
+  "slug": "encode-and-decode-strings",
+  "entry": "encode",
+  "mode": "strings-codec",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        [
+          "neet",
+          "code",
+          "love",
+          "you"
+        ]
+      ],
+      "want": [
+        "neet",
+        "code",
+        "love",
+        "you"
+      ]
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        [
+          "we",
+          "say",
+          ":",
+          "yes"
+        ]
+      ],
+      "want": [
+        "we",
+        "say",
+        ":",
+        "yes"
+      ]
+    },
+    {
+      "name": "example 3",
+      "kind": "example",
+      "args": [
+        [
+          "",
+          ""
+        ]
+      ],
+      "want": [
+        "",
+        ""
+      ]
+    },
+    {
+      "name": "empty list",
+      "kind": "edge",
+      "args": [
+        []
+      ],
+      "want": []
+    },
+    {
+      "name": "one empty string",
+      "kind": "edge",
+      "args": [
+        [
+          ""
+        ]
+      ],
+      "want": [
+        ""
+      ]
+    },
+    {
+      "name": "delimiters and digits",
+      "kind": "edge",
+      "args": [
+        [
+          "12#abc",
+          ":;#",
+          "\u0000\n\u00ff",
+          "[]",
+          ""
+        ]
+      ],
+      "want": [
+        "12#abc",
+        ":;#",
+        "\u0000\n\u00ff",
+        "[]",
+        ""
+      ]
+    },
+    {
+      "name": "maximum string length",
+      "kind": "edge",
+      "args": [
+        [
+          "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "b"
+        ]
+      ],
+      "want": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "b"
+      ]
+    }
+  ]
+}

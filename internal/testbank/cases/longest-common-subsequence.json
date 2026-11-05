@@ -1,0 +1,70 @@
+{
+  "slug": "longest-common-subsequence",
+  "entry": "longestCommonSubsequence",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        "abcde",
+        "ace"
+      ],
+      "want": 3
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        "abc",
+        "abc"
+      ],
+      "want": 3
+    },
+    {
+      "name": "example 3",
+      "kind": "example",
+      "args": [
+        "abc",
+        "def"
+      ],
+      "want": 0
+    },
+    {
+      "name": "one shared letter",
+      "kind": "edge",
+      "args": [
+        "a",
+        "a"
+      ],
+      "want": 1
+    },
+    {
+      "name": "repeated chars",
+      "kind": "edge",
+      "args": [
+        "aaaa",
+        "aa"
+      ],
+      "want": 2
+    },
+    {
+      "name": "order matters",
+      "kind": "edge",
+      "args": [
+        "abc",
+        "cba"
+      ],
+      "want": 1
+    },
+    {
+      "name": "subsequence not substring",
+      "kind": "edge",
+      "args": [
+        "axbyc",
+        "abc"
+      ],
+      "want": 3
+    }
+  ]
+}

@@ -1,0 +1,52 @@
+{
+  "slug": "valid-anagram",
+  "entry": "isAnagram",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        "anagram",
+        "nagaram"
+      ],
+      "want": true
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        "rat",
+        "car"
+      ],
+      "want": false
+    },
+    {
+      "name": "single equal",
+      "kind": "edge",
+      "args": [
+        "a",
+        "a"
+      ],
+      "want": true
+    },
+    {
+      "name": "unequal lengths",
+      "kind": "edge",
+      "args": [
+        "a",
+        "aa"
+      ],
+      "want": false
+    },
+    {
+      "name": "same letters different multiplicities",
+      "kind": "edge",
+      "args": [
+        "aabb",
+        "abbb"
+      ],
+      "want": false
+    }
+  ]
+}

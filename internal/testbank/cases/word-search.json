@@ -1,0 +1,148 @@
+{
+  "slug": "word-search",
+  "entry": "exist",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        [
+          [
+            "A",
+            "B",
+            "C",
+            "E"
+          ],
+          [
+            "S",
+            "F",
+            "C",
+            "S"
+          ],
+          [
+            "A",
+            "D",
+            "E",
+            "E"
+          ]
+        ],
+        "ABCCED"
+      ],
+      "want": true
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        [
+          [
+            "A",
+            "B",
+            "C",
+            "E"
+          ],
+          [
+            "S",
+            "F",
+            "C",
+            "S"
+          ],
+          [
+            "A",
+            "D",
+            "E",
+            "E"
+          ]
+        ],
+        "SEE"
+      ],
+      "want": true
+    },
+    {
+      "name": "example 3",
+      "kind": "example",
+      "args": [
+        [
+          [
+            "A",
+            "B",
+            "C",
+            "E"
+          ],
+          [
+            "S",
+            "F",
+            "C",
+            "S"
+          ],
+          [
+            "A",
+            "D",
+            "E",
+            "E"
+          ]
+        ],
+        "ABCB"
+      ],
+      "want": false
+    },
+    {
+      "name": "single match",
+      "kind": "edge",
+      "args": [
+        [
+          [
+            "A"
+          ]
+        ],
+        "A"
+      ],
+      "want": true
+    },
+    {
+      "name": "single cannot be reused",
+      "kind": "edge",
+      "args": [
+        [
+          [
+            "A"
+          ]
+        ],
+        "AA"
+      ],
+      "want": false
+    },
+    {
+      "name": "case sensitive",
+      "kind": "edge",
+      "args": [
+        [
+          [
+            "a"
+          ]
+        ],
+        "A"
+      ],
+      "want": false
+    },
+    {
+      "name": "requires backtracking",
+      "kind": "edge",
+      "args": [
+        [
+          [
+            "A",
+            "B"
+          ],
+          [
+            "C",
+            "D"
+          ]
+        ],
+        "ACDB"
+      ],
+      "want": true
+    }
+  ]
+}

@@ -1,0 +1,67 @@
+{
+  "slug": "last-stone-weight",
+  "entry": "lastStoneWeight",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        [
+          2,
+          7,
+          4,
+          1,
+          8,
+          1
+        ]
+      ],
+      "want": 1
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        [
+          1
+        ]
+      ],
+      "want": 1
+    },
+    {
+      "name": "equal stones annihilate",
+      "kind": "edge",
+      "args": [
+        [
+          4,
+          4
+        ]
+      ],
+      "want": 0
+    },
+    {
+      "name": "all equal odd count",
+      "kind": "edge",
+      "args": [
+        [
+          3,
+          3,
+          3
+        ]
+      ],
+      "want": 3
+    },
+    {
+      "name": "successive collisions",
+      "kind": "edge",
+      "args": [
+        [
+          10,
+          1,
+          1
+        ]
+      ],
+      "want": 8
+    }
+  ]
+}

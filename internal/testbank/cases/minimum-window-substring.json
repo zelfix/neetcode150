@@ -1,0 +1,70 @@
+{
+  "slug": "minimum-window-substring",
+  "entry": "minWindow",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        "ADOBECODEBANC",
+        "ABC"
+      ],
+      "want": "BANC"
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        "a",
+        "a"
+      ],
+      "want": "a"
+    },
+    {
+      "name": "example 3",
+      "kind": "example",
+      "args": [
+        "a",
+        "aa"
+      ],
+      "want": ""
+    },
+    {
+      "name": "repeated target characters",
+      "kind": "edge",
+      "args": [
+        "ABAAC",
+        "AAC"
+      ],
+      "want": "AAC"
+    },
+    {
+      "name": "case sensitive",
+      "kind": "edge",
+      "args": [
+        "a",
+        "A"
+      ],
+      "want": ""
+    },
+    {
+      "name": "shrink unnecessary prefix",
+      "kind": "edge",
+      "args": [
+        "aaab",
+        "ab"
+      ],
+      "want": "ab"
+    },
+    {
+      "name": "missing character",
+      "kind": "edge",
+      "args": [
+        "abc",
+        "z"
+      ],
+      "want": ""
+    }
+  ]
+}

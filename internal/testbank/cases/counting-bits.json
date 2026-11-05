@@ -1,0 +1,73 @@
+{
+  "slug": "counting-bits",
+  "entry": "countBits",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        2
+      ],
+      "want": [
+        0,
+        1,
+        1
+      ]
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        5
+      ],
+      "want": [
+        0,
+        1,
+        1,
+        2,
+        1,
+        2
+      ]
+    },
+    {
+      "name": "zero",
+      "kind": "edge",
+      "args": [
+        0
+      ],
+      "want": [
+        0
+      ]
+    },
+    {
+      "name": "one",
+      "kind": "edge",
+      "args": [
+        1
+      ],
+      "want": [
+        0,
+        1
+      ]
+    },
+    {
+      "name": "power of two boundary",
+      "kind": "edge",
+      "args": [
+        8
+      ],
+      "want": [
+        0,
+        1,
+        1,
+        2,
+        1,
+        2,
+        2,
+        3,
+        1
+      ]
+    }
+  ]
+}

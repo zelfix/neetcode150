@@ -1,0 +1,91 @@
+{
+  "slug": "serialize-and-deserialize-binary-tree",
+  "entry": "Constructor",
+  "mode": "tree-codec",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        [
+          1,
+          2,
+          3,
+          null,
+          null,
+          4,
+          5
+        ]
+      ],
+      "want": [
+        1,
+        2,
+        3,
+        null,
+        null,
+        4,
+        5
+      ]
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        []
+      ],
+      "want": []
+    },
+    {
+      "name": "single zero",
+      "kind": "edge",
+      "args": [
+        [
+          0
+        ]
+      ],
+      "want": [
+        0
+      ]
+    },
+    {
+      "name": "negative duplicate values",
+      "kind": "edge",
+      "args": [
+        [
+          -1,
+          -1,
+          -1
+        ]
+      ],
+      "want": [
+        -1,
+        -1,
+        -1
+      ]
+    },
+    {
+      "name": "sparse zigzag",
+      "kind": "edge",
+      "args": [
+        [
+          1,
+          null,
+          2,
+          3,
+          null,
+          null,
+          4
+        ]
+      ],
+      "want": [
+        1,
+        null,
+        2,
+        3,
+        null,
+        null,
+        4
+      ]
+    }
+  ]
+}

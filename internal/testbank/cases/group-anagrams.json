@@ -1,0 +1,130 @@
+{
+  "slug": "group-anagrams",
+  "entry": "groupAnagrams",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        [
+          "eat",
+          "tea",
+          "tan",
+          "ate",
+          "nat",
+          "bat"
+        ]
+      ],
+      "want": [
+        [
+          "bat"
+        ],
+        [
+          "nat",
+          "tan"
+        ],
+        [
+          "ate",
+          "eat",
+          "tea"
+        ]
+      ]
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        [
+          ""
+        ]
+      ],
+      "want": [
+        [
+          ""
+        ]
+      ]
+    },
+    {
+      "name": "example 3",
+      "kind": "example",
+      "args": [
+        [
+          "a"
+        ]
+      ],
+      "want": [
+        [
+          "a"
+        ]
+      ]
+    },
+    {
+      "name": "empty and repeated strings",
+      "kind": "edge",
+      "args": [
+        [
+          "",
+          "a",
+          "",
+          "a"
+        ]
+      ],
+      "want": [
+        [
+          "",
+          ""
+        ],
+        [
+          "a",
+          "a"
+        ]
+      ]
+    },
+    {
+      "name": "multiplicity distinguishes groups",
+      "kind": "edge",
+      "args": [
+        [
+          "abb",
+          "bab",
+          "ab",
+          "bba"
+        ]
+      ],
+      "want": [
+        [
+          "abb",
+          "bab",
+          "bba"
+        ],
+        [
+          "ab"
+        ]
+      ]
+    },
+    {
+      "name": "all separate",
+      "kind": "edge",
+      "args": [
+        [
+          "a",
+          "b",
+          "c"
+        ]
+      ],
+      "want": [
+        [
+          "a"
+        ],
+        [
+          "b"
+        ],
+        [
+          "c"
+        ]
+      ]
+    }
+  ],
+  "policy": "unordered-groups"
+}

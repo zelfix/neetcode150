@@ -1,0 +1,93 @@
+{
+  "slug": "same-tree",
+  "entry": "isSameTree",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        [
+          1,
+          2,
+          3
+        ],
+        [
+          1,
+          2,
+          3
+        ]
+      ],
+      "want": true
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        [
+          1,
+          2
+        ],
+        [
+          1,
+          null,
+          2
+        ]
+      ],
+      "want": false
+    },
+    {
+      "name": "example 3",
+      "kind": "example",
+      "args": [
+        [
+          1,
+          2,
+          1
+        ],
+        [
+          1,
+          1,
+          2
+        ]
+      ],
+      "want": false
+    },
+    {
+      "name": "both empty",
+      "kind": "edge",
+      "args": [
+        [],
+        []
+      ],
+      "want": true
+    },
+    {
+      "name": "one empty",
+      "kind": "edge",
+      "args": [
+        [],
+        [
+          0
+        ]
+      ],
+      "want": false
+    },
+    {
+      "name": "same values different structure",
+      "kind": "edge",
+      "args": [
+        [
+          1,
+          2
+        ],
+        [
+          1,
+          null,
+          2
+        ]
+      ],
+      "want": false
+    }
+  ]
+}

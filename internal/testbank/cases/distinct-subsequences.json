@@ -1,0 +1,61 @@
+{
+  "slug": "distinct-subsequences",
+  "entry": "numDistinct",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        "rabbbit",
+        "rabbit"
+      ],
+      "want": 3
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        "babgbag",
+        "bag"
+      ],
+      "want": 5
+    },
+    {
+      "name": "same strings",
+      "kind": "edge",
+      "args": [
+        "abc",
+        "abc"
+      ],
+      "want": 1
+    },
+    {
+      "name": "target too long",
+      "kind": "edge",
+      "args": [
+        "a",
+        "aa"
+      ],
+      "want": 0
+    },
+    {
+      "name": "repeated choices",
+      "kind": "edge",
+      "args": [
+        "aaaa",
+        "aa"
+      ],
+      "want": 6
+    },
+    {
+      "name": "case sensitive",
+      "kind": "edge",
+      "args": [
+        "A",
+        "a"
+      ],
+      "want": 0
+    }
+  ]
+}

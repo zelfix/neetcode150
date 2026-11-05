@@ -1,0 +1,123 @@
+{
+  "slug": "combination-sum",
+  "entry": "combinationSum",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        [
+          2,
+          3,
+          6,
+          7
+        ],
+        7
+      ],
+      "want": [
+        [
+          2,
+          2,
+          3
+        ],
+        [
+          7
+        ]
+      ]
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        [
+          2,
+          3,
+          5
+        ],
+        8
+      ],
+      "want": [
+        [
+          2,
+          2,
+          2,
+          2
+        ],
+        [
+          2,
+          3,
+          3
+        ],
+        [
+          3,
+          5
+        ]
+      ]
+    },
+    {
+      "name": "example 3",
+      "kind": "example",
+      "args": [
+        [
+          2
+        ],
+        1
+      ],
+      "want": []
+    },
+    {
+      "name": "target below candidates",
+      "kind": "edge",
+      "args": [
+        [
+          2,
+          3
+        ],
+        1
+      ],
+      "want": []
+    },
+    {
+      "name": "repeat single candidate",
+      "kind": "edge",
+      "args": [
+        [
+          2
+        ],
+        8
+      ],
+      "want": [
+        [
+          2,
+          2,
+          2,
+          2
+        ]
+      ]
+    },
+    {
+      "name": "unsorted candidates",
+      "kind": "edge",
+      "args": [
+        [
+          7,
+          2,
+          3
+        ],
+        7
+      ],
+      "want": [
+        [
+          7
+        ],
+        [
+          2,
+          2,
+          3
+        ]
+      ]
+    }
+  ],
+  "policy": "unordered-groups"
+}

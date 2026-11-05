@@ -1,0 +1,135 @@
+{
+  "slug": "graph-valid-tree",
+  "entry": "validTree",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        5,
+        [
+          [
+            0,
+            1
+          ],
+          [
+            0,
+            2
+          ],
+          [
+            0,
+            3
+          ],
+          [
+            1,
+            4
+          ]
+        ]
+      ],
+      "want": true
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        5,
+        [
+          [
+            0,
+            1
+          ],
+          [
+            1,
+            2
+          ],
+          [
+            2,
+            3
+          ],
+          [
+            1,
+            3
+          ],
+          [
+            1,
+            4
+          ]
+        ]
+      ],
+      "want": false
+    },
+    {
+      "name": "example 3",
+      "kind": "example",
+      "args": [
+        4,
+        [
+          [
+            0,
+            1
+          ],
+          [
+            2,
+            3
+          ]
+        ]
+      ],
+      "want": false
+    },
+    {
+      "name": "single vertex",
+      "kind": "edge",
+      "args": [
+        1,
+        []
+      ],
+      "want": true
+    },
+    {
+      "name": "disconnected no edges",
+      "kind": "edge",
+      "args": [
+        2,
+        []
+      ],
+      "want": false
+    },
+    {
+      "name": "cycle with isolated vertex",
+      "kind": "edge",
+      "args": [
+        4,
+        [
+          [
+            0,
+            1
+          ],
+          [
+            1,
+            2
+          ],
+          [
+            0,
+            2
+          ]
+        ]
+      ],
+      "want": false
+    },
+    {
+      "name": "single edge",
+      "kind": "edge",
+      "args": [
+        2,
+        [
+          [
+            0,
+            1
+          ]
+        ]
+      ],
+      "want": true
+    }
+  ]
+}

@@ -1,0 +1,92 @@
+{
+  "slug": "word-break",
+  "entry": "wordBreak",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        "leetcode",
+        [
+          "leet",
+          "code"
+        ]
+      ],
+      "want": true
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        "applepenapple",
+        [
+          "apple",
+          "pen"
+        ]
+      ],
+      "want": true
+    },
+    {
+      "name": "example 3",
+      "kind": "example",
+      "args": [
+        "catsandog",
+        [
+          "cats",
+          "dog",
+          "sand",
+          "and",
+          "cat"
+        ]
+      ],
+      "want": false
+    },
+    {
+      "name": "reuse dictionary entry",
+      "kind": "edge",
+      "args": [
+        "aaaa",
+        [
+          "aa"
+        ]
+      ],
+      "want": true
+    },
+    {
+      "name": "must backtrack prefix",
+      "kind": "edge",
+      "args": [
+        "cars",
+        [
+          "car",
+          "ca",
+          "rs"
+        ]
+      ],
+      "want": true
+    },
+    {
+      "name": "partial match only",
+      "kind": "edge",
+      "args": [
+        "ab",
+        [
+          "a"
+        ]
+      ],
+      "want": false
+    },
+    {
+      "name": "single exact word",
+      "kind": "edge",
+      "args": [
+        "a",
+        [
+          "a"
+        ]
+      ],
+      "want": true
+    }
+  ]
+}

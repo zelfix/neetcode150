@@ -1,0 +1,91 @@
+{
+  "slug": "linked-list-cycle",
+  "entry": "hasCycle",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        [
+          3,
+          2,
+          0,
+          -4
+        ]
+      ],
+      "want": true,
+      "cyclePos": 1
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        [
+          1,
+          2
+        ]
+      ],
+      "want": true,
+      "cyclePos": 0
+    },
+    {
+      "name": "example 3",
+      "kind": "example",
+      "args": [
+        [
+          1
+        ]
+      ],
+      "want": false,
+      "cyclePos": -1
+    },
+    {
+      "name": "empty",
+      "kind": "edge",
+      "args": [
+        []
+      ],
+      "want": false,
+      "cyclePos": -1
+    },
+    {
+      "name": "self cycle",
+      "kind": "edge",
+      "args": [
+        [
+          1
+        ]
+      ],
+      "want": true,
+      "cyclePos": 0
+    },
+    {
+      "name": "tail self cycle",
+      "kind": "edge",
+      "args": [
+        [
+          1,
+          2,
+          3
+        ]
+      ],
+      "want": true,
+      "cyclePos": 2
+    },
+    {
+      "name": "equal values without cycle",
+      "kind": "edge",
+      "args": [
+        [
+          1,
+          1,
+          1
+        ]
+      ],
+      "want": false,
+      "cyclePos": -1
+    }
+  ],
+  "policy": "cycle"
+}

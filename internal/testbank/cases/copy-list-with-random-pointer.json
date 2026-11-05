@@ -1,0 +1,196 @@
+{
+  "slug": "copy-list-with-random-pointer",
+  "entry": "copyRandomList",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        [
+          [
+            7,
+            null
+          ],
+          [
+            13,
+            0
+          ],
+          [
+            11,
+            4
+          ],
+          [
+            10,
+            2
+          ],
+          [
+            1,
+            0
+          ]
+        ]
+      ],
+      "want": [
+        [
+          7,
+          null
+        ],
+        [
+          13,
+          0
+        ],
+        [
+          11,
+          4
+        ],
+        [
+          10,
+          2
+        ],
+        [
+          1,
+          0
+        ]
+      ]
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        [
+          [
+            1,
+            1
+          ],
+          [
+            2,
+            1
+          ]
+        ]
+      ],
+      "want": [
+        [
+          1,
+          1
+        ],
+        [
+          2,
+          1
+        ]
+      ]
+    },
+    {
+      "name": "example 3",
+      "kind": "example",
+      "args": [
+        [
+          [
+            3,
+            null
+          ],
+          [
+            3,
+            0
+          ],
+          [
+            3,
+            null
+          ]
+        ]
+      ],
+      "want": [
+        [
+          3,
+          null
+        ],
+        [
+          3,
+          0
+        ],
+        [
+          3,
+          null
+        ]
+      ]
+    },
+    {
+      "name": "empty",
+      "kind": "edge",
+      "args": [
+        []
+      ],
+      "want": []
+    },
+    {
+      "name": "self random",
+      "kind": "edge",
+      "args": [
+        [
+          [
+            5,
+            0
+          ]
+        ]
+      ],
+      "want": [
+        [
+          5,
+          0
+        ]
+      ]
+    },
+    {
+      "name": "all random null",
+      "kind": "edge",
+      "args": [
+        [
+          [
+            1,
+            null
+          ],
+          [
+            1,
+            null
+          ]
+        ]
+      ],
+      "want": [
+        [
+          1,
+          null
+        ],
+        [
+          1,
+          null
+        ]
+      ]
+    },
+    {
+      "name": "mutual random",
+      "kind": "edge",
+      "args": [
+        [
+          [
+            -1,
+            1
+          ],
+          [
+            7,
+            0
+          ]
+        ]
+      ],
+      "want": [
+        [
+          -1,
+          1
+        ],
+        [
+          7,
+          0
+        ]
+      ]
+    }
+  ],
+  "policy": "random-clone"
+}

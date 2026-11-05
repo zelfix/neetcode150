@@ -1,0 +1,87 @@
+{
+  "slug": "decode-ways",
+  "entry": "numDecodings",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        "12"
+      ],
+      "want": 2
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        "226"
+      ],
+      "want": 3
+    },
+    {
+      "name": "example 3",
+      "kind": "example",
+      "args": [
+        "06"
+      ],
+      "want": 0
+    },
+    {
+      "name": "zero alone",
+      "kind": "edge",
+      "args": [
+        "0"
+      ],
+      "want": 0
+    },
+    {
+      "name": "zero paired with one",
+      "kind": "edge",
+      "args": [
+        "10"
+      ],
+      "want": 1
+    },
+    {
+      "name": "invalid zero pair",
+      "kind": "edge",
+      "args": [
+        "30"
+      ],
+      "want": 0
+    },
+    {
+      "name": "internal zero",
+      "kind": "edge",
+      "args": [
+        "101"
+      ],
+      "want": 1
+    },
+    {
+      "name": "double zero",
+      "kind": "edge",
+      "args": [
+        "100"
+      ],
+      "want": 0
+    },
+    {
+      "name": "pair beyond twenty six",
+      "kind": "edge",
+      "args": [
+        "27"
+      ],
+      "want": 1
+    },
+    {
+      "name": "repeated valid choices",
+      "kind": "edge",
+      "args": [
+        "1111"
+      ],
+      "want": 5
+    }
+  ]
+}

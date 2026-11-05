@@ -1,0 +1,146 @@
+{
+  "slug": "design-add-and-search-words-data-structure",
+  "entry": "Constructor",
+  "mode": "operations",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "ops": [
+        "WordDictionary",
+        "addWord",
+        "addWord",
+        "addWord",
+        "search",
+        "search",
+        "search",
+        "search"
+      ],
+      "calls": [
+        [],
+        [
+          "bad"
+        ],
+        [
+          "dad"
+        ],
+        [
+          "mad"
+        ],
+        [
+          "pad"
+        ],
+        [
+          "bad"
+        ],
+        [
+          ".ad"
+        ],
+        [
+          "b.."
+        ]
+      ],
+      "want": [
+        null,
+        null,
+        null,
+        null,
+        false,
+        true,
+        true,
+        true
+      ]
+    },
+    {
+      "name": "wildcards and exact length",
+      "kind": "edge",
+      "ops": [
+        "Constructor",
+        "search",
+        "addWord",
+        "addWord",
+        "search",
+        "search",
+        "search",
+        "search"
+      ],
+      "calls": [
+        [],
+        [
+          "."
+        ],
+        [
+          "a"
+        ],
+        [
+          "ab"
+        ],
+        [
+          "."
+        ],
+        [
+          ".."
+        ],
+        [
+          "a.."
+        ],
+        [
+          "b."
+        ]
+      ],
+      "want": [
+        null,
+        false,
+        null,
+        null,
+        true,
+        true,
+        false,
+        false
+      ]
+    },
+    {
+      "name": "wildcard explores branches",
+      "kind": "edge",
+      "ops": [
+        "Constructor",
+        "addWord",
+        "addWord",
+        "addWord",
+        "search",
+        "search",
+        "search"
+      ],
+      "calls": [
+        [],
+        [
+          "bad"
+        ],
+        [
+          "bag"
+        ],
+        [
+          "dad"
+        ],
+        [
+          "b.g"
+        ],
+        [
+          ".ad"
+        ],
+        [
+          "..z"
+        ]
+      ],
+      "want": [
+        null,
+        null,
+        null,
+        null,
+        true,
+        true,
+        false
+      ]
+    }
+  ]
+}

@@ -1,0 +1,80 @@
+{
+  "slug": "house-robber",
+  "entry": "rob",
+  "mode": "function",
+  "cases": [
+    {
+      "name": "example 1",
+      "kind": "example",
+      "args": [
+        [
+          1,
+          2,
+          3,
+          1
+        ]
+      ],
+      "want": 4
+    },
+    {
+      "name": "example 2",
+      "kind": "example",
+      "args": [
+        [
+          2,
+          7,
+          9,
+          3,
+          1
+        ]
+      ],
+      "want": 12
+    },
+    {
+      "name": "single",
+      "kind": "edge",
+      "args": [
+        [
+          5
+        ]
+      ],
+      "want": 5
+    },
+    {
+      "name": "all zero",
+      "kind": "edge",
+      "args": [
+        [
+          0,
+          0,
+          0
+        ]
+      ],
+      "want": 0
+    },
+    {
+      "name": "two houses",
+      "kind": "edge",
+      "args": [
+        [
+          2,
+          9
+        ]
+      ],
+      "want": 9
+    },
+    {
+      "name": "skip tempting middle",
+      "kind": "edge",
+      "args": [
+        [
+          2,
+          1,
+          1,
+          2
+        ]
+      ],
+      "want": 4
+    }
+  ]
+}
