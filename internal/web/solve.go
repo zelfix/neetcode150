@@ -88,7 +88,7 @@ type recordView struct {
 	Notes         []string
 }
 
-func (s *Server) record(p catalog.Problem, view problemView, now time.Time) recordView {
+func (s *session) record(p catalog.Problem, view problemView, now time.Time) recordView {
 	e := view.Entry
 	r := recordView{
 		Stage:        e.ReviewStage,
@@ -186,7 +186,7 @@ type submissionView struct {
 
 // handleSolve renders the workspace: the statement on one side, an editor and
 // the test output on the other.
-func (s *Server) handleSolve(w http.ResponseWriter, r *http.Request) {
+func (s *session) handleSolve(w http.ResponseWriter, r *http.Request) {
 	p, ok := s.cat.BySlug(r.PathValue("slug"))
 	if !ok {
 		s.notFound(w, r, "No problem with that slug.")
@@ -227,7 +227,7 @@ func (s *Server) handleSolve(w http.ResponseWriter, r *http.Request) {
 	}
 	coach := s.tutorView(p.Slug)
 	s.submissionMu.Lock()
-	pending, pendingSubmit := s.pendingSubmissions[p.Slug]
+	pending, pendingSubmit := s.pendingSubmissions[s.key(p)]
 	s.submissionMu.Unlock()
 
 	s.render(w, "solve", solvePage{
@@ -261,7 +261,7 @@ func formatElapsed(elapsed time.Duration) string {
 	return fmt.Sprintf("%02d:%02d:%02d", seconds/3600, (seconds/60)%60, seconds%60)
 }
 
-func (s *Server) submissions(p catalog.Problem) []submissionView {
+func (s *session) submissions(p catalog.Problem) []submissionView {
 	attempts, err := s.progress.Scope().Attempts(p.Slug)
 	if err != nil {
 		panic(err)
@@ -282,7 +282,7 @@ func (s *Server) submissions(p catalog.Problem) []submissionView {
 	return out
 }
 
-func (s *Server) tutorView(slug string) tutorView {
+func (s *session) tutorView(slug string) tutorView {
 	available, why := s.tutor.Available()
 	v := tutorView{
 		Available: available,
@@ -361,7 +361,7 @@ type tutorEvaluation struct {
 
 // handleSubmit runs tests and assesses the available learning evidence.
 // The tutor asks a follow-up only when something material remains unclear.
-func (s *Server) handleSubmit(w http.ResponseWriter, r *http.Request) {
+func (s *session) handleSubmit(w http.ResponseWriter, r *http.Request) {
 	p, ok := s.cat.BySlug(r.PathValue("slug"))
 	if !ok {
 		s.notFound(w, r, "No problem with that slug.")
@@ -377,7 +377,7 @@ func (s *Server) handleSubmit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.submissionMu.Lock()
-	_, alreadyPending := s.pendingSubmissions[p.Slug]
+	_, alreadyPending := s.pendingSubmissions[s.key(p)]
 	s.submissionMu.Unlock()
 	if alreadyPending {
 		http.Error(w, "finish the pending submission conversation first", http.StatusConflict)
@@ -448,7 +448,7 @@ func (s *Server) handleSubmit(w http.ResponseWriter, r *http.Request) {
 //
 // Starting the agent takes seconds, so this runs detached: Start answers at
 // once and the reply arrives over the event stream.
-func (s *Server) openLesson(p catalog.Problem) {
+func (s *session) openLesson(p catalog.Problem) {
 	if available, _ := s.tutor.Available(); !available {
 		return
 	}
@@ -461,7 +461,7 @@ func (s *Server) openLesson(p catalog.Problem) {
 	}()
 }
 
-func (s *Server) openingPrompt(p catalog.Problem) string {
+func (s *session) openingPrompt(p catalog.Problem) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "The user has just started a sitting on %q and the page is showing them "+
 		"the statement verbatim, examples and constraints included.\n\n", p.Title)
@@ -480,7 +480,7 @@ func (s *Server) openingPrompt(p catalog.Problem) string {
 	return b.String()
 }
 
-func (s *Server) advanceSubmissionAfterAnswer(p catalog.Problem, pending pendingSubmission, sess *tutor.Session) {
+func (s *session) advanceSubmissionAfterAnswer(p catalog.Problem, pending pendingSubmission, sess *tutor.Session) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 	transcript := formatTranscript(sess.Transcript())
@@ -521,7 +521,7 @@ func (s *Server) advanceSubmissionAfterAnswer(p catalog.Problem, pending pending
 	sess.PublishSubmissionDone(message)
 }
 
-func (s *Server) submissionDecisionPrompt(p catalog.Problem, pending pendingSubmission, transcript string) string {
+func (s *session) submissionDecisionPrompt(p catalog.Problem, pending pendingSubmission, transcript string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "You are deciding whether the follow-up for %q is complete.\n", p.Title)
 	fmt.Fprintf(&b, "Tests passed: %t\nTest output:\n%s\nElapsed solving time: %s\nPrior attempts: %d; prior ratings: %v.\n", pending.Passed, pending.Output, pending.Elapsed.Round(time.Second), pending.Entry.Attempts, pending.Entry.History)
@@ -535,7 +535,7 @@ func (s *Server) submissionDecisionPrompt(p catalog.Problem, pending pendingSubm
 }
 
 // Only review evidence enters a new lesson; archived solutions stay out of cold solves.
-func (s *Server) appendLearningHistory(b *strings.Builder, p catalog.Problem) {
+func (s *session) appendLearningHistory(b *strings.Builder, p catalog.Problem) {
 	attempts, err := s.progress.Scope().Attempts(p.Slug)
 	if err != nil {
 		panic(err)
@@ -582,7 +582,7 @@ func parseSubmissionDecision(text string) (submissionDecision, error) {
 	return d, nil
 }
 
-func (s *Server) recordSubmission(p catalog.Problem, pending pendingSubmission, review tutorEvaluation) (string, error) {
+func (s *session) recordSubmission(p catalog.Problem, pending pendingSubmission, review tutorEvaluation) (string, error) {
 	if !pending.Passed && review.Confidence > 2 {
 		review.Confidence = 2
 	}
@@ -625,7 +625,7 @@ func (s *Server) recordSubmission(p catalog.Problem, pending pendingSubmission, 
 		return "", err
 	}
 	s.submissionMu.Lock()
-	delete(s.pendingSubmissions, p.Slug)
+	delete(s.pendingSubmissions, s.key(p))
 	s.submissionMu.Unlock()
 	return archive, nil
 }
@@ -644,7 +644,7 @@ func formatTranscript(events []tutor.Event) string {
 	return b.String()
 }
 
-func (s *Server) askTutorAs(ctx context.Context, p catalog.Problem, prompt, display string) (string, error) {
+func (s *session) askTutorAs(ctx context.Context, p catalog.Problem, prompt, display string) (string, error) {
 	var baseline int
 	if old := s.tutor.Get(p.Slug); old != nil {
 		for _, e := range old.Transcript() {
@@ -695,7 +695,7 @@ func (s *Server) askTutorAs(ctx context.Context, p catalog.Problem, prompt, disp
 	}
 }
 
-func (s *Server) askTutorInternal(ctx context.Context, sess *tutor.Session, prompt string) (string, error) {
+func (s *session) askTutorInternal(ctx context.Context, sess *tutor.Session, prompt string) (string, error) {
 	baseline := 0
 	for _, event := range sess.Transcript() {
 		if event.Seq > baseline {
@@ -752,7 +752,7 @@ type createResponse struct {
 
 // handleStartAttempt begins a cold sitting, archiving any inactive solution
 // before creating a blank scaffold and starting the timer.
-func (s *Server) handleStartAttempt(w http.ResponseWriter, r *http.Request) {
+func (s *session) handleStartAttempt(w http.ResponseWriter, r *http.Request) {
 	p, ok := s.cat.BySlug(r.PathValue("slug"))
 	if !ok {
 		s.notFound(w, r, "No problem with that slug.")
@@ -765,7 +765,7 @@ func (s *Server) handleStartAttempt(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.submissionMu.Lock()
-	_, pendingSubmit := s.pendingSubmissions[p.Slug]
+	_, pendingSubmit := s.pendingSubmissions[s.key(p)]
 	s.submissionMu.Unlock()
 	if pendingSubmit {
 		http.Error(w, "finish the tutor follow-up before starting another attempt", http.StatusConflict)
@@ -812,7 +812,7 @@ func (s *Server) handleStartAttempt(w http.ResponseWriter, r *http.Request) {
 
 // handleCancelAttempt saves the editor and stops its clock without discarding
 // the work; the next Start exposes the saved source as a previous attempt.
-func (s *Server) handleCancelAttempt(w http.ResponseWriter, r *http.Request) {
+func (s *session) handleCancelAttempt(w http.ResponseWriter, r *http.Request) {
 	p, ok := s.cat.BySlug(r.PathValue("slug"))
 	if !ok {
 		s.notFound(w, r, "No problem with that slug.")
@@ -824,7 +824,7 @@ func (s *Server) handleCancelAttempt(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.submissionMu.Lock()
-	_, pendingSubmit := s.pendingSubmissions[p.Slug]
+	_, pendingSubmit := s.pendingSubmissions[s.key(p)]
 	s.submissionMu.Unlock()
 	if pendingSubmit {
 		http.Error(w, "the tutor follow-up is still in progress", http.StatusConflict)
@@ -856,7 +856,7 @@ func (s *Server) handleCancelAttempt(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleCreateSolution scaffolds the solution files, exactly as `nc start` does.
-func (s *Server) handleCreateSolution(w http.ResponseWriter, r *http.Request) {
+func (s *session) handleCreateSolution(w http.ResponseWriter, r *http.Request) {
 	p, ok := s.cat.BySlug(r.PathValue("slug"))
 	if !ok {
 		s.notFound(w, r, "No problem with that slug.")
@@ -897,7 +897,7 @@ func (s *Server) handleCreateSolution(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleSaveSolution stores the editor's contents.
-func (s *Server) handleSaveSolution(w http.ResponseWriter, r *http.Request) {
+func (s *session) handleSaveSolution(w http.ResponseWriter, r *http.Request) {
 	p, ok := s.cat.BySlug(r.PathValue("slug"))
 	if !ok {
 		s.notFound(w, r, "No problem with that slug.")
@@ -928,7 +928,7 @@ func (s *Server) handleSaveSolution(w http.ResponseWriter, r *http.Request) {
 // Saving first is not a convenience: without it, a keystroke followed by "run"
 // would test the previous version of the file and report a result about code
 // that is no longer on screen.
-func (s *Server) handleRunTests(w http.ResponseWriter, r *http.Request) {
+func (s *session) handleRunTests(w http.ResponseWriter, r *http.Request) {
 	p, ok := s.cat.BySlug(r.PathValue("slug"))
 	if !ok {
 		s.notFound(w, r, "No problem with that slug.")
@@ -975,7 +975,7 @@ func (s *Server) handleRunTests(w http.ResponseWriter, r *http.Request) {
 // says nothing about which fixtures are hard, and counting it would make the
 // pass rate a measure of typing rather than of understanding. Recording is
 // best-effort — losing a statistic must never fail the run the user asked for.
-func (s *Server) recordRun(slug string, run testRun, runErr error) {
+func (s *session) recordRun(slug string, run testRun, runErr error) {
 	if runErr != nil || !run.Ran {
 		return
 	}
@@ -987,7 +987,7 @@ func (s *Server) recordRun(slug string, run testRun, runErr error) {
 // ---------- shared bits ----------
 
 // save writes the solution file, formatting it when it parses.
-func (s *Server) save(p catalog.Problem, code string) (saveResponse, error) {
+func (s *session) save(p catalog.Problem, code string) (saveResponse, error) {
 	formatted, formatErr := formatGo(code)
 	resp, err := s.saveDraft(p, formatted)
 	if formatErr != nil {
@@ -996,7 +996,7 @@ func (s *Server) save(p catalog.Problem, code string) (saveResponse, error) {
 	return resp, err
 }
 
-func (s *Server) saveDraft(p catalog.Problem, code string) (saveResponse, error) {
+func (s *session) saveDraft(p catalog.Problem, code string) (saveResponse, error) {
 	path := filepath.Join(s.root, p.SolutionDir(), "solution.go")
 	if _, err := os.Stat(path); err != nil {
 		return saveResponse{}, fmt.Errorf("no solution file yet for %s; create it first", p.Slug)
@@ -1007,13 +1007,13 @@ func (s *Server) saveDraft(p catalog.Problem, code string) (saveResponse, error)
 	return saveResponse{Code: code}, nil
 }
 
-func (s *Server) readSolution(p catalog.Problem) (code string, exists bool) {
+func (s *session) readSolution(p catalog.Problem) (code string, exists bool) {
 	code, err := readIfPresent(filepath.Join(s.root, p.SolutionDir(), "solution.go"))
 	return code, err == nil && code != ""
 }
 
 // countArchived is how many earlier attempts `nc resolve` has put aside.
-func (s *Server) countArchived(p catalog.Problem) int {
+func (s *session) countArchived(p catalog.Problem) int {
 	var n int
 	if err := s.progress.DB().SQL.QueryRow("SELECT count(*) FROM attempts WHERE user_id=? AND slug=?", s.progress.UserID(), p.Slug).Scan(&n); err != nil {
 		panic(err)
@@ -1062,7 +1062,7 @@ type resolveResponse struct {
 // Nothing is destroyed — the old attempt is on disk under attempts/ and
 // `nc diff` reads it back — but the editor's contents do change out from under
 // the user, so the page asks before calling this.
-func (s *Server) handleResolve(w http.ResponseWriter, r *http.Request) {
+func (s *session) handleResolve(w http.ResponseWriter, r *http.Request) {
 	p, ok := s.cat.BySlug(r.PathValue("slug"))
 	if !ok {
 		s.notFound(w, r, "No problem with that slug.")

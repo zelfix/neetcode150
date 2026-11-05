@@ -1036,3 +1036,37 @@ textarea[aria-label="Your solution"]:disabled { cursor: not-allowed; opacity: 0.
   max-width: 44rem;
   margin: 0.85rem 0 0;
 }
+
+/* ---------- the sign-in refusal ---------- */
+
+/* The only page an unidentified request ever sees. It is deliberately plain:
+   it carries no navigation, because there is nothing yet to navigate. */
+.join-page {
+  display: grid;
+  place-items: center;
+  min-height: 100dvh;
+  padding: var(--gut);
+}
+
+.join-page main {
+  max-width: 34rem;
+}
+
+.join-page h1 {
+  font-family: var(--font-read);
+  font-size: var(--t-xl);
+  font-weight: 400;
+  margin: 0 0 1rem;
+}
+
+.join-page p {
+  font-family: var(--font-read);
+  color: var(--dim);
+  margin: 0 0 0.75rem;
+}
+
+.join-page .muted {
+  font-family: var(--font-ui);
+  font-size: var(--t-s);
+  color: var(--dimmer);
+}

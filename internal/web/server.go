@@ -23,6 +23,7 @@ import (
 	"neetcode150/internal/catalog"
 	"neetcode150/internal/content"
 	"neetcode150/internal/progress"
+	"neetcode150/internal/studydb"
 	"neetcode150/internal/tutor"
 )
 
@@ -33,13 +34,22 @@ var assets embed.FS
 var pageNames = []string{"dashboard", "problems", "problem", "patterns", "pattern", "review", "coach", "solve"}
 
 // Server serves the site.
+// submissionKey identifies one person's unfinished submission. Keyed by slug
+// alone, two people on the same problem would overwrite each other's.
+type submissionKey struct {
+	userID int64
+	slug   string
+}
+
+// Server serves the site. It holds nothing personal: a request's own view comes
+// from view(), so there is no field a handler can read the owner's work from.
 type Server struct {
-	root     string
-	cat      *catalog.Catalog
-	content  *content.Store
-	progress *progress.Store
-	pages    map[string]*template.Template
-	now      func() time.Time
+	root    string
+	cat     *catalog.Catalog
+	content *content.Store
+	db      *studydb.DB
+	pages   map[string]*template.Template
+	now     func() time.Time
 
 	// runTests is injected the same way now is, so handler tests do not shell
 	// out to a real `go test` and inherit its speed and flakiness.
@@ -51,7 +61,7 @@ type Server struct {
 	tutor *tutor.Manager
 
 	submissionMu       sync.Mutex
-	pendingSubmissions map[string]pendingSubmission
+	pendingSubmissions map[submissionKey]pendingSubmission
 }
 
 // New builds a Server over the project at root.
@@ -60,31 +70,37 @@ func New(root string, cat *catalog.Catalog, store *content.Store, prog *progress
 		root:               root,
 		cat:                cat,
 		content:            store,
-		progress:           prog,
+		db:                 prog.DB(),
 		pages:              map[string]*template.Template{},
 		now:                time.Now,
 		runTests:           runGoTest,
 		tutor:              tutor.New(root, tutor.ModeTutor, 0),
-		pendingSubmissions: make(map[string]pendingSubmission),
+		pendingSubmissions: make(map[submissionKey]pendingSubmission),
 	}
-	s.tutor.UseStorage(prog.Scope())
-	pending, err := prog.Scope().Pending()
+	s.tutor.UseStorage(s.db.Owner())
+	users, err := s.db.Users()
 	if err != nil {
 		return nil, err
 	}
-	for slug, raw := range pending {
-		var p pendingSubmission
-		if err := json.Unmarshal(raw, &p); err != nil {
+	for _, u := range users {
+		pending, err := s.db.For(u.ID).Pending()
+		if err != nil {
 			return nil, err
 		}
-		// A worker cannot survive a process restart. Preserve the submitted source
-		// and let the next user reply retry the assessment.
-		wasChecking := p.Checking
-		p.Checking = false
-		s.pendingSubmissions[slug] = p
-		if wasChecking {
-			if session := s.tutor.Get(slug); session != nil {
-				session.PublishSubmissionQuestion("The review was interrupted by a server restart. Your solution is saved; send ‘continue’ to resume the review.")
+		for slug, raw := range pending {
+			var p pendingSubmission
+			if err := json.Unmarshal(raw, &p); err != nil {
+				return nil, err
+			}
+			// A worker cannot survive a process restart. Preserve the submitted
+			// source and let the next user reply retry the assessment.
+			wasChecking := p.Checking
+			p.Checking = false
+			s.pendingSubmissions[submissionKey{u.ID, slug}] = p
+			if wasChecking && u.ID == studydb.OwnerID {
+				if session := s.tutor.Get(slug); session != nil {
+					session.PublishSubmissionQuestion("The review was interrupted by a server restart. Your solution is saved; send ‘continue’ to resume the review.")
+				}
 			}
 		}
 	}
@@ -105,7 +121,7 @@ func (s *Server) UseTutor(m *tutor.Manager) {
 	if s.tutor != nil {
 		s.tutor.Close()
 	}
-	m.UseStorage(s.progress.Scope())
+	m.UseStorage(s.db.Owner())
 	s.tutor = m
 }
 
@@ -128,29 +144,38 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServerFS(static)))
 	mux.HandleFunc("GET /highlight.css", s.handleHighlightCSS)
 
-	mux.HandleFunc("GET /{$}", s.handleDashboard)
-	mux.HandleFunc("GET /problems/{$}", s.handleProblems)
-	mux.HandleFunc("GET /problems/{slug}", s.handleProblem)
-	mux.HandleFunc("GET /problems/{slug}/solve", s.handleSolve)
-	mux.HandleFunc("GET /patterns/{$}", s.handlePatterns)
-	mux.HandleFunc("GET /patterns/{slug}", s.handlePattern)
-	mux.HandleFunc("GET /review/{$}", s.handleReview)
-	mux.HandleFunc("GET /coach/{$}", s.handleCoach)
-	mux.HandleFunc("POST /problems/{slug}/status", guard(s.handleSetStatus))
-	mux.HandleFunc("POST /problems/{slug}/rate", guard(s.handleRate))
+	// Trading a link for a cookie is the only route that runs without an
+	// identity, and leaving is the only one that deliberately drops it.
+	mux.HandleFunc("GET /join/{token}", s.handleJoin)
+	mux.HandleFunc("GET /leave", s.handleLeave)
+
+	// Everything below is somebody's own work, so it all goes through with(),
+	// which refuses a request that names nobody.
+	mux.HandleFunc("GET /{$}", s.with((*session).handleDashboard))
+	mux.HandleFunc("GET /problems/{$}", s.with((*session).handleProblems))
+	mux.HandleFunc("GET /problems/{slug}", s.with((*session).handleProblem))
+	mux.HandleFunc("GET /problems/{slug}/solve", s.with((*session).handleSolve))
+	mux.HandleFunc("GET /patterns/{$}", s.with((*session).handlePatterns))
+	mux.HandleFunc("GET /patterns/{slug}", s.with((*session).handlePattern))
+	mux.HandleFunc("GET /review/{$}", s.with((*session).handleReview))
+	mux.HandleFunc("GET /coach/{$}", s.with((*session).handleCoach))
+	mux.HandleFunc("POST /problems/{slug}/status", guard(s.with((*session).handleSetStatus)))
+	mux.HandleFunc("POST /problems/{slug}/rate", guard(s.with((*session).handleRate)))
 	// These write files and run code, so they carry the stricter guard.
-	mux.HandleFunc("POST /problems/{slug}/create", guardJSON(s.handleCreateSolution))
-	mux.HandleFunc("POST /problems/{slug}/start", guardJSON(s.handleStartAttempt))
-	mux.HandleFunc("POST /problems/{slug}/cancel", guardJSON(s.handleCancelAttempt))
-	mux.HandleFunc("POST /problems/{slug}/solution", guardJSON(s.handleSaveSolution))
-	mux.HandleFunc("POST /problems/{slug}/notes", guardJSON(s.handleSaveNotes))
-	mux.HandleFunc("POST /problems/{slug}/test", guardJSON(s.handleRunTests))
-	mux.HandleFunc("POST /problems/{slug}/submit", guardJSON(s.handleSubmit))
-	mux.HandleFunc("POST /problems/{slug}/resolve", guardJSON(s.handleResolve))
-	mux.HandleFunc("GET /problems/{slug}/tutor/events", guardStream(s.handleTutorEvents))
-	mux.HandleFunc("POST /problems/{slug}/tutor", guardJSON(s.handleTutorSend))
-	mux.HandleFunc("POST /problems/{slug}/tutor/reset", guardJSON(s.handleTutorReset))
-	mux.HandleFunc("POST /problems/{slug}/tutor/interrupt", guardJSON(s.handleTutorInterrupt))
+	mux.HandleFunc("POST /problems/{slug}/create", guardJSON(s.with((*session).handleCreateSolution)))
+	mux.HandleFunc("POST /problems/{slug}/start", guardJSON(s.with((*session).handleStartAttempt)))
+	mux.HandleFunc("POST /problems/{slug}/cancel", guardJSON(s.with((*session).handleCancelAttempt)))
+	mux.HandleFunc("POST /problems/{slug}/solution", guardJSON(s.with((*session).handleSaveSolution)))
+	mux.HandleFunc("POST /problems/{slug}/notes", guardJSON(s.with((*session).handleSaveNotes)))
+	mux.HandleFunc("POST /problems/{slug}/test", guardJSON(s.with((*session).handleRunTests)))
+	mux.HandleFunc("POST /problems/{slug}/submit", guardJSON(s.with((*session).handleSubmit)))
+	mux.HandleFunc("POST /problems/{slug}/resolve", guardJSON(s.with((*session).handleResolve)))
+	// The tutor keeps one process and one transcript per problem, not per
+	// person, so it stays the owner's until that is per-user.
+	mux.HandleFunc("GET /problems/{slug}/tutor/events", guardStream(s.ownerOnly((*session).handleTutorEvents)))
+	mux.HandleFunc("POST /problems/{slug}/tutor", guardJSON(s.ownerOnly((*session).handleTutorSend)))
+	mux.HandleFunc("POST /problems/{slug}/tutor/reset", guardJSON(s.ownerOnly((*session).handleTutorReset)))
+	mux.HandleFunc("POST /problems/{slug}/tutor/interrupt", guardJSON(s.ownerOnly((*session).handleTutorInterrupt)))
 
 	// Accept the paths without the trailing slash too.
 	for _, p := range []string{"/problems", "/patterns", "/review", "/coach"} {
@@ -194,19 +219,19 @@ type common struct {
 	Full bool
 }
 
-func (s *Server) common(title, nav string) common {
+func (s *session) common(title, nav string) common {
 	now := s.now()
 	sum := s.progress.Summarize(s.cat.Problems, now)
 	return common{Title: title, Nav: nav, Summary: sum, Due: sum.DueNow}
 }
 
-func (s *Server) wideCommon(title, nav string) common {
+func (s *session) wideCommon(title, nav string) common {
 	c := s.common(title, nav)
 	c.Wide = true
 	return c
 }
 
-func (s *Server) fullCommon(title, nav string) common {
+func (s *session) fullCommon(title, nav string) common {
 	c := s.wideCommon(title, nav)
 	c.Full = true
 	return c
@@ -220,7 +245,7 @@ type problemView struct {
 	DaysOverdue int
 }
 
-func (s *Server) view(p catalog.Problem, now time.Time) problemView {
+func (s *session) view(p catalog.Problem, now time.Time) problemView {
 	e := s.progress.Get(p.Slug)
 	v := problemView{Problem: p, Entry: e, IsDue: e.Due(now)}
 	if v.IsDue {
@@ -229,7 +254,7 @@ func (s *Server) view(p catalog.Problem, now time.Time) problemView {
 	return v
 }
 
-func (s *Server) views(problems []catalog.Problem, now time.Time) []problemView {
+func (s *session) views(problems []catalog.Problem, now time.Time) []problemView {
 	out := make([]problemView, 0, len(problems))
 	for _, p := range problems {
 		out = append(out, s.view(p, now))
@@ -246,7 +271,7 @@ type groupView struct {
 	HasGuide bool
 }
 
-func (s *Server) groups(now time.Time) []groupView {
+func (s *session) groups(now time.Time) []groupView {
 	out := make([]groupView, 0, len(catalog.PatternOrder))
 	for _, g := range s.cat.Groups() {
 		out = append(out, groupView{
@@ -277,7 +302,7 @@ type dashboardPage struct {
 	Recent     []problemView
 }
 
-func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
+func (s *session) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	now := s.now()
 	page := dashboardPage{
 		common: s.common("Dashboard", "dashboard"),
@@ -296,7 +321,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 }
 
 // recent lists the problems you touched most recently.
-func (s *Server) recent(now time.Time, limit int) []problemView {
+func (s *session) recent(now time.Time, limit int) []problemView {
 	var touched []problemView
 	for _, p := range s.cat.Problems {
 		v := s.view(p, now)
@@ -317,7 +342,7 @@ type problemsPage struct {
 	Statuses   []progress.Status
 }
 
-func (s *Server) handleProblems(w http.ResponseWriter, r *http.Request) {
+func (s *session) handleProblems(w http.ResponseWriter, r *http.Request) {
 	s.render(w, "problems", problemsPage{
 		common:     s.common("All problems", "problems"),
 		Groups:     s.groups(s.now()),
@@ -362,7 +387,7 @@ type problemPage struct {
 	IntervalDays   int
 }
 
-func (s *Server) handleProblem(w http.ResponseWriter, r *http.Request) {
+func (s *session) handleProblem(w http.ResponseWriter, r *http.Request) {
 	p, ok := s.cat.BySlug(r.PathValue("slug"))
 	if !ok {
 		s.notFound(w, r, "No problem with that slug.")
@@ -419,7 +444,7 @@ type patternsPage struct {
 	Groups []groupView
 }
 
-func (s *Server) handlePatterns(w http.ResponseWriter, r *http.Request) {
+func (s *session) handlePatterns(w http.ResponseWriter, r *http.Request) {
 	s.render(w, "patterns", patternsPage{
 		common: s.common("Patterns", "patterns"),
 		Groups: s.groups(s.now()),
@@ -432,7 +457,7 @@ type patternPage struct {
 	Guide *content.Doc
 }
 
-func (s *Server) handlePattern(w http.ResponseWriter, r *http.Request) {
+func (s *session) handlePattern(w http.ResponseWriter, r *http.Request) {
 	slug := r.PathValue("slug")
 	g, ok := s.cat.Group(slug)
 	if !ok {
@@ -464,7 +489,7 @@ type reviewPage struct {
 	Upcoming    []problemView
 }
 
-func (s *Server) handleReview(w http.ResponseWriter, r *http.Request) {
+func (s *session) handleReview(w http.ResponseWriter, r *http.Request) {
 	now := s.now()
 	page := reviewPage{
 		common:      s.common("Review queue", "review"),
@@ -485,7 +510,7 @@ func (s *Server) handleReview(w http.ResponseWriter, r *http.Request) {
 
 // ---------- mutations ----------
 
-func (s *Server) handleSetStatus(w http.ResponseWriter, r *http.Request) {
+func (s *session) handleSetStatus(w http.ResponseWriter, r *http.Request) {
 	p, ok := s.cat.BySlug(r.PathValue("slug"))
 	if !ok {
 		s.notFound(w, r, "No problem with that slug.")
@@ -503,7 +528,7 @@ func (s *Server) handleSetStatus(w http.ResponseWriter, r *http.Request) {
 	s.redirectBack(w, r, p)
 }
 
-func (s *Server) handleRate(w http.ResponseWriter, r *http.Request) {
+func (s *session) handleRate(w http.ResponseWriter, r *http.Request) {
 	p, ok := s.cat.BySlug(r.PathValue("slug"))
 	if !ok {
 		s.notFound(w, r, "No problem with that slug.")

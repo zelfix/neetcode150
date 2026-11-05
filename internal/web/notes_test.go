@@ -19,7 +19,7 @@ func TestNotesCanBeEditedAndClearedInTheBrowser(t *testing.T) {
 		if rec.Code != http.StatusOK {
 			t.Fatalf("save: %d %s", rec.Code, rec.Body.String())
 		}
-		textOnDB, err := srv.progress.Scope().Document("two-sum", "notes")
+		textOnDB, err := prog.Scope().Document("two-sum", "notes")
 		data := []byte(textOnDB)
 		if err != nil || string(data) != text {
 			t.Fatalf("notes not saved verbatim: %q, %v", data, err)
@@ -57,7 +57,7 @@ func TestNotesRequireSameOriginJSON(t *testing.T) {
 	path := filepath.Join(root, "content/problems/0001-two-sum/notes.md")
 	before, _ := os.ReadFile(path)
 	for _, site := range []string{"", "cross-site", "same-origin"} {
-		req := httptest.NewRequest(http.MethodPost, "/problems/two-sum/notes", strings.NewReader(`{"text":"changed"}`))
+		req := signedRequest(httptest.NewRequest(http.MethodPost, "/problems/two-sum/notes", strings.NewReader(`{"text":"changed"}`)))
 		req.Header.Set("Sec-Fetch-Site", site)
 		if site != "same-origin" {
 			req.Header.Set("Content-Type", "application/json")

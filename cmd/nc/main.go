@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	crand "crypto/rand"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -34,6 +35,7 @@ const usage = `nc — local NeetCode 150 study kit
 Usage:
   nc migrate                   import existing personal data into SQLite once
   nc backup <file.sqlite3>      create a consistent database backup
+  nc user list|add|link|revoke|rm   who can reach the site (--base-url, --budget)
   nc notes <problem>           read notes (--file path to replace)
   nc hints <problem>           read hint ladder (--file path to replace)
   nc log                       read the study log (--append-file path to append)
@@ -86,6 +88,8 @@ func run(args []string) error {
 		return cmdDatabase(root, rest, false)
 	case "backup":
 		return cmdDatabase(root, rest, true)
+	case "user":
+		return cmdUser(root, rest)
 	case "notes", "hints", "log":
 		return cmdDocument(root, cmd, rest)
 	case "fetch":
@@ -343,6 +347,26 @@ func cmdServe(root string, args []string) error {
 
 	addr := fmt.Sprintf("%s:%d", *host, *port)
 	fmt.Printf("neetcode150 on http://%s  (%d problems, Ctrl-C to stop)\n", addr, len(cat.Problems))
+	// The site serves nobody without a link, so say so rather than let the
+	// first visit look like a broken server.
+	if users, err := prog.DB().Users(); err == nil {
+		linked, guests := 0, 0
+		for _, u := range users {
+			if u.HasToken {
+				linked++
+			}
+			if u.ID != studydb.OwnerID {
+				guests++
+			}
+		}
+		switch {
+		case linked == 0:
+			fmt.Println("No one has a link yet, so every page will refuse. `nc user link owner` issues yours.")
+		case guests > 0:
+			fmt.Printf("%s, %s with a link.\n",
+				plural(len(users), "person", "people"), plural(linked, "one", "of them"))
+		}
+	}
 	if ok, why := coach.Available(); ok {
 		fmt.Printf("tutor panel: %s, %s mode\n", *provider, *mode)
 	} else {
@@ -1110,4 +1134,194 @@ func cmdWeak(root string, args []string) error {
 		fmt.Printf("     nc resolve %s\n", w.Problem.Slug)
 	}
 	return nil
+}
+
+// ---------- users ----------
+
+// cmdUser manages who can reach the site.
+//
+// Minting lives in the CLI and nowhere else: the site has no admin surface, so
+// an attacker who reaches it cannot create an identity. Only the hash of a
+// token is stored, which is why `link` has to issue a new one rather than print
+// the old — a link that can be reprinted is a link the database could leak.
+func cmdUser(root string, args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("expected: list, add, link, revoke or rm")
+	}
+	db, err := studydb.Open(root)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+
+	sub, rest := args[0], args[1:]
+	switch sub {
+	case "list":
+		return userList(db)
+	case "add":
+		return userAdd(db, rest)
+	case "link":
+		return userLink(db, rest)
+	case "revoke":
+		return userSetLink(db, rest, false)
+	case "rm":
+		return userRemove(db, rest)
+	default:
+		return fmt.Errorf("unknown `nc user` command %q", sub)
+	}
+}
+
+func userList(db *studydb.DB) error {
+	users, err := db.Users()
+	if err != nil {
+		return err
+	}
+	fmt.Printf("%-4s %-16s %-6s %-9s %-9s %s\n", "id", "name", "link", "budget", "spent", "state")
+	for _, u := range users {
+		link := "no"
+		if u.HasToken {
+			link = "yes"
+		}
+		state := "active"
+		if u.Disabled {
+			state = "disabled"
+		}
+		budget := "none"
+		if u.BudgetUSD > 0 {
+			budget = fmt.Sprintf("$%.2f", u.BudgetUSD)
+		}
+		fmt.Printf("%-4d %-16s %-6s %-9s $%-8.2f %s\n", u.ID, u.Name, link, budget, u.SpendUSD, state)
+	}
+	if len(users) == 1 {
+		fmt.Println("\nOnly the owner exists. `nc user add <name>` invites someone.")
+	}
+	return nil
+}
+
+// parseWithPositional lets flags appear on either side of the name. Go's flag
+// package stops at the first non-flag argument, so `nc user add dima --budget 5`
+// would silently ignore the budget — which is exactly how people type it.
+func parseWithPositional(fs *flag.FlagSet, args []string) ([]string, error) {
+	var positional []string
+	for {
+		if err := fs.Parse(args); err != nil {
+			return nil, err
+		}
+		if fs.NArg() == 0 {
+			return positional, nil
+		}
+		positional = append(positional, fs.Arg(0))
+		args = fs.Args()[1:]
+	}
+}
+
+func userFlags(name string, args []string) (names []string, base *string, budget *float64, err error) {
+	fs := flag.NewFlagSet(name, flag.ContinueOnError)
+	base = fs.String("base-url", "http://127.0.0.1:8150", "site address the join link points at")
+	budget = fs.Float64("budget", 5, "monthly tutor ceiling in dollars, 0 for none")
+	names, err = parseWithPositional(fs, args)
+	return names, base, budget, err
+}
+
+func userAdd(db *studydb.DB, args []string) error {
+	names, base, budget, err := userFlags("user add", args)
+	if err != nil {
+		return err
+	}
+	if len(names) != 1 {
+		return fmt.Errorf("expected one name")
+	}
+	name := names[0]
+	if *budget < 0 || math.IsNaN(*budget) || math.IsInf(*budget, 0) {
+		return fmt.Errorf("--budget must be a finite number greater than or equal to 0")
+	}
+	token := crand.Text()
+	u, err := db.CreateUser(name, studydb.HashToken(token), *budget, time.Now())
+	if err != nil {
+		return err
+	}
+	fmt.Printf("%s is user %d.\n\n", u.Name, u.ID)
+	printJoinLink(*base, token)
+	return nil
+}
+
+// userLink issues a new link, which also invalidates the previous one.
+func userLink(db *studydb.DB, args []string) error {
+	names, base, _, err := userFlags("user link", args)
+	if err != nil {
+		return err
+	}
+	if len(names) != 1 {
+		return fmt.Errorf("expected one name")
+	}
+	u, err := findUser(db, names[0])
+	if err != nil {
+		return err
+	}
+	token := crand.Text()
+	if err := db.SetUserToken(u.ID, token); err != nil {
+		return err
+	}
+	fmt.Printf("A new link for %s. Any earlier link has stopped working.\n\n", u.Name)
+	printJoinLink(*base, token)
+	return nil
+}
+
+func printJoinLink(base, token string) {
+	fmt.Printf("  %s/join/%s\n\n", strings.TrimRight(base, "/"), token)
+	fmt.Println("Opening it once in a browser is the whole sign-in. Only its hash is")
+	fmt.Println("stored, so this is the one time it can be shown — send it now or")
+	fmt.Println("issue another with `nc user link`.")
+}
+
+func userSetLink(db *studydb.DB, args []string, enable bool) error {
+	if len(args) != 1 {
+		return fmt.Errorf("expected one name")
+	}
+	u, err := findUser(db, args[0])
+	if err != nil {
+		return err
+	}
+	if err := db.SetUserToken(u.ID, ""); err != nil {
+		return err
+	}
+	fmt.Printf("%s can no longer sign in. Their work is untouched; `nc user link %s` lets them back.\n", u.Name, u.Name)
+	return nil
+}
+
+func userRemove(db *studydb.DB, args []string) error {
+	fs := flag.NewFlagSet("user rm", flag.ContinueOnError)
+	yes := fs.Bool("yes", false, "confirm that everything of theirs is deleted")
+	names, err := parseWithPositional(fs, args)
+	if err != nil {
+		return err
+	}
+	if len(names) != 1 {
+		return fmt.Errorf("expected one name")
+	}
+	u, err := findUser(db, names[0])
+	if err != nil {
+		return err
+	}
+	if !*yes {
+		return fmt.Errorf("this deletes %s's progress, notes, attempts and sessions for good — pass --yes to confirm", u.Name)
+	}
+	if err := db.DeleteUser(u.ID); err != nil {
+		return err
+	}
+	fmt.Printf("%s and everything of theirs is gone.\n", u.Name)
+	return nil
+}
+
+func findUser(db *studydb.DB, name string) (studydb.User, error) {
+	users, err := db.Users()
+	if err != nil {
+		return studydb.User{}, err
+	}
+	for _, u := range users {
+		if strings.EqualFold(u.Name, name) {
+			return u, nil
+		}
+	}
+	return studydb.User{}, fmt.Errorf("no user named %q — `nc user list` shows them all", name)
 }

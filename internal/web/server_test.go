@@ -26,6 +26,27 @@ import (
 	"neetcode150/internal/studydb"
 )
 
+// testToken stands in for a join link. Fixed rather than random so a failing
+// test is reproducible.
+const testToken = "test-owner-link"
+
+// signedRequest attaches the owner's cookie.
+func signedRequest(r *http.Request) *http.Request {
+	r.AddCookie(&http.Cookie{Name: cookieName, Value: testToken})
+	return r
+}
+
+// ownerSession is the per-request view a handler receives, for the tests that
+// call a session method directly instead of going through the router.
+func ownerSession(t *testing.T, srv *Server) *session {
+	t.Helper()
+	user, err := srv.db.User(studydb.OwnerID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &session{Server: srv, user: user, progress: progress.NewScoped(srv.db.Owner())}
+}
+
 // testSite builds a small site on a temporary project root.
 func testSite(t *testing.T) (*Server, string, *progress.Store) {
 	t.Helper()
@@ -65,6 +86,11 @@ func testSite(t *testing.T) (*Server, string, *progress.Store) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The site refuses a request that names nobody, so the owner gets a link
+	// and every helper below signs in with it.
+	if err := prog.DB().SetUserToken(studydb.OwnerID, testToken); err != nil {
+		t.Fatal(err)
+	}
 	srv, err := New(root, cat, content.NewStore(root, content.NewRenderer()), prog)
 	if err != nil {
 		t.Fatal(err)
@@ -78,7 +104,7 @@ func testSite(t *testing.T) (*Server, string, *progress.Store) {
 func get(t *testing.T, h http.Handler, path string) *httptest.ResponseRecorder {
 	t.Helper()
 	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+	h.ServeHTTP(rec, signedRequest(httptest.NewRequest(http.MethodGet, path, nil)))
 	return rec
 }
 
@@ -88,7 +114,7 @@ func get(t *testing.T, h http.Handler, path string) *httptest.ResponseRecorder {
 func postForm(t *testing.T, h http.Handler, path string, form url.Values) *httptest.ResponseRecorder {
 	t.Helper()
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(form.Encode()))
+	req := signedRequest(httptest.NewRequest(http.MethodPost, path, strings.NewReader(form.Encode())))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Sec-Fetch-Site", "same-origin")
 	h.ServeHTTP(rec, req)
@@ -370,8 +396,8 @@ func TestMutationsRequireASameOriginRequest(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			rec := httptest.NewRecorder()
-			req := httptest.NewRequest(http.MethodPost, "/problems/two-sum/status",
-				strings.NewReader(form.Encode()))
+			req := signedRequest(httptest.NewRequest(http.MethodPost, "/problems/two-sum/status",
+				strings.NewReader(form.Encode())))
 			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 			// httptest.NewRequest sets Host to example.com.
 			for k, v := range tc.headers {
@@ -395,7 +421,7 @@ func postJSON(t *testing.T, h http.Handler, path string, body any) *httptest.Res
 		t.Fatal(err)
 	}
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, path, bytes.NewReader(b))
+	req := signedRequest(httptest.NewRequest(http.MethodPost, path, bytes.NewReader(b)))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Sec-Fetch-Site", "same-origin")
 	h.ServeHTTP(rec, req)
@@ -665,8 +691,8 @@ func TestWorkspaceEndpointsRequireJSON(t *testing.T) {
 		})
 		t.Run(path+" rejects a cross-origin request", func(t *testing.T) {
 			rec := httptest.NewRecorder()
-			req := httptest.NewRequest(http.MethodPost, "/problems/two-sum/"+path,
-				strings.NewReader(`{"code":"package x"}`))
+			req := signedRequest(httptest.NewRequest(http.MethodPost, "/problems/two-sum/"+path,
+				strings.NewReader(`{"code":"package x"}`)))
 			req.Header.Set("Content-Type", "application/json")
 			req.Header.Set("Sec-Fetch-Site", "cross-site")
 			h.ServeHTTP(rec, req)
@@ -874,7 +900,7 @@ func TestResolveRefusesWorkInProgress(t *testing.T) {
 	if string(after) != string(before) {
 		t.Error("a refused re-solve still changed the file")
 	}
-	if n := srv.countArchived(catalog.Problem{Dir: "0001-two-sum"}); n != 0 {
+	if n := ownerSession(t, srv).countArchived(catalog.Problem{Dir: "0001-two-sum"}); n != 0 {
 		t.Errorf("a refused re-solve archived %d files", n)
 	}
 }
@@ -1010,7 +1036,7 @@ func readSSE(t *testing.T, h http.Handler, path string, want int) []map[string]a
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	req := httptest.NewRequest(http.MethodGet, path, nil).WithContext(ctx)
+	req := signedRequest(httptest.NewRequest(http.MethodGet, path, nil)).WithContext(ctx)
 	req.Header.Set("Sec-Fetch-Site", "same-origin")
 	rec := newStreamRecorder()
 
@@ -1121,7 +1147,7 @@ func TestTutorEventsWithoutASessionDoesNotInviteARetryLoop(t *testing.T) {
 	fakeTutor(t, srv, fakeTutorScript)
 
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/problems/two-sum/tutor/events", nil)
+	req := signedRequest(httptest.NewRequest(http.MethodGet, "/problems/two-sum/tutor/events", nil))
 	req.Header.Set("Sec-Fetch-Site", "same-origin")
 	srv.Handler().ServeHTTP(rec, req)
 
@@ -1144,7 +1170,7 @@ func TestTutorResetEndsTheSession(t *testing.T) {
 		t.Fatalf("POST reset = %d", rec.Code)
 	}
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/problems/two-sum/tutor/events", nil)
+	req := signedRequest(httptest.NewRequest(http.MethodGet, "/problems/two-sum/tutor/events", nil))
 	req.Header.Set("Sec-Fetch-Site", "same-origin")
 	h.ServeHTTP(rec, req)
 	if rec.Code != http.StatusNotFound {
@@ -1190,7 +1216,7 @@ func TestTutorEndpointsAreGuarded(t *testing.T) {
 		})
 		t.Run(path+" refuses another origin", func(t *testing.T) {
 			rec := httptest.NewRecorder()
-			req := httptest.NewRequest(http.MethodPost, "/problems/two-sum/"+path, strings.NewReader(`{}`))
+			req := signedRequest(httptest.NewRequest(http.MethodPost, "/problems/two-sum/"+path, strings.NewReader(`{}`)))
 			req.Header.Set("Content-Type", "application/json")
 			req.Header.Set("Sec-Fetch-Site", "cross-site")
 			h.ServeHTTP(rec, req)
@@ -1203,7 +1229,7 @@ func TestTutorEndpointsAreGuarded(t *testing.T) {
 	// The event stream carries the conversation, which quotes the user's code.
 	t.Run("the stream refuses another origin", func(t *testing.T) {
 		rec := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodGet, "/problems/two-sum/tutor/events", nil)
+		req := signedRequest(httptest.NewRequest(http.MethodGet, "/problems/two-sum/tutor/events", nil))
 		req.Header.Set("Sec-Fetch-Site", "cross-site")
 		h.ServeHTTP(rec, req)
 		if rec.Code != http.StatusForbidden {
@@ -1212,7 +1238,7 @@ func TestTutorEndpointsAreGuarded(t *testing.T) {
 	})
 	t.Run("the stream refuses a request with no provenance", func(t *testing.T) {
 		rec := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodGet, "/problems/two-sum/tutor/events", nil)
+		req := signedRequest(httptest.NewRequest(http.MethodGet, "/problems/two-sum/tutor/events", nil))
 		h.ServeHTTP(rec, req)
 		if rec.Code != http.StatusForbidden {
 			t.Errorf("= %d, want 403", rec.Code)
@@ -1223,12 +1249,12 @@ func TestTutorEndpointsAreGuarded(t *testing.T) {
 // ---------- the lesson layout ----------
 
 func TestWorkspaceIsOneLessonWithTwoActions(t *testing.T) {
-	srv, _, _ := testSite(t)
+	srv, _, prog := testSite(t)
 	fakeTutor(t, srv, fakeTutorScript)
-	if _, err := srv.progress.StartAttempt("two-sum", srv.now()); err != nil {
+	if _, err := prog.StartAttempt("two-sum", srv.now()); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := srv.progress.ResetTimer("two-sum", srv.now()); err != nil {
+	if _, err := prog.ResetTimer("two-sum", srv.now()); err != nil {
 		t.Fatal(err)
 	}
 	h := srv.Handler()

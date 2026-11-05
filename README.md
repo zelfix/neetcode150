@@ -206,6 +206,7 @@ ladder in tutor/TUTOR.md — one rung only"* and it will generally get back on t
 |---|---|
 | `nc fetch [--force]` | Download the problem list, statements and Go signatures |
 | `nc serve [--port 8150] [--tutor-provider claude\|codex]` | Serve the study site and choose its tutor |
+| `nc user list\|add\|link\|revoke\|rm` | Who can reach the site, and their join links |
 | `nc next` | What to work on now |
 | `nc start <problem>` | Scaffold the Go solution, test and notes |
 | `nc status <problem> <state>` | `new`, `attempted`, `solved` or `shaky` |

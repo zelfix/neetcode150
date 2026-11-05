@@ -77,7 +77,7 @@ func TestRunningTestsRecordsWhichCasesBroke(t *testing.T) {
 		}
 	}
 
-	db := srv.progress.DB()
+	db := srv.db
 	tally, err := db.Owner().Tally("two-sum")
 	if err != nil {
 		t.Fatal(err)

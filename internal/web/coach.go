@@ -49,7 +49,7 @@ func (p coachPage) UnaidedShare() int {
 // can flatter. This page answers the harder question — what is not secure —
 // off the data the ratings already carry: hint rungs, slips, and which test
 // fixtures keep breaking.
-func (s *Server) handleCoach(w http.ResponseWriter, r *http.Request) {
+func (s *session) handleCoach(w http.ResponseWriter, r *http.Request) {
 	now := s.now()
 	patterns := s.progress.Patterns(s.cat.Problems, now)
 	page := coachPage{

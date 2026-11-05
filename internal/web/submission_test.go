@@ -12,6 +12,7 @@ import (
 
 	"neetcode150/internal/content"
 	"neetcode150/internal/progress"
+	"neetcode150/internal/studydb"
 	"neetcode150/internal/tutor"
 )
 
@@ -39,13 +40,13 @@ done
 	p, _ := srv.cat.BySlug("two-sum")
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	if _, err := srv.askTutorAs(ctx, p, "begin follow-up", "Submit"); err != nil {
+	if _, err := ownerSession(t, srv).askTutorAs(ctx, p, "begin follow-up", "Submit"); err != nil {
 		t.Fatal(err)
 	}
 	sess := srv.tutor.Get(p.Slug)
 	replay, events, stop := sess.Subscribe()
 	defer stop()
-	srv.pendingSubmissions[p.Slug] = pendingSubmission{
+	srv.pendingSubmissions[submissionKey{studydb.OwnerID, p.Slug}] = pendingSubmission{
 		Code: "package solution\n", Passed: true, Entry: prog.Get(p.Slug),
 	}
 	if rec := postJSON(t, srv.Handler(), "/problems/two-sum/tutor", tutorSendRequest{Text: "  "}); rec.Code != http.StatusBadRequest {
@@ -99,15 +100,15 @@ done
 }
 
 func TestLearningEvidenceSurvivesANewSessionWithoutArchivedCode(t *testing.T) {
-	srv, _, _ := testSite(t)
+	srv, _, prog := testSite(t)
 	p, _ := srv.cat.BySlug("two-sum")
 	pending := pendingSubmission{Code: "ARCHIVED_CODE_MUST_STAY_PRIVATE", Passed: true}
 	summary := "Explained the entry meaning and complexity confidently; asked only Go syntax questions."
-	archive, err := srv.recordSubmission(p, pending, tutorEvaluation{Confidence: 4, Rung: 0, Feedback: "Sound understanding.", LearningSummary: summary})
+	archive, err := ownerSession(t, srv).recordSubmission(p, pending, tutorEvaluation{Confidence: 4, Rung: 0, Feedback: "Sound understanding.", LearningSummary: summary})
 	if err != nil {
 		t.Fatal(err)
 	}
-	attempt, err := srv.progress.Scope().Attempt(archive)
+	attempt, err := prog.Scope().Attempt(archive)
 	data := attempt.Review
 	if err != nil {
 		t.Fatal(err)
@@ -122,7 +123,7 @@ func TestLearningEvidenceSurvivesANewSessionWithoutArchivedCode(t *testing.T) {
 	if saved.LearningSummary != summary {
 		t.Fatalf("summary not persisted: %+v", saved)
 	}
-	for _, prompt := range []string{srv.openingPrompt(p), srv.submissionDecisionPrompt(p, pendingSubmission{}, "new conversation")} {
+	for _, prompt := range []string{ownerSession(t, srv).openingPrompt(p), ownerSession(t, srv).submissionDecisionPrompt(p, pendingSubmission{}, "new conversation")} {
 		if !strings.Contains(prompt, summary) {
 			t.Fatal("prior understanding missing from new session")
 		}
@@ -130,18 +131,18 @@ func TestLearningEvidenceSurvivesANewSessionWithoutArchivedCode(t *testing.T) {
 			t.Fatal("archived code leaked into prompt")
 		}
 	}
-	if prompt := srv.openingPrompt(p); !strings.Contains(prompt, "Welcome them back") || strings.Contains(prompt, "then ask them to restate") {
+	if prompt := ownerSession(t, srv).openingPrompt(p); !strings.Contains(prompt, "Welcome them back") || strings.Contains(prompt, "then ask them to restate") {
 		t.Fatal("repeat solve still forces introductory questions")
 	}
 	// Reports written before learning summaries existed still provide feedback.
 	legacy := `{"confidence":4,"rung":0,"feedback":"Earlier explanation was clear."}`
 	if err := func() error {
-		_, err := srv.progress.DB().SQL.Exec("UPDATE attempts SET review=? WHERE id=?", legacy, attempt.ID)
+		_, err := prog.DB().SQL.Exec("UPDATE attempts SET review=? WHERE id=?", legacy, attempt.ID)
 		return err
 	}(); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(srv.openingPrompt(p), "Earlier explanation was clear.") {
+	if !strings.Contains(ownerSession(t, srv).openingPrompt(p), "Earlier explanation was clear.") {
 		t.Fatal("legacy feedback lost")
 	}
 }
@@ -203,7 +204,7 @@ func TestLatestFeedbackUsesTheNewestOfManySameDayAttempts(t *testing.T) {
 		if i == 11 {
 			review = tutorEvaluation{Confidence: 4, Feedback: "Newest feedback: independent understanding."}
 		}
-		if _, err := srv.recordSubmission(p, pendingSubmission{Code: "archived attempt", Passed: true}, review); err != nil {
+		if _, err := ownerSession(t, srv).recordSubmission(p, pendingSubmission{Code: "archived attempt", Passed: true}, review); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -223,7 +224,7 @@ func TestCompletedReviewIsAtomicAndIdempotent(t *testing.T) {
 	p, _ := srv.cat.BySlug("two-sum")
 	pending := pendingSubmission{Token: "unique-submission", Code: "submitted snapshot", Passed: true, Elapsed: 3 * time.Minute}
 	srv.submissionMu.Lock()
-	err := srv.persistPendingLocked(p.Slug, pending)
+	err := ownerSession(t, srv).persistPendingLocked(p.Slug, pending)
 	srv.submissionMu.Unlock()
 	if err != nil {
 		t.Fatal(err)
@@ -232,7 +233,7 @@ func TestCompletedReviewIsAtomicAndIdempotent(t *testing.T) {
 		t.Fatal(err)
 	}
 	review := tutorEvaluation{Confidence: 4, Feedback: "Understood independently."}
-	if _, err := srv.recordSubmission(p, pending, review); err == nil {
+	if _, err := ownerSession(t, srv).recordSubmission(p, pending, review); err == nil {
 		t.Fatal("transaction should fail")
 	}
 	var attempts, pendingCount int
@@ -244,11 +245,11 @@ func TestCompletedReviewIsAtomicAndIdempotent(t *testing.T) {
 	if _, err := prog.DB().SQL.Exec("DROP TRIGGER fail_progress"); err != nil {
 		t.Fatal(err)
 	}
-	first, err := srv.recordSubmission(p, pending, review)
+	first, err := ownerSession(t, srv).recordSubmission(p, pending, review)
 	if err != nil {
 		t.Fatal(err)
 	}
-	again, err := srv.recordSubmission(p, pending, review)
+	again, err := ownerSession(t, srv).recordSubmission(p, pending, review)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -270,12 +271,12 @@ func TestPendingAssessmentCanResumeAfterServerRestart(t *testing.T) {
 	p, _ := srv.cat.BySlug("two-sum")
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	if _, err := srv.askTutorAs(ctx, p, "opening question", "Submit"); err != nil {
+	if _, err := ownerSession(t, srv).askTutorAs(ctx, p, "opening question", "Submit"); err != nil {
 		t.Fatal(err)
 	}
 	pending := pendingSubmission{Token: "resumed-assessment", Code: "pending submitted source", Passed: true, Checking: true}
 	srv.submissionMu.Lock()
-	err := srv.persistPendingLocked(p.Slug, pending)
+	err := ownerSession(t, srv).persistPendingLocked(p.Slug, pending)
 	srv.submissionMu.Unlock()
 	if err != nil {
 		t.Fatal(err)
@@ -296,7 +297,7 @@ while IFS= read -r line; do
  echo '{"type":"result","subtype":"success"}'
 done
 `)
-	restored := next.pendingSubmissions[p.Slug]
+	restored := next.pendingSubmissions[submissionKey{studydb.OwnerID, p.Slug}]
 	if restored.Code != pending.Code || restored.Checking {
 		t.Fatal("pending state not restored for retry")
 	}

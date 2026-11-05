@@ -4,7 +4,7 @@ import (
 	"net/http"
 )
 
-func (s *Server) handleSaveNotes(w http.ResponseWriter, r *http.Request) {
+func (s *session) handleSaveNotes(w http.ResponseWriter, r *http.Request) {
 	p, ok := s.cat.BySlug(r.PathValue("slug"))
 	if !ok {
 		s.notFound(w, r, "No problem with that slug.")

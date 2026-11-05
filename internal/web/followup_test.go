@@ -14,7 +14,7 @@ func TestPostAttemptChatKeepsTheRatingAndTimerUnchanged(t *testing.T) {
 	srv, root, prog := testSite(t)
 	p, _ := srv.cat.BySlug("two-sum")
 	advice := "Consider a map size hint when most entries will be inserted; an early return can leave that space unused."
-	ref, err := srv.recordSubmission(p, pendingSubmission{Code: "reviewed-code-marker", Passed: true}, tutorEvaluation{Confidence: 4, Feedback: "Independent reasoning.", Followup: advice})
+	ref, err := ownerSession(t, srv).recordSubmission(p, pendingSubmission{Code: "reviewed-code-marker", Passed: true}, tutorEvaluation{Confidence: 4, Feedback: "Independent reasoning.", Followup: advice})
 	if err != nil {
 		t.Fatal(err)
 	}

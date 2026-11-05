@@ -77,12 +77,26 @@ go run ./cmd/nc stats                 # progress by pattern, and how securely ea
 go run ./cmd/nc history <ref>         # every rating one problem has had
 go run ./cmd/nc fetch [--force]       # download statements and signatures
 go run ./cmd/nc serve [--port 8150]   # the study site, incl. the browser workspace
+go run ./cmd/nc user list             # who can reach the site
+go run ./cmd/nc user add <name>       # invite someone; prints their join link once
+go run ./cmd/nc user link <name>      # issue a new link, invalidating the old one
+go run ./cmd/nc user revoke <name>    # stop a link working, keeping their work
+go run ./cmd/nc user rm <name> --yes  # delete someone and everything of theirs
 ```
 
 The site's Coach page at `/coach/` reports what is not secure yet: the share of problems
 last solved unaided, which patterns to go back to, and which test fixtures keep breaking.
 It is read-only, and reuses `progress.Patterns`, `progress.Weakest` and the run records
 that `handleRunTests` files — do not re-derive weakness anywhere else.
+
+The site serves nobody without a cookie. `/join/<token>` trades a link for one, and
+`nc user` mints them — there is no admin page, so the web surface cannot create an
+identity. Only a token's hash is stored, which is why a link can be reissued but never
+shown again. There is no exception for loopback or for a missing cookie: behind a reverse
+proxy every request looks local, so an exception would make a guest who clears their
+cookie into the owner. Each person's progress, notes, attempts and test runs are their
+own; the tutor is still one process per problem rather than per person, so it stays the
+owner's for now.
 
 The site's workspace at `/problems/<slug>/solve` writes `solution.go` and runs `go test`.
 Those endpoints require a same-origin JSON request (`internal/web/guard.go`) — a plain

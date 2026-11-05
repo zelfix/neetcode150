@@ -176,6 +176,7 @@ ln -s AGENTS.md .windsurfrules          # или .clinerules, или как у �
 |---|---|
 | `nc fetch [--force]` | Скачать список задач, условия и сигнатуры на Go |
 | `nc serve [--port 8150] [--tutor-provider claude\|codex]` | Поднять сайт и выбрать репетитора |
+| `nc user list\|add\|link\|revoke\|rm` | Кто может зайти на сайт, и их ссылки-приглашения |
 | `nc next` | Над чем работать сейчас |
 | `nc start <задача>` | Создать заготовку решения, теста и заметок |
 | `nc status <задача> <состояние>` | `new`, `attempted`, `solved` или `shaky` |

@@ -34,7 +34,7 @@ type tutorStatus struct {
 // reload resumes the conversation rather than losing it. The two come from one
 // lock inside Subscribe, so nothing can arrive between them and be shown twice
 // or not at all.
-func (s *Server) handleTutorEvents(w http.ResponseWriter, r *http.Request) {
+func (s *session) handleTutorEvents(w http.ResponseWriter, r *http.Request) {
 	p, ok := s.cat.BySlug(r.PathValue("slug"))
 	if !ok {
 		s.notFound(w, r, "No problem with that slug.")
@@ -113,7 +113,7 @@ func (s *Server) handleTutorEvents(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleTutorSend delivers one turn, starting a session if there is none.
-func (s *Server) handleTutorSend(w http.ResponseWriter, r *http.Request) {
+func (s *session) handleTutorSend(w http.ResponseWriter, r *http.Request) {
 	p, ok := s.cat.BySlug(r.PathValue("slug"))
 	if !ok {
 		s.notFound(w, r, "No problem with that slug.")
@@ -129,7 +129,7 @@ func (s *Server) handleTutorSend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.submissionMu.Lock()
-	pending, inSubmission := s.pendingSubmissions[p.Slug]
+	pending, inSubmission := s.pendingSubmissions[s.key(p)]
 	if inSubmission && pending.Checking {
 		s.submissionMu.Unlock()
 		http.Error(w, "the tutor is checking your previous answer", http.StatusConflict)
@@ -189,7 +189,7 @@ func (s *Server) handleTutorSend(w http.ResponseWriter, r *http.Request) {
 
 // Follow-up conversation is deliberately outside the grading workflow: the
 // private evaluator's previous JSON instruction must not leak into normal chat.
-func (s *Server) postAttemptPrompt(p catalog.Problem, entry progress.Entry, text string) (string, error) {
+func (s *session) postAttemptPrompt(p catalog.Problem, entry progress.Entry, text string) (string, error) {
 	var b strings.Builder
 	b.WriteString("This is a post-attempt learning conversation. Respond conversationally in the user's language, not decision JSON or another rating. Earlier JSON-only instructions applied only to private assessment turns. Do not restart an attempt, timer, grading or scheduling; the completed rating and hint rung stay unchanged. Encourage questions and give useful Go idiom and trade-off observations without rewriting the solution. Optional allocation tuning is not a correctness defect.\n")
 	fmt.Fprintf(&b, "Problem: %s. Current status: %s.\n", p.Title, entry.Status)
@@ -220,7 +220,7 @@ func (s *Server) postAttemptPrompt(p catalog.Problem, entry progress.Entry, text
 	return b.String(), nil
 }
 
-func (s *Server) persistPendingLocked(slug string, pending pendingSubmission) error {
+func (s *session) persistPendingLocked(slug string, pending pendingSubmission) error {
 	data, err := json.Marshal(pending)
 	if err != nil {
 		return err
@@ -228,13 +228,13 @@ func (s *Server) persistPendingLocked(slug string, pending pendingSubmission) er
 	if err := s.progress.Scope().SavePending(slug, data); err != nil {
 		return err
 	}
-	s.pendingSubmissions[slug] = pending
+	s.pendingSubmissions[s.slugKey(slug)] = pending
 	return nil
 }
-func (s *Server) setSubmissionChecking(slug string, checking bool) {
+func (s *session) setSubmissionChecking(slug string, checking bool) {
 	s.submissionMu.Lock()
 	defer s.submissionMu.Unlock()
-	if pending, ok := s.pendingSubmissions[slug]; ok {
+	if pending, ok := s.pendingSubmissions[s.slugKey(slug)]; ok {
 		pending.Checking = checking
 		if err := s.persistPendingLocked(slug, pending); err != nil {
 			log.Printf("save pending assessment: %v", err)
@@ -243,14 +243,14 @@ func (s *Server) setSubmissionChecking(slug string, checking bool) {
 }
 
 // handleTutorReset ends the session so the next question starts clean.
-func (s *Server) handleTutorReset(w http.ResponseWriter, r *http.Request) {
+func (s *session) handleTutorReset(w http.ResponseWriter, r *http.Request) {
 	p, ok := s.cat.BySlug(r.PathValue("slug"))
 	if !ok {
 		s.notFound(w, r, "No problem with that slug.")
 		return
 	}
 	s.submissionMu.Lock()
-	_, pending := s.pendingSubmissions[p.Slug]
+	_, pending := s.pendingSubmissions[s.key(p)]
 	s.submissionMu.Unlock()
 	if pending {
 		http.Error(w, "finish the tutor follow-up before starting over", http.StatusConflict)
@@ -266,7 +266,7 @@ func (s *Server) handleTutorReset(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleTutorInterrupt stops the turn in progress without ending the session.
-func (s *Server) handleTutorInterrupt(w http.ResponseWriter, r *http.Request) {
+func (s *session) handleTutorInterrupt(w http.ResponseWriter, r *http.Request) {
 	p, ok := s.cat.BySlug(r.PathValue("slug"))
 	if !ok {
 		s.notFound(w, r, "No problem with that slug.")
