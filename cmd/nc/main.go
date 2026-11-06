@@ -44,6 +44,7 @@ Usage:
   nc serve [--port 8150]       serve the study site and the tutor panel
                                --tutor-provider claude|codex (default claude)
                                --tutor-mode full|tutor, --tutor-budget <usd>
+                               --sandbox auto|docker|local, --max-runs <n>
   nc next                      what to work on now
   nc start <problem>           scaffold the Go solution and notes, mark it in progress
   nc tests <problem>|--all     add example and corner-case tests to existing workspaces
@@ -312,6 +313,9 @@ func cmdServe(root string, args []string) error {
 	mode := fs.String("tutor-mode", string(tutor.ModeTutor),
 		"tutor permissions: tutor (read-only, default) or full")
 	budget := fs.Float64("tutor-budget", 0, "dollar ceiling per tutor session, 0 for none")
+	sandbox := fs.String("sandbox", string(web.SandboxAuto), "test isolation: auto, docker or local")
+	image := fs.String("sandbox-image", "", "container image for test runs")
+	maxRuns := fs.Int("max-runs", 0, "concurrent test runs, 0 to size from the CPU count")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -337,6 +341,13 @@ func cmdServe(root string, args []string) error {
 	if err != nil {
 		return err
 	}
+	// Resolved before the listener opens: a server that cannot isolate guest
+	// code must fail to start rather than start and quietly run it unisolated.
+	chosen, err := srv.UseSandbox(web.Sandbox(*sandbox), *image, *maxRuns)
+	if err != nil {
+		return err
+	}
+
 	coach := tutor.NewForProvider(root, tutor.Provider(*provider), tutor.Mode(*mode), *budget)
 	srv.UseTutor(coach)
 	// The server owns claude child processes now, so it has to be stopped in
@@ -348,6 +359,7 @@ func cmdServe(root string, args []string) error {
 
 	addr := fmt.Sprintf("%s:%d", *host, *port)
 	fmt.Printf("neetcode150 on http://%s  (%d problems, Ctrl-C to stop)\n", addr, len(cat.Problems))
+	fmt.Println(chosen)
 	// The site serves nobody without a link, so say so rather than let the
 	// first visit look like a broken server.
 	if users, err := prog.DB().Users(); err == nil {

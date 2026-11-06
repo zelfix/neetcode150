@@ -77,6 +77,7 @@ go run ./cmd/nc stats                 # progress by pattern, and how securely ea
 go run ./cmd/nc history <ref>         # every rating one problem has had
 go run ./cmd/nc fetch [--force]       # download statements and signatures
 go run ./cmd/nc serve [--port 8150]   # the study site, incl. the browser workspace
+                                      #   --sandbox auto|docker|local, --max-runs <n>
 go run ./cmd/nc user list             # who can reach the site
 go run ./cmd/nc user add <name>       # invite someone; prints their join link once
 go run ./cmd/nc user link <name>      # issue a new link, invalidating the old one
@@ -101,6 +102,23 @@ owner's for now.
 The site's workspace at `/problems/<slug>/solve` writes `solution.go` and runs `go test`.
 Those endpoints require a same-origin JSON request (`internal/web/guard.go`) — a plain
 `curl` is refused by design, so reach for the CLI rather than trying to work around it.
+
+`go test` runs in a one-shot container (`sandbox/Dockerfile`, built as
+`nc-sandbox:go1.26`). The mount set is the security model, and what it leaves out is the
+point: the repository root is never mounted, so a guest cannot
+`import "neetcode150/internal/studydb"` and read everybody's data — only `internal/testkit`,
+`internal/testbank` and the one package under test are present, all read-only, with no
+network and a per-user build cache. The image carries a `go.mod` declaring only the module
+path, so the sandbox needs no proxy and a third-party import simply fails to resolve.
+Inside the container the package always appears at `/src/solutions/<problem>`, whoever owns
+it on the host.
+
+`--sandbox=local` runs `go test` unisolated, which is right for one person on their own
+machine and refused outright once any guest exists — the server will not start. Do not
+soften that into a warning. Two details that cost an afternoon to find: the tmpfs must be
+mounted `exec`, because `go test` builds its binary into `GOTMPDIR` and runs it from
+there; and killing the `docker run` client does not stop the container, so cancellation
+goes through `docker kill` on a known name.
 
 Working Go files have to stay inside this module: a generated practice test imports
 `neetcode150/internal/testkit`, and Go's internal-package rule is a plain import-path
@@ -153,6 +171,7 @@ internal/progress/               status, ratings, review schedule
 internal/studydb/                SQLite schema, import and storage
 internal/scaffold/               solution/test generation from a Go signature
 internal/workspace/              where one person's working Go files live
+sandbox/                         the container that runs a guest's `go test`
 internal/testbank/               examples and corner-case fixtures for all 150
 internal/testkit/                standard-library practice test helpers
 internal/web/                    the study site

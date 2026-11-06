@@ -404,7 +404,7 @@ func (s *session) handleSubmit(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), runTimeout)
 	defer cancel()
 	testStart := time.Now()
-	run, runErr := s.runTests(ctx, s.root, s.work().PkgDir(p))
+	run, runErr := s.runTests.RunTests(ctx, s.runRequest(p))
 	out.Output, out.Passed = run.Output, run.OK
 	out.Millis = time.Since(testStart).Milliseconds()
 	s.recordRun(p.Slug, run, runErr)
@@ -958,7 +958,7 @@ func (s *session) handleRunTests(w http.ResponseWriter, r *http.Request) {
 	// that did not resolve above cannot reach this line, so there is no way to
 	// aim `go test` at an arbitrary directory.
 	start := time.Now()
-	run, runErr := s.runTests(ctx, s.root, s.work().PkgDir(p))
+	run, runErr := s.runTests.RunTests(ctx, s.runRequest(p))
 	out.Output, out.Passed = run.Output, run.OK
 	out.Millis = time.Since(start).Milliseconds()
 	s.recordRun(p.Slug, run, runErr)

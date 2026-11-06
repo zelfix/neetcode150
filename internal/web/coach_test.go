@@ -65,12 +65,12 @@ func TestRunningTestsRecordsWhichCasesBroke(t *testing.T) {
 	h := srv.Handler()
 	postJSON(t, h, "/problems/two-sum/create", map[string]string{})
 
-	srv.runTests = func(context.Context, string, string) (testRun, error) {
+	srv.runTests = runnerFunc(func(context.Context, runRequest) (testRun, error) {
 		return testRun{Output: "--- FAIL\n", Ran: true, Passed: 1, Failed: 2, Cases: []studydb.FailedCase{
 			{Kind: "edge", Name: "empty input"},
 			{Kind: "example", Name: "example 1"},
 		}}, nil
-	}
+	})
 	for range 2 {
 		if rec := postJSON(t, h, "/problems/two-sum/test", map[string]string{"code": "package twosum\n"}); rec.Code != http.StatusOK {
 			t.Fatalf("POST test = %d", rec.Code)
@@ -99,9 +99,9 @@ func TestRunningTestsRecordsWhichCasesBroke(t *testing.T) {
 	}
 
 	// A run that never happened says nothing about which fixtures are hard.
-	srv.runTests = func(context.Context, string, string) (testRun, error) {
+	srv.runTests = runnerFunc(func(context.Context, runRequest) (testRun, error) {
 		return testRun{}, errors.New("could not run go test")
-	}
+	})
 	postJSON(t, h, "/problems/two-sum/test", map[string]string{"code": "package twosum\n"})
 	if tally, _ := db.Owner().Tally("two-sum"); tally.Runs != 2 {
 		t.Errorf("a failed run was recorded: %d runs", tally.Runs)

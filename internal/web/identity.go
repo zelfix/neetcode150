@@ -3,6 +3,8 @@ package web
 import (
 	"html/template"
 	"net/http"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -166,6 +168,24 @@ func (s *session) key(p catalog.Problem) submissionKey {
 // slugKey is the same, where only the slug is to hand.
 func (s *session) slugKey(slug string) submissionKey {
 	return submissionKey{userID: s.user.ID, slug: slug}
+}
+
+// cacheDir is this person's own Go build cache. Per user rather than shared:
+// build entries are content-addressed, but a writable cache shared between
+// people is still a channel for substituting a compiled object into somebody
+// else's build.
+func (s *session) cacheDir() string {
+	return filepath.Join(s.root, ".nc-cache", "users", strconv.FormatInt(s.user.ID, 10))
+}
+
+// runRequest describes a test run for this person and problem.
+func (s *session) runRequest(p catalog.Problem) runRequest {
+	return runRequest{
+		Root:     s.root,
+		PkgDir:   s.work().PkgDir(p),
+		UserID:   s.user.ID,
+		CacheDir: s.cacheDir(),
+	}
 }
 
 // work is this person's workspace. The owner keeps solutions/; everybody else

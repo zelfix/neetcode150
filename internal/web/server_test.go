@@ -608,12 +608,12 @@ func TestRunTestsSavesBeforeItRuns(t *testing.T) {
 	}
 
 	var sawRoot, sawPkg, sawOnDisk string
-	srv.runTests = func(_ context.Context, root, pkgDir string) (testRun, error) {
-		sawRoot, sawPkg = root, pkgDir
-		b, _ := os.ReadFile(filepath.Join(root, pkgDir, "solution.go"))
+	srv.runTests = runnerFunc(func(_ context.Context, req runRequest) (testRun, error) {
+		sawRoot, sawPkg = req.Root, req.PkgDir
+		b, _ := os.ReadFile(filepath.Join(req.Root, req.PkgDir, "solution.go"))
 		sawOnDisk = string(b)
 		return testRun{Output: "ok  \tneetcode150/solutions/0001-two-sum\t0.21s\n", OK: true, Ran: true, Passed: 1}, nil
-	}
+	})
 
 	code := "package twosum\n\nfunc twoSum(nums []int, target int) []int {\n\treturn []int{0, 1}\n}\n"
 	rec := postJSON(t, h, "/problems/two-sum/test", map[string]string{"code": code})
@@ -649,10 +649,10 @@ func TestRunTestsSurfacesAFailureAndARunnerError(t *testing.T) {
 	}
 	code := "package twosum\n\nfunc twoSum(nums []int, target int) []int {\n\treturn nil\n}\n"
 
-	srv.runTests = func(context.Context, string, string) (testRun, error) {
+	srv.runTests = runnerFunc(func(context.Context, runRequest) (testRun, error) {
 		return testRun{Output: "--- FAIL: TestTwoSum\n", Ran: true, Failed: 1,
 			Cases: []studydb.FailedCase{{Kind: "edge", Name: "empty input"}}}, nil
-	}
+	})
 	got := decode[struct {
 		Output   string `json:"output"`
 		Passed   bool   `json:"passed"`
@@ -663,9 +663,9 @@ func TestRunTestsSurfacesAFailureAndARunnerError(t *testing.T) {
 	}
 
 	// A run that never happened must not read as a pass with no output.
-	srv.runTests = func(context.Context, string, string) (testRun, error) {
+	srv.runTests = runnerFunc(func(context.Context, runRequest) (testRun, error) {
 		return testRun{}, errors.New("could not run go test: exec: \"go\": not found")
-	}
+	})
 	got = decode[struct {
 		Output   string `json:"output"`
 		Passed   bool   `json:"passed"`
@@ -1509,10 +1509,10 @@ func TestRecordHandlesARatingWithNoPerSittingHistory(t *testing.T) {
 func TestRunTestsRejectsAnEmptyEditorInsteadOfTestingOldCode(t *testing.T) {
 	srv, _, _ := testSite(t)
 	called := false
-	srv.runTests = func(context.Context, string, string) (testRun, error) {
+	srv.runTests = runnerFunc(func(context.Context, runRequest) (testRun, error) {
 		called = true
 		return testRun{Output: "old code passed", OK: true, Ran: true, Passed: 1}, nil
-	}
+	})
 	for _, code := range []string{"", "  \n"} {
 		rec := postJSON(t, srv.Handler(), "/problems/two-sum/test", saveRequest{Code: code})
 		if rec.Code != http.StatusBadRequest {

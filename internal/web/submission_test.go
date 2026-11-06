@@ -164,9 +164,9 @@ while IFS= read -r line; do
  echo '{"type":"result","subtype":"success"}'
 done
 `)
-	srv.runTests = func(context.Context, string, string) (testRun, error) {
+	srv.runTests = runnerFunc(func(context.Context, runRequest) (testRun, error) {
 		return testRun{Output: "PASS", OK: true, Ran: true, Passed: 1}, nil
-	}
+	})
 	rec := postJSON(t, srv.Handler(), "/problems/two-sum/submit", saveRequest{Code: "package solution\n"})
 	if rec.Code != http.StatusOK {
 		t.Fatalf("submit: %d %s", rec.Code, rec.Body.String())

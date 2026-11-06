@@ -80,7 +80,7 @@ func TestRunnerKeepsGoScratchDirsInWorkspace(t *testing.T) {
 	}
 }
 `)
-		run, err := runGoTest(t.Context(), root, pkgDir)
+		run, err := runGoTest(t.Context(), runRequest{Root: root, PkgDir: pkgDir})
 		if err != nil {
 			t.Fatalf("err = %v, output:\n%s", err, run.Output)
 		}
@@ -93,7 +93,7 @@ func TestRunnerKeepsGoScratchDirsInWorkspace(t *testing.T) {
 		root := goModule(t, pkgDir,
 			"package twosum\n\nfunc add(a, b int) int { return a - b }\n",
 			"package twosum\n\nimport \"testing\"\n\nfunc TestAdd(t *testing.T) {\n\tif add(1, 2) != 3 {\n\t\tt.Fatal(\"wrong answer\")\n\t}\n}\n")
-		run, err := runGoTest(t.Context(), root, pkgDir)
+		run, err := runGoTest(t.Context(), runRequest{Root: root, PkgDir: pkgDir})
 		if err != nil {
 			t.Fatalf("a failing test reported a runner error: %v", err)
 		}
@@ -113,7 +113,7 @@ func TestRunnerKeepsGoScratchDirsInWorkspace(t *testing.T) {
 		root := goModule(t, pkgDir,
 			"package twosum\n\nfunc add(a, b int) int { return a + }\n",
 			"package twosum\n")
-		run, err := runGoTest(t.Context(), root, pkgDir)
+		run, err := runGoTest(t.Context(), runRequest{Root: root, PkgDir: pkgDir})
 		// A compile error is still `go test` having its say, so it reports as a
 		// failure with output rather than as a runner error — the user needs to
 		// read the compiler, not a wrapper's summary of it.
@@ -133,7 +133,7 @@ func TestRunnerKeepsGoScratchDirsInWorkspace(t *testing.T) {
 
 	t.Run("a package that is not there", func(t *testing.T) {
 		root := goModule(t, pkgDir, "package twosum\n", "package twosum\n")
-		run, err := runGoTest(t.Context(), root, "solutions/0999-nope")
+		run, err := runGoTest(t.Context(), runRequest{Root: root, PkgDir: "solutions/0999-nope"})
 		if err != nil {
 			t.Fatalf("a missing package reported a runner error: %v", err)
 		}
@@ -149,7 +149,7 @@ func TestRunnerKeepsGoScratchDirsInWorkspace(t *testing.T) {
 		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 		defer cancel()
 
-		run, err := runGoTest(ctx, root, pkgDir)
+		run, err := runGoTest(ctx, runRequest{Root: root, PkgDir: pkgDir})
 		if err == nil {
 			t.Fatalf("an endless test was reported as a result, OK = %v, output:\n%s", run.OK, run.Output)
 		}
@@ -195,7 +195,7 @@ func TestDraft(t *testing.T){t.Skip("add cases")}
 	} {
 		t.Run(name, func(t *testing.T) {
 			root := goModule(t, "solutions/demo", "package demo\n", tests)
-			run, err := runGoTest(t.Context(), root, "solutions/demo")
+			run, err := runGoTest(t.Context(), runRequest{Root: root, PkgDir: "solutions/demo"})
 			if run.OK || err == nil || !strings.Contains(err.Error(), "no tests ran") {
 				t.Fatalf("false pass: %v, %v, %s", run.OK, err, run.Output)
 			}

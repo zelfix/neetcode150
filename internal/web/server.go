@@ -53,7 +53,7 @@ type Server struct {
 
 	// runTests is injected the same way now is, so handler tests do not shell
 	// out to a real `go test` and inherit its speed and flakiness.
-	runTests func(ctx context.Context, root, pkgDir string) (testRun, error)
+	runTests testRunner
 
 	// tutor owns the claude child processes. It is never nil: a Manager with no
 	// binary to run reports why through Available, and the rest of the site
@@ -73,7 +73,7 @@ func New(root string, cat *catalog.Catalog, store *content.Store, prog *progress
 		db:                 prog.DB(),
 		pages:              map[string]*template.Template{},
 		now:                time.Now,
-		runTests:           runGoTest,
+		runTests:           localRunner{},
 		tutor:              tutor.New(root, tutor.ModeTutor, 0),
 		pendingSubmissions: make(map[submissionKey]pendingSubmission),
 	}

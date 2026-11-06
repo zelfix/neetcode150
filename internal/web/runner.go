@@ -48,9 +48,52 @@ type testRun struct {
 	Cases []studydb.FailedCase
 }
 
+// runRequest is one request to run one person's tests.
+//
+// It carries the user because the two implementations below need it for
+// different reasons: the local one to keep build caches apart, the container
+// one to refuse to run at all for anybody but the owner.
+type runRequest struct {
+	Root     string // absolute project root
+	PkgDir   string // repo-relative, e.g. "_work/7/solutions/0001-two-sum"
+	UserID   int64
+	CacheDir string // absolute and writable: holds go-build and tmp
+}
+
+// testRunner is how the site runs somebody's tests. Two implementations, picked
+// once at startup: localRunner is the owner's own machine, dockerRunner is what
+// makes a shared instance safe.
+type testRunner interface {
+	RunTests(ctx context.Context, req runRequest) (testRun, error)
+}
+
+// runnerFunc adapts a function, so a handler test can still substitute a
+// one-line stub.
+type runnerFunc func(context.Context, runRequest) (testRun, error)
+
+func (f runnerFunc) RunTests(ctx context.Context, req runRequest) (testRun, error) {
+	return f(ctx, req)
+}
+
+// localRunner runs `go test` directly, with no isolation whatsoever.
+//
+// That is fine for one person on their own machine and unacceptable on a shared
+// one: a guest's test file may import neetcode150/internal/studydb and read
+// every other person's notes, progress and archived code. Nothing here can stop
+// that, so the server refuses to start in this mode once a guest exists.
+type localRunner struct{}
+
+func (localRunner) RunTests(ctx context.Context, req runRequest) (testRun, error) {
+	return runGoTest(ctx, req)
+}
+
 // runGoTest runs the tests for one solution package.
-func runGoTest(ctx context.Context, root, pkgDir string) (testRun, error) {
-	cacheRoot := filepath.Join(root, ".nc-cache")
+func runGoTest(ctx context.Context, req runRequest) (testRun, error) {
+	root, pkgDir := req.Root, req.PkgDir
+	cacheRoot := req.CacheDir
+	if cacheRoot == "" {
+		cacheRoot = filepath.Join(root, ".nc-cache")
+	}
 	goCache := filepath.Join(cacheRoot, "go-build")
 	goTmp := filepath.Join(cacheRoot, "tmp")
 	for _, dir := range []string{goCache, goTmp} {
