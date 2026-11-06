@@ -15,6 +15,7 @@ import (
 
 	"neetcode150/internal/catalog"
 	"neetcode150/internal/studydb"
+	"neetcode150/internal/workspace"
 )
 
 // maxLive caps how many sessions run at once. Each is a process holding a model
@@ -416,7 +417,12 @@ func (m *Manager) seed(p catalog.Problem) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "You are tutoring one NeetCode 150 problem in this repository: "+
 		"%d. %s (%s), pattern %q.\n\n", p.ID, p.Title, p.Slug, p.Pattern)
-	fmt.Fprintf(&b, "Relevant paths:\n- statement: %s/problem.md\n- the user's solution: %s/solution.go\n- their tests: %s/solution_test.go\n\n", p.ContentDir(), p.SolutionDir(), p.SolutionDir())
+	// The owner's layout: one live session and one transcript per problem means
+	// the panel is the owner's until that is per-user, and the site refuses a
+	// guest rather than pointing the agent at the wrong workspace.
+	lay := workspace.Owner(m.root)
+	fmt.Fprintf(&b, "Relevant paths:\n- statement: %s/problem.md\n- the user's solution: %s\n- their tests: %s\n\n",
+		p.ContentDir(), lay.Rel(p, "solution.go"), lay.Rel(p, "solution_test.go"))
 	b.WriteString("Personal notes, recorded hints and session logs are in study.sqlite3, not the old Markdown files. The application supplies historical learning evidence; never edit legacy personal files.\n")
 	if m.storage != nil {
 		if hints, err := m.storage.Document(p.Slug, "hints"); err == nil && hints != "" {

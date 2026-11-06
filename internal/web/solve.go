@@ -242,8 +242,8 @@ func (s *session) handleSolve(w http.ResponseWriter, r *http.Request) {
 		PreviousAvailable: previousCode != "" || len(submissions) > 0,
 		Active:            active,
 		ChatEnabled:       active || coach.Active || exists || latestReview != nil,
-		SolutionPath:      filepath.ToSlash(filepath.Join(p.SolutionDir(), "solution.go")),
-		TestPath:          filepath.ToSlash(filepath.Join(p.SolutionDir(), "solution_test.go")),
+		SolutionPath:      s.work().Rel(p, "solution.go"),
+		TestPath:          s.work().Rel(p, "solution_test.go"),
 		Archived:          s.countArchived(p),
 		Statuses:          progress.Statuses,
 		Tutor:             coach,
@@ -404,7 +404,7 @@ func (s *session) handleSubmit(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), runTimeout)
 	defer cancel()
 	testStart := time.Now()
-	run, runErr := s.runTests(ctx, s.root, p.SolutionDir())
+	run, runErr := s.runTests(ctx, s.root, s.work().PkgDir(p))
 	out.Output, out.Passed = run.Output, run.OK
 	out.Millis = time.Since(testStart).Milliseconds()
 	s.recordRun(p.Slug, run, runErr)
@@ -775,13 +775,13 @@ func (s *session) handleStartAttempt(w http.ResponseWriter, r *http.Request) {
 	signature, _ := readIfPresent(filepath.Join(s.root, p.ContentDir(), "signature.txt"))
 	raw, _ := readIfPresent(filepath.Join(s.root, p.ContentDir(), "problem.md"))
 	_, statement := content.SplitFrontmatter(raw)
-	solutionPath := filepath.Join(s.root, p.SolutionDir(), "solution.go")
+	solutionPath := s.work().Path(p, "solution.go")
 	var archive string
 	var err error
 	if _, statErr := os.Stat(solutionPath); statErr == nil {
-		archive, _, err = scaffold.Reset(s.progress.Scope(), s.root, p, signature, statement, s.now())
+		archive, _, err = scaffold.Reset(s.progress.Scope(), s.work(), p, signature, statement, s.now())
 	} else if os.IsNotExist(statErr) {
-		_, _, err = scaffold.Create(s.progress.Scope(), s.root, p, signature, statement)
+		_, _, err = scaffold.Create(s.progress.Scope(), s.work(), p, signature, statement)
 	} else {
 		err = statErr
 	}
@@ -802,9 +802,9 @@ func (s *session) handleStartAttempt(w http.ResponseWriter, r *http.Request) {
 	s.openLesson(p)
 	code, _ := s.readSolution(p)
 	testCode := s.readTests(p)
-	created := []string{filepath.ToSlash(filepath.Join(p.SolutionDir(), "solution.go"))}
-	if _, err := os.Stat(filepath.Join(s.root, p.SolutionDir(), "solution_test.go")); err == nil {
-		created = append(created, filepath.ToSlash(filepath.Join(p.SolutionDir(), "solution_test.go")))
+	created := []string{s.work().Rel(p, "solution.go")}
+	if _, err := os.Stat(s.work().Path(p, "solution_test.go")); err == nil {
+		created = append(created, s.work().Rel(p, "solution_test.go"))
 	}
 	archiveRel := archive
 	writeJSON(w, http.StatusOK, createResponse{Code: code, TestCode: testCode, Created: created, Archive: filepath.ToSlash(archiveRel)})
@@ -867,7 +867,7 @@ func (s *session) handleCreateSolution(w http.ResponseWriter, r *http.Request) {
 	raw, _ := readIfPresent(filepath.Join(s.root, p.ContentDir(), "problem.md"))
 	_, statement := content.SplitFrontmatter(raw)
 
-	written, _, err := scaffold.Create(s.progress.Scope(), s.root, p, signature, statement)
+	written, _, err := scaffold.Create(s.progress.Scope(), s.work(), p, signature, statement)
 	if err != nil {
 		s.fail(w, err)
 		return
@@ -958,7 +958,7 @@ func (s *session) handleRunTests(w http.ResponseWriter, r *http.Request) {
 	// that did not resolve above cannot reach this line, so there is no way to
 	// aim `go test` at an arbitrary directory.
 	start := time.Now()
-	run, runErr := s.runTests(ctx, s.root, p.SolutionDir())
+	run, runErr := s.runTests(ctx, s.root, s.work().PkgDir(p))
 	out.Output, out.Passed = run.Output, run.OK
 	out.Millis = time.Since(start).Milliseconds()
 	s.recordRun(p.Slug, run, runErr)
@@ -997,7 +997,7 @@ func (s *session) save(p catalog.Problem, code string) (saveResponse, error) {
 }
 
 func (s *session) saveDraft(p catalog.Problem, code string) (saveResponse, error) {
-	path := filepath.Join(s.root, p.SolutionDir(), "solution.go")
+	path := s.work().Path(p, "solution.go")
 	if _, err := os.Stat(path); err != nil {
 		return saveResponse{}, fmt.Errorf("no solution file yet for %s; create it first", p.Slug)
 	}
@@ -1008,7 +1008,7 @@ func (s *session) saveDraft(p catalog.Problem, code string) (saveResponse, error
 }
 
 func (s *session) readSolution(p catalog.Problem) (code string, exists bool) {
-	code, err := readIfPresent(filepath.Join(s.root, p.SolutionDir(), "solution.go"))
+	code, err := readIfPresent(s.work().Path(p, "solution.go"))
 	return code, err == nil && code != ""
 }
 
@@ -1081,7 +1081,7 @@ func (s *session) handleResolve(w http.ResponseWriter, r *http.Request) {
 	_, statement := content.SplitFrontmatter(raw)
 
 	now := s.now()
-	archive, _, err := scaffold.Reset(s.progress.Scope(), s.root, p, signature, statement, now)
+	archive, _, err := scaffold.Reset(s.progress.Scope(), s.work(), p, signature, statement, now)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusConflict)
 		return
@@ -1105,8 +1105,8 @@ func (s *session) handleResolve(w http.ResponseWriter, r *http.Request) {
 }
 
 // readTests includes personal tests and the additional practice suite in one tab.
-func (s *Server) readTests(p catalog.Problem) string {
-	paths, _ := filepath.Glob(filepath.Join(s.root, p.SolutionDir(), "*_test.go"))
+func (s *session) readTests(p catalog.Problem) string {
+	paths, _ := filepath.Glob(filepath.Join(s.work().Dir(p), "*_test.go"))
 	var out strings.Builder
 	for _, path := range paths {
 		text, err := os.ReadFile(path)

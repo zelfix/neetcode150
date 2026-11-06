@@ -102,6 +102,14 @@ The site's workspace at `/problems/<slug>/solve` writes `solution.go` and runs `
 Those endpoints require a same-origin JSON request (`internal/web/guard.go`) — a plain
 `curl` is refused by design, so reach for the CLI rather than trying to work around it.
 
+Working Go files have to stay inside this module: a generated practice test imports
+`neetcode150/internal/testkit`, and Go's internal-package rule is a plain import-path
+prefix test, so a separate module with a `replace` directive or a `go.work` file cannot
+host them. Hence `_work/<userID>/` rather than a directory outside the repo. The leading
+underscore is load-bearing — the go tool skips `_`-prefixed directories when expanding
+`./...`, so guest code never reaches `go vet ./...` or the CI test run while an explicit
+package path still builds. Ask `internal/workspace` for a path; do not join one by hand.
+
 `<ref>` accepts a slug, a LeetCode number, a directory name, or part of a title:
 `two-sum`, `1` and `"valid anag"` all resolve. Prefer the CLI and browser over editing `study.sqlite3` directly.
 
@@ -133,7 +141,8 @@ content/
   problems/<NNNN>-<slug>/
     problem.md                   the statement          (fetched; gitignored)
     signature.txt                official Go signature  (fetched; gitignored)
-solutions/<NNNN>-<slug>/         the user's solution and tests  (gitignored)
+solutions/<NNNN>-<slug>/         the owner's solution and tests  (gitignored)
+_work/<userID>/solutions/...     a guest's, same shape               (gitignored)
 study.sqlite3                    all personal study data        (gitignored)
 
 cmd/nc/                          the CLI
@@ -143,6 +152,7 @@ internal/content/                Markdown rendering, content store
 internal/progress/               status, ratings, review schedule
 internal/studydb/                SQLite schema, import and storage
 internal/scaffold/               solution/test generation from a Go signature
+internal/workspace/              where one person's working Go files live
 internal/testbank/               examples and corner-case fixtures for all 150
 internal/testkit/                standard-library practice test helpers
 internal/web/                    the study site

@@ -112,9 +112,6 @@ func TestProblemPaths(t *testing.T) {
 	if got := p.ContentDir(); got != filepath.Join("content", "problems", "0001-two-sum") {
 		t.Errorf("ContentDir() = %q", got)
 	}
-	if got := p.SolutionDir(); got != filepath.Join("solutions", "0001-two-sum") {
-		t.Errorf("SolutionDir() = %q", got)
-	}
 	if got := p.VideoURL(); got != "https://www.youtube.com/watch?v=abc123" {
 		t.Errorf("VideoURL() = %q", got)
 	}

@@ -412,7 +412,7 @@ func (s *session) handleProblem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	solution := filepath.Join(p.SolutionDir(), "solution.go")
+	solution := s.work().Rel(p, "solution.go")
 	_, statErr := os.Stat(filepath.Join(s.root, solution))
 
 	page := problemPage{

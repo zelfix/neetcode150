@@ -14,6 +14,7 @@ import (
 	"neetcode150/internal/progress"
 	"neetcode150/internal/studydb"
 	"neetcode150/internal/tutor"
+	"neetcode150/internal/workspace"
 )
 
 func TestSubmissionAnswerProducesOneVisibleReply(t *testing.T) {
@@ -150,7 +151,7 @@ func TestLearningEvidenceSurvivesANewSessionWithoutArchivedCode(t *testing.T) {
 func TestSubmitCanRateWithoutAnObligatoryQuestion(t *testing.T) {
 	srv, _, _ := testSite(t)
 	p, _ := srv.cat.BySlug("two-sum")
-	dir := filepath.Join(srv.root, p.SolutionDir())
+	dir := workspace.Owner(srv.root).Dir(p)
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		t.Fatal(err)
 	}

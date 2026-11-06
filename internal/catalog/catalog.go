@@ -63,9 +63,6 @@ func (p Problem) VideoURL() string {
 // ContentDir is the problem's content directory, relative to the project root.
 func (p Problem) ContentDir() string { return filepath.Join("content", "problems", p.Dir) }
 
-// SolutionDir is the problem's solution directory, relative to the project root.
-func (p Problem) SolutionDir() string { return filepath.Join("solutions", p.Dir) }
-
 // Catalog is the ordered list of problems plus lookups.
 type Catalog struct {
 	Problems []Problem

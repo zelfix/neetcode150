@@ -9,15 +9,16 @@ import (
 
 	"neetcode150/internal/catalog"
 	"neetcode150/internal/testbank"
+	"neetcode150/internal/workspace"
 )
 
 // EnsurePracticeTests adds a separate suite to an existing workspace. Personal
 // tests stay untouched, and new attempts receive the suite through Generate.
-func EnsurePracticeTests(root string, p catalog.Problem) ([]string, error) {
+func EnsurePracticeTests(lay workspace.Layout, p catalog.Problem) ([]string, error) {
 	if _, err := testbank.Load(p.Slug); err != nil {
 		return nil, nil // custom problems still use their own test skeleton
 	}
-	dir := filepath.Join(root, p.SolutionDir())
+	dir := lay.Dir(p)
 	if _, err := os.Stat(filepath.Join(dir, "solution.go")); os.IsNotExist(err) {
 		return nil, nil
 	} else if err != nil {

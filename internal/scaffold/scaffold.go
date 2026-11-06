@@ -19,6 +19,7 @@ import (
 	"neetcode150/internal/catalog"
 	"neetcode150/internal/studydb"
 	"neetcode150/internal/testbank"
+	"neetcode150/internal/workspace"
 )
 
 // Files is a generated solution scaffold.
@@ -372,10 +373,10 @@ _In your own words, before you look at anything else._
 //
 // An existing file is left exactly as it is, so running this against a problem
 // already in progress cannot destroy a solution.
-func Create(scope *studydb.Scope, root string, p catalog.Problem, signature, statement string) (written []string, f Files, err error) {
+func Create(scope *studydb.Scope, lay workspace.Layout, p catalog.Problem, signature, statement string) (written []string, f Files, err error) {
 	f = Generate(p, signature, statement)
 
-	solDir := filepath.Join(root, p.SolutionDir())
+	solDir := lay.Dir(p)
 	if err := os.MkdirAll(solDir, 0o755); err != nil {
 		return nil, f, err
 	}
@@ -388,7 +389,7 @@ func Create(scope *studydb.Scope, root string, p catalog.Problem, signature, sta
 	})
 	if err == nil {
 		var added []string
-		added, err = EnsurePracticeTests(root, p)
+		added, err = EnsurePracticeTests(lay, p)
 		written = append(written, added...)
 		sort.Strings(written)
 	}
@@ -456,12 +457,11 @@ func ArchiveAttempt(scope *studydb.Scope, p catalog.Problem, code []byte, now ti
 // and rewriting it would throw away edge cases the user added.
 //
 // The caller updates progress; this touches files only.
-func Reset(scope *studydb.Scope, root string, p catalog.Problem, signature, statement string, now time.Time) (archive string, f Files, err error) {
-	solPath := filepath.Join(root, p.SolutionDir(), "solution.go")
+func Reset(scope *studydb.Scope, lay workspace.Layout, p catalog.Problem, signature, statement string, now time.Time) (archive string, f Files, err error) {
+	solPath := lay.Path(p, "solution.go")
 	current, err := os.ReadFile(solPath)
 	if err != nil {
-		return "", f, fmt.Errorf("no solution to archive at %s",
-			filepath.ToSlash(filepath.Join(p.SolutionDir(), "solution.go")))
+		return "", f, fmt.Errorf("no solution to archive at %s", lay.Rel(p, "solution.go"))
 	}
 
 	archive, err = ArchiveAttempt(scope, p, current, now)

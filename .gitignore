@@ -7,6 +7,9 @@
 # push someone a repo with the answers already in it.
 # ---------------------------------------------------------------------------
 /solutions/
+# Guests' working Go files. The leading underscore also keeps them out of
+# ./... so CI never compiles somebody's half-written solution.
+/_work/
 /progress.json
 /progress.json.lock
 /study*.sqlite3*

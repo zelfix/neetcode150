@@ -11,6 +11,7 @@ import (
 
 	"neetcode150/internal/catalog"
 	"neetcode150/internal/testbank"
+	"neetcode150/internal/workspace"
 )
 
 // These are public interfaces with empty bodies, so this check works on a fresh
@@ -100,7 +101,7 @@ func TestAllPracticeSuitesMatchGoSignatures(t *testing.T) {
 
 func TestAddingPracticeTestsPreservesWork(t *testing.T) {
 	root := t.TempDir()
-	dir := filepath.Join(root, twoSum.SolutionDir())
+	dir := workspace.Owner(root).Dir(twoSum)
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -111,14 +112,14 @@ func TestAddingPracticeTestsPreservesWork(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	written, err := EnsurePracticeTests(root, twoSum)
+	written, err := EnsurePracticeTests(workspace.Owner(root), twoSum)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(written) != 1 {
 		t.Fatalf("created %v", written)
 	}
-	written, err = EnsurePracticeTests(root, twoSum)
+	written, err = EnsurePracticeTests(workspace.Owner(root), twoSum)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,7 +136,7 @@ func TestAddingPracticeTestsPreservesWork(t *testing.T) {
 		}
 	}
 	root2 := t.TempDir()
-	if paths, err := EnsurePracticeTests(root2, twoSum); err != nil || len(paths) > 0 {
+	if paths, err := EnsurePracticeTests(workspace.Owner(root2), twoSum); err != nil || len(paths) > 0 {
 		t.Fatalf("unstarted: %v %v", paths, err)
 	}
 	if _, err := os.Stat(filepath.Join(root2, "solutions")); !os.IsNotExist(err) {

@@ -9,6 +9,7 @@ import (
 	"neetcode150/internal/catalog"
 	"neetcode150/internal/progress"
 	"neetcode150/internal/studydb"
+	"neetcode150/internal/workspace"
 )
 
 // cookieName holds the join token. HttpOnly because no page script needs it,
@@ -165,4 +166,11 @@ func (s *session) key(p catalog.Problem) submissionKey {
 // slugKey is the same, where only the slug is to hand.
 func (s *session) slugKey(slug string) submissionKey {
 	return submissionKey{userID: s.user.ID, slug: slug}
+}
+
+// work is this person's workspace. The owner keeps solutions/; everybody else
+// gets their own directory, so two people on one problem do not write over
+// each other's Go.
+func (s *session) work() workspace.Layout {
+	return workspace.For(s.root, s.user.ID)
 }

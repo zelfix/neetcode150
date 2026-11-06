@@ -28,6 +28,7 @@ import (
 	"neetcode150/internal/textdiff"
 	"neetcode150/internal/tutor"
 	"neetcode150/internal/web"
+	"neetcode150/internal/workspace"
 )
 
 const usage = `nc — local NeetCode 150 study kit
@@ -393,7 +394,7 @@ func cmdNext(root string) error {
 	fmt.Printf("  %s · %s · %s\n", p.Difficulty, p.Pattern, reason)
 	fmt.Printf("  slug      %s\n", p.Slug)
 	fmt.Printf("  statement %s/problem.md\n", p.ContentDir())
-	fmt.Printf("  solution  %s/solution.go\n", p.SolutionDir())
+	fmt.Printf("  solution  %s\n", workspace.Owner(root).Rel(p, "solution.go"))
 	fmt.Printf("  state     %s", e.Status.Label())
 	if e.Attempts > 0 {
 		fmt.Printf(", %s", plural(e.Attempts, "attempt", "attempts"))
@@ -413,7 +414,7 @@ func cmdStart(root string, args []string) error {
 	}
 
 	signature, statement := problemInputs(root, p)
-	written, files, err := scaffold.Create(prog.Scope(), root, p, signature, statement)
+	written, files, err := scaffold.Create(prog.Scope(), workspace.Owner(root), p, signature, statement)
 	if err != nil {
 		return err
 	}
@@ -445,7 +446,7 @@ func cmdStart(root string, args []string) error {
 		fmt.Println("  the test is a plain skeleton — this one is not one function with one result")
 	}
 	fmt.Printf("  read   %s/problem.md\n", p.ContentDir())
-	fmt.Printf("  test   go test ./%s/\n", filepath.ToSlash(p.SolutionDir()))
+	fmt.Printf("  test   go test %s\n", workspace.Owner(root).Pattern(p))
 	return nil
 }
 
@@ -465,7 +466,7 @@ func cmdTests(root string, args []string) error {
 	}
 	added := 0
 	for _, p := range problems {
-		paths, err := scaffold.EnsurePracticeTests(root, p)
+		paths, err := scaffold.EnsurePracticeTests(workspace.Owner(root), p)
 		if err != nil {
 			return err
 		}
@@ -886,7 +887,7 @@ func cmdInfo(root string, args []string) error {
 	fmt.Printf("  hints      nc hints %s (SQLite)\n", p.Slug)
 	fmt.Printf("  notes      nc notes %s (SQLite)\n", p.Slug)
 	fmt.Printf("  signature  %s/signature.txt\n", p.ContentDir())
-	fmt.Printf("  solution   %s/solution.go\n", p.SolutionDir())
+	fmt.Printf("  solution   %s\n", workspace.Owner(root).Rel(p, "solution.go"))
 	fmt.Printf("  leetcode   %s\n", p.LeetCodeURL)
 	if u := p.VideoURL(); u != "" {
 		fmt.Printf("  walkthrough %s\n", u)
@@ -958,7 +959,7 @@ func cmdResolve(root string, args []string) error {
 
 	now := time.Now()
 	signature, statement := problemInputs(root, p)
-	archive, _, err := scaffold.Reset(prog.Scope(), root, p, signature, statement, now)
+	archive, _, err := scaffold.Reset(prog.Scope(), workspace.Owner(root), p, signature, statement, now)
 	if err != nil {
 		return fmt.Errorf("%w — `nc start %s` starts a first attempt", err, p.Slug)
 	}
@@ -973,7 +974,7 @@ func cmdResolve(root string, args []string) error {
 	rel := archive
 	fmt.Printf("%d. %s — %s, %s\n", p.ID, p.Title, p.Difficulty, p.Pattern)
 	fmt.Printf("  archived %s\n", filepath.ToSlash(rel))
-	fmt.Printf("  reset    %s\n", filepath.ToSlash(filepath.Join(p.SolutionDir(), "solution.go")))
+	fmt.Printf("  reset    %s\n", workspace.Owner(root).Rel(p, "solution.go"))
 	fmt.Println("  the test file is left alone — it holds the cases, not the approach")
 	fmt.Println()
 	fmt.Println("  Solve it cold. Do not open the archive until the test passes;")
@@ -1007,7 +1008,7 @@ func cmdDiff(root string, args []string) error {
 	if err != nil {
 		return err
 	}
-	newSrc, err := os.ReadFile(filepath.Join(root, p.SolutionDir(), "solution.go"))
+	newSrc, err := os.ReadFile(workspace.Owner(root).Path(p, "solution.go"))
 	if err != nil {
 		return err
 	}

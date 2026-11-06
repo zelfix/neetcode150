@@ -246,6 +246,7 @@ content/
     problem.md                   the statement          (fetched)
     signature.txt                the official Go signature (fetched)
 solutions/<NNNN>-<slug>/         your Go solution and its tests
+_work/<userID>/solutions/...     a guest's, on a shared instance
 study.sqlite3                    your progress, attempts, chat, notes and reviews
 
 cmd/nc/                          the CLI

@@ -1,9 +1,13 @@
 package web
 
 import (
+	"bytes"
 	"database/sql"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -11,6 +15,7 @@ import (
 
 	"neetcode150/internal/progress"
 	"neetcode150/internal/studydb"
+	"neetcode150/internal/workspace"
 )
 
 // guest adds a second person and returns their link and their own store.
@@ -247,4 +252,72 @@ func TestLeavingDropsTheCookie(t *testing.T) {
 			t.Errorf("leave did not expire the cookie: %+v", c)
 		}
 	}
+}
+
+// Two people on the same problem must not write over each other's Go. The
+// owner keeps solutions/; everybody else gets _work/<id>/solutions/.
+func TestTwoPeopleWritingTheSameProblemKeepSeparateFiles(t *testing.T) {
+	srv, root, _ := testSite(t)
+	token, _ := guest(t, srv, "dima")
+	h := srv.Handler()
+
+	for _, who := range []struct{ name, token, code string }{
+		{"owner", testToken, "// OWNER CODE\n"},
+		{"guest", token, "// GUEST CODE\n"},
+	} {
+		if rec := postJSONAs(t, h, "/problems/two-sum/start", map[string]string{}, who.token); rec.Code != http.StatusOK {
+			t.Fatalf("%s start = %d: %s", who.name, rec.Code, rec.Body)
+		}
+		body := map[string]string{"code": "package twosum\n" + who.code}
+		if rec := postJSONAs(t, h, "/problems/two-sum/solution", body, who.token); rec.Code != http.StatusOK {
+			t.Fatalf("%s save = %d: %s", who.name, rec.Code, rec.Body)
+		}
+	}
+
+	p, _ := srv.cat.BySlug("two-sum")
+	ownerFile := workspace.Owner(root).Path(p, "solution.go")
+	guestUser, err := srv.db.UserByToken(token)
+	if err != nil {
+		t.Fatal(err)
+	}
+	guestFile := workspace.For(root, guestUser.ID).Path(p, "solution.go")
+
+	if ownerFile == guestFile {
+		t.Fatal("both people were given the same file")
+	}
+	ownerCode, err := os.ReadFile(ownerFile)
+	if err != nil {
+		t.Fatalf("owner file: %v", err)
+	}
+	guestCode, err := os.ReadFile(guestFile)
+	if err != nil {
+		t.Fatalf("guest file: %v", err)
+	}
+	if !strings.Contains(string(ownerCode), "OWNER CODE") {
+		t.Errorf("owner's file holds %q", ownerCode)
+	}
+	if !strings.Contains(string(guestCode), "GUEST CODE") {
+		t.Errorf("guest's file holds %q", guestCode)
+	}
+	// And the guest's directory is the underscore one, which is what keeps it
+	// out of ./... and therefore out of CI.
+	if !strings.Contains(guestFile, string(filepath.Separator)+"_work"+string(filepath.Separator)) {
+		t.Errorf("guest file %q is not under _work/", guestFile)
+	}
+}
+
+// postJSONAs is postJSON for a chosen person.
+func postJSONAs(t *testing.T, h http.Handler, path string, body any, token string) *httptest.ResponseRecorder {
+	t.Helper()
+	b, err := json.Marshal(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, path, bytes.NewReader(b))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
+	req.AddCookie(&http.Cookie{Name: cookieName, Value: token})
+	h.ServeHTTP(rec, req)
+	return rec
 }

@@ -225,6 +225,7 @@ content/
     problem.md                   условие задачи         (скачивается)
     signature.txt                официальная сигнатура на Go (скачивается)
 solutions/<NNNN>-<slug>/         ваше решение на Go и тесты к нему
+_work/<userID>/solutions/...     чужие, если инстанс общий
 study.sqlite3                    прогресс, попытки, оценки, заметки и чат
 
 cmd/nc/                          CLI
