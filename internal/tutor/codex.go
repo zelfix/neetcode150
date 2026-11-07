@@ -10,6 +10,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"neetcode150/internal/studydb"
 )
 
 // codexClient speaks the Codex app-server JSONL protocol over stdio. One
@@ -49,7 +51,7 @@ type codexMessage struct {
 	Error  *codexError     `json:"error"`
 }
 
-func (m *Manager) startCodex(s *Session) error {
+func (m *Manager) startCodex(scope *studydb.Scope, s *Session) error {
 	cmd := exec.CommandContext(context.Background(), m.bin, "app-server", "--listen", "stdio://")
 	cmd.Dir = m.root
 	stdin, err := cmd.StdinPipe()
@@ -78,7 +80,7 @@ func (m *Manager) startCodex(s *Session) error {
 		pending:   map[int]chan codexResponse{},
 		doneTurns: map[string]bool{},
 		first:     true,
-		seed:      m.seed(s.Problem),
+		seed:      m.seed(scope, s.Problem),
 	}
 	s.mu.Unlock()
 

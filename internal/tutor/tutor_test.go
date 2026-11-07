@@ -33,7 +33,7 @@ func fakeClaude(t *testing.T, script string) *Manager {
 	}
 	m := New(t.TempDir(), ModeTutor, 0)
 	m.why = "" // the real binary is not needed
-	m.newCmd = func(ctx context.Context, p catalog.Problem, id string) *exec.Cmd {
+	m.newCmd = func(ctx context.Context, _ *studydb.Scope, p catalog.Problem, id string) *exec.Cmd {
 		return exec.CommandContext(ctx, "/bin/sh", path, id)
 	}
 	t.Cleanup(m.Close)
@@ -91,7 +91,7 @@ while IFS= read -r line; do
   echo '{"type":"result","subtype":"success","total_cost_usd":0.0123}'
 done
 `)
-	s, err := m.Send(twoSum, "what is the pattern?")
+	s, err := m.Send(nil, twoSum, "what is the pattern?")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -127,7 +127,7 @@ while IFS= read -r line; do
   echo '{"type":"result","subtype":"success","total_cost_usd":0.01}'
 done
 `)
-	s, _ := m.Send(twoSum, "hint?")
+	s, _ := m.Send(nil, twoSum, "hint?")
 	_, ch, cancel := s.Subscribe()
 	defer cancel()
 	events := collect(t, ch, KindDone)
@@ -149,7 +149,7 @@ while IFS= read -r line; do
   echo '{"type":"result","subtype":"success"}'
 done
 `)
-	s, _ := m.Send(twoSum, "hint?")
+	s, _ := m.Send(nil, twoSum, "hint?")
 	_, ch, cancel := s.Subscribe()
 	defer cancel()
 	if got := textOf(collect(t, ch, KindDone)); got != "Sort it first." {
@@ -165,7 +165,7 @@ while IFS= read -r line; do
   echo '{"type":"result","subtype":"success"}'
 done
 `)
-	s, _ := m.Send(twoSum, "review it")
+	s, _ := m.Send(nil, twoSum, "review it")
 	_, ch, cancel := s.Subscribe()
 	defer cancel()
 	events := collect(t, ch, KindDone)
@@ -191,7 +191,7 @@ while IFS= read -r line; do
   echo '{"type":"result","subtype":"success"}'
 done
 `)
-	s, _ := m.Send(twoSum, "write it for me")
+	s, _ := m.Send(nil, twoSum, "write it for me")
 	_, ch, cancel := s.Subscribe()
 	defer cancel()
 	for _, e := range collect(t, ch, KindDone) {
@@ -209,7 +209,7 @@ while IFS= read -r line; do
   echo '{"type":"result","subtype":"error_max_budget","is_error":true,"result":"budget exhausted"}'
 done
 `)
-	s, _ := m.Send(twoSum, "hi")
+	s, _ := m.Send(nil, twoSum, "hi")
 	_, ch, cancel := s.Subscribe()
 	defer cancel()
 	events := collect(t, ch, KindError)
@@ -231,7 +231,7 @@ while IFS= read -r line; do
   echo '{"type":"result","subtype":"success"}'
 done
 `)
-	s, err := m.Send(twoSum, "first")
+	s, err := m.Send(nil, twoSum, "first")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -239,7 +239,7 @@ done
 	defer cancel()
 	collect(t, ch, KindDone)
 
-	again, err := m.Send(twoSum, "second")
+	again, err := m.Send(nil, twoSum, "second")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -267,17 +267,17 @@ while IFS= read -r line; do
   echo '{"type":"result","subtype":"success"}'
 done
 `)
-	first, _ := m.Send(twoSum, "first")
+	first, _ := m.Send(nil, twoSum, "first")
 	_, ch, cancel := first.Subscribe()
 	collect(t, ch, KindDone)
 	cancel()
 
-	m.Reset(twoSum.Slug)
-	if m.Get(twoSum.Slug) != nil {
+	m.Reset(nil, twoSum.Slug)
+	if m.Get(nil, twoSum.Slug) != nil {
 		t.Error("the session survived a reset")
 	}
 
-	second, err := m.Send(twoSum, "first again")
+	second, err := m.Send(nil, twoSum, "first again")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -304,7 +304,7 @@ while IFS= read -r line; do
   echo '{"type":"result","subtype":"success"}'
 done
 `)
-	s, _ := m.Send(twoSum, "a question asked before the page was open")
+	s, _ := m.Send(nil, twoSum, "a question asked before the page was open")
 	_, ch, cancel := s.Subscribe()
 	collect(t, ch, KindDone)
 	cancel()
@@ -344,7 +344,7 @@ while IFS= read -r line; do
   echo '{"type":"result","subtype":"success"}'
 done
 `)
-	s, _ := m.Send(twoSum, "hi")
+	s, _ := m.Send(nil, twoSum, "hi")
 	_, ch, cancel := s.Subscribe()
 	defer cancel()
 	if got := textOf(collect(t, ch, KindDone)); got != "still here" {
@@ -359,7 +359,7 @@ echo '`+initEvent+`'
 echo 'something went wrong' >&2
 exit 3
 `)
-	s, err := m.Send(twoSum, "hi")
+	s, err := m.Send(nil, twoSum, "hi")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -384,7 +384,7 @@ func TestSendToADeadSessionFails(t *testing.T) {
 echo '`+initEvent+`'
 exit 0
 `)
-	s, _ := m.Send(twoSum, "hi")
+	s, _ := m.Send(nil, twoSum, "hi")
 	_, ch, cancel := s.Subscribe()
 	collect(t, ch, KindExit)
 	cancel()
@@ -402,7 +402,7 @@ while IFS= read -r line; do
   echo '{"type":"result","subtype":"success"}'
 done
 `)
-	s, err := m.Send(twoSum, "hi")
+	s, err := m.Send(nil, twoSum, "hi")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -423,7 +423,7 @@ done
 	if !state.Exited() {
 		t.Errorf("child did not exit cleanly: %v", state)
 	}
-	if m.Get(twoSum.Slug) != nil {
+	if m.Get(nil, twoSum.Slug) != nil {
 		t.Error("Close left a session in the map")
 	}
 	if running := s.Info().Running; running {
@@ -434,7 +434,7 @@ done
 func TestSendRefusesEmptyText(t *testing.T) {
 	m := fakeClaude(t, "exit 0\n")
 	for _, text := range []string{"", "   ", "\n\t"} {
-		if _, err := m.Send(twoSum, text); err == nil {
+		if _, err := m.Send(nil, twoSum, text); err == nil {
 			t.Errorf("Send(%q) reported success", text)
 		}
 	}
@@ -452,14 +452,14 @@ func TestUnavailableManagerExplainsItself(t *testing.T) {
 	if why == "" {
 		t.Error("Available() gave no reason")
 	}
-	if _, err := m.Send(twoSum, "hi"); err == nil {
+	if _, err := m.Send(nil, twoSum, "hi"); err == nil {
 		t.Error("Send succeeded with no binary")
 	}
 }
 
 func TestArgsDifferByMode(t *testing.T) {
 	joined := func(mode Mode) string {
-		return strings.Join(New(t.TempDir(), mode, 1.5).args(twoSum, "id-1"), " ")
+		return strings.Join(New(t.TempDir(), mode, 1.5).args(nil, twoSum, "id-1"), " ")
 	}
 
 	full := joined(ModeFull)
@@ -495,7 +495,7 @@ func TestArgsDifferByMode(t *testing.T) {
 }
 
 func TestSeedNamesTheProblemAndThePaths(t *testing.T) {
-	seed := New(t.TempDir(), ModeFull, 0).seed(twoSum)
+	seed := New(t.TempDir(), ModeFull, 0).seed(nil, twoSum)
 	for _, want := range []string{
 		"1. Two Sum", "two-sum", "Arrays & Hashing",
 		"solutions/0001-two-sum/solution.go",
@@ -531,8 +531,8 @@ while IFS= read -r line; do
  echo '{"type":"result","subtype":"success"}'
 done
 `)
-	first.UseStorage(db.Owner())
-	s, err := first.Send(twoSum, "my earlier question")
+	firstScope := db.Owner()
+	s, err := first.Send(firstScope, twoSum, "my earlier question")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -551,8 +551,8 @@ while IFS= read -r line; do
 done
 `)
 	defer second.Close()
-	second.UseStorage(db.Owner())
-	restored := second.Get(twoSum.Slug)
+	secondScope := db.Owner()
+	restored := second.Get(secondScope, twoSum.Slug)
 	if restored == nil || restored.Info().Running {
 		t.Fatal("expected a saved conversation without a running process")
 	}
@@ -560,7 +560,7 @@ done
 	if textOf(previous) != "One short question." {
 		t.Fatalf("lost transcript: %+v", previous)
 	}
-	s, err = second.Send(twoSum, "my next question")
+	s, err = second.Send(secondScope, twoSum, "my next question")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -575,8 +575,8 @@ done
 		}
 		seq = e.Seq
 	}
-	second.Reset(twoSum.Slug)
-	if second.Get(twoSum.Slug) != nil {
+	second.Reset(secondScope, twoSum.Slug)
+	if second.Get(secondScope, twoSum.Slug) != nil {
 		t.Fatal("reset replayed an older session")
 	}
 }
@@ -628,7 +628,7 @@ while IFS= read -r line; do
   echo '{"type":"result","subtype":"success"}'
 done
 `)
-	s, _ := m.Send(twoSum, "hint?")
+	s, _ := m.Send(nil, twoSum, "hint?")
 	_, ch, cancel := s.Subscribe()
 	defer cancel()
 
@@ -648,7 +648,7 @@ while IFS= read -r line; do
   echo '{"type":"result","subtype":"success"}'
 done
 `)
-	s, _ := m.Send(twoSum, "hint?")
+	s, _ := m.Send(nil, twoSum, "hint?")
 	_, ch, cancel := s.Subscribe()
 	defer cancel()
 
@@ -667,7 +667,7 @@ while IFS= read -r line; do
   echo '{"type":"result","subtype":"success"}'
 done
 `)
-	s, _ := m.Send(twoSum, "hint?")
+	s, _ := m.Send(nil, twoSum, "hint?")
 	_, ch, cancel := s.Subscribe()
 	defer cancel()
 	if got := textOf(collect(t, ch, KindDone)); got != "Same answer." {

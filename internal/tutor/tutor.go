@@ -122,6 +122,7 @@ type Session struct {
 	// answer twice. Comparing the text cannot be fooled that way.
 	streamed     strings.Builder
 	internalTurn bool
+	spend        spendHook
 
 	cmd        *exec.Cmd
 	codex      *codexClient
@@ -354,4 +355,26 @@ func (s *Session) closeSession() {
 		_ = cmd.Process.Kill()
 		<-done
 	}
+}
+
+// spendHook is told what a turn cost, as an increment.
+//
+// Providers report cost in opposite shapes — the Claude CLI gives a running
+// total for the session, an HTTP API gives usage for the one request — so the
+// session converts its own shape into an increment and this is the only thing
+// the budget ever sees.
+type spendHook func(scope *studydb.Scope, delta float64)
+
+// recordSpend reports what the turn just cost.
+//
+// Written as it arrives rather than at the end of a session: cost lives only in
+// memory, so a restart would otherwise hand everybody their allowance back.
+func (s *Session) recordSpend(delta float64) {
+	s.mu.Lock()
+	hook, scope := s.spend, s.storage
+	s.mu.Unlock()
+	if hook == nil || scope == nil {
+		return
+	}
+	hook(scope, delta)
 }

@@ -18,15 +18,28 @@ import (
 	"neetcode150/internal/workspace"
 )
 
-// maxLive caps how many sessions run at once. Each is a process holding a model
-// context open; the least recently used is retired rather than refused, because
-// the panel asking a question should never fail for a reason about some other
-// problem.
-const maxLive = 4
+// maxLive caps how many sessions run at once, and maxLivePerUser how many of
+// them belong to one person. Each is a process holding a model context open,
+// and they share the machine with the test sandbox, so both ceilings matter:
+// without the per-person one, somebody with several problems open quietly
+// evicts everybody else.
+//
+// The least recently used is retired rather than refused, because the panel
+// asking a question should never fail for a reason about some other problem.
+const (
+	maxLive        = 6
+	maxLivePerUser = 2
+)
 
-// Manager owns the running sessions, one per problem.
+// Manager owns the running sessions, one per person per problem.
+// sessionKey identifies one person's conversation about one problem. Keyed by
+// slug alone, two people on the same problem shared a process and a transcript.
+type sessionKey struct {
+	userID int64
+	slug   string
+}
+
 type Manager struct {
-	storage  *studydb.Scope
 	root     string
 	provider Provider
 	mode     Mode
@@ -41,11 +54,15 @@ type Manager struct {
 	// newCmd is injected in tests. The real one runs claude; a test one runs a
 	// stand-in that speaks the same protocol, so no test costs money or needs
 	// a network.
-	newCmd func(ctx context.Context, p catalog.Problem, sessionID string) *exec.Cmd
+	newCmd func(ctx context.Context, scope *studydb.Scope, p catalog.Problem, sessionID string) *exec.Cmd
+
+	// onSpend is told what each turn cost, as an increment. Set by the site so
+	// the per-person ceiling survives a restart.
+	onSpend spendHook
 
 	mu       sync.Mutex
-	sessions map[string]*Session
-	order    []string // least recently used first
+	sessions map[sessionKey]*Session
+	order    []sessionKey // least recently used first
 	closed   bool
 }
 
@@ -69,7 +86,7 @@ func NewForProvider(root string, provider Provider, mode Mode, budget float64) *
 		provider: provider,
 		mode:     mode,
 		budget:   budget,
-		sessions: map[string]*Session{},
+		sessions: map[sessionKey]*Session{},
 	}
 	if bin, err := exec.LookPath(string(provider)); err == nil {
 		m.bin = bin
@@ -88,7 +105,7 @@ func NewForProvider(root string, provider Provider, mode Mode, budget float64) *
 // is concerned, a stand-in speaking the same stream-json protocol over the same
 // pipes is indistinguishable from the real binary, so the protocol is what gets
 // substituted rather than the behaviour around it.
-func NewWithCommand(root string, mode Mode, newCmd func(ctx context.Context, p catalog.Problem, sessionID string) *exec.Cmd) *Manager {
+func NewWithCommand(root string, mode Mode, newCmd func(ctx context.Context, scope *studydb.Scope, p catalog.Problem, sessionID string) *exec.Cmd) *Manager {
 	m := New(root, mode, 0)
 	if newCmd == nil {
 		m.why = "no tutor command is configured"
@@ -111,24 +128,32 @@ func (m *Manager) Mode() Mode { return m.mode }
 func (m *Manager) Provider() Provider { return m.provider }
 
 // UseStorage attaches the application's database before sessions are started.
-// UseStorage attaches the study data this manager persists through.
-//
-// A Scope rather than a DB: sessions and their transcripts are personal, and a
-// shared handle here would mean one live session per problem across everyone.
-func (m *Manager) UseStorage(scope *studydb.Scope) { m.storage = scope }
+// OnSpend installs the hook that records what turns cost.
+func (m *Manager) OnSpend(fn func(scope *studydb.Scope, delta float64)) { m.onSpend = fn }
 
-func (m *Manager) restoredLocked(slug string) (*Session, error) {
-	if s := m.sessions[slug]; s != nil {
+// FileAccess reports whether this provider can read the machine it runs on.
+//
+// The CLI providers run an agent with the repository as its working directory,
+// so they can read every person's work and the study database. That is fine for
+// the owner's own tool and unacceptable for a guest, so the site offers the
+// panel to guests only on a provider that answers false here.
+func (m *Manager) FileAccess() bool {
+	return m.provider == ProviderClaude || m.provider == ProviderCodex
+}
+
+func (m *Manager) restoredLocked(scope *studydb.Scope, slug string) (*Session, error) {
+	key := sessionKey{userID: userOf(scope), slug: slug}
+	if s := m.sessions[key]; s != nil {
 		return s, nil
 	}
-	if m.storage == nil {
+	if scope == nil {
 		return nil, nil
 	}
-	record, err := m.storage.Session(slug)
+	record, err := scope.Session(slug)
 	if err != nil || record == nil {
 		return nil, err
 	}
-	s := &Session{Slug: slug, Started: record.Started, storage: m.storage, storageID: record.ID, restored: true, subs: map[chan Event]struct{}{}}
+	s := &Session{Slug: slug, Started: record.Started, storage: scope, storageID: record.ID, restored: true, subs: map[chan Event]struct{}{}}
 	for _, raw := range record.Events {
 		var e Event
 		if err := json.Unmarshal(raw, &e); err != nil {
@@ -147,15 +172,24 @@ func (m *Manager) restoredLocked(slug string) (*Session, error) {
 			s.events = append(s.events, e)
 		}
 	}
-	m.sessions[slug] = s
+	m.sessions[key] = s
 	return s, nil
 }
 
+// userOf is the owner of a scope, and zero for none, so a nil scope still has a
+// usable key.
+func userOf(scope *studydb.Scope) int64 {
+	if scope == nil {
+		return 0
+	}
+	return scope.UserID()
+}
+
 // Get includes a saved transcript even when its agent process is no longer running.
-func (m *Manager) Get(slug string) *Session {
+func (m *Manager) Get(scope *studydb.Scope, slug string) *Session {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	s, err := m.restoredLocked(slug)
+	s, err := m.restoredLocked(scope, slug)
 	if err != nil {
 		panic(fmt.Errorf("restore tutor: %w", err))
 	}
@@ -163,19 +197,21 @@ func (m *Manager) Get(slug string) *Session {
 }
 
 // Start returns a session without asking the model to produce a public reply.
-func (m *Manager) Start(p catalog.Problem) (*Session, error) { return m.ensure(p) }
+func (m *Manager) Start(scope *studydb.Scope, p catalog.Problem) (*Session, error) {
+	return m.ensure(scope, p)
+}
 
 // Send delivers a turn, starting a session for the problem if there is none.
-func (m *Manager) Send(p catalog.Problem, text string) (*Session, error) {
-	return m.SendAs(p, text, text)
+func (m *Manager) Send(scope *studydb.Scope, p catalog.Problem, text string) (*Session, error) {
+	return m.SendAs(scope, p, text, text)
 }
 
 // SendAs starts a turn with a private prompt and a concise transcript label.
-func (m *Manager) SendAs(p catalog.Problem, text, display string) (*Session, error) {
+func (m *Manager) SendAs(scope *studydb.Scope, p catalog.Problem, text, display string) (*Session, error) {
 	if text = strings.TrimSpace(text); text == "" {
 		return nil, fmt.Errorf("nothing to send")
 	}
-	s, err := m.ensure(p)
+	s, err := m.ensure(scope, p)
 	if err != nil {
 		return nil, err
 	}
@@ -186,13 +222,14 @@ func (m *Manager) SendAs(p catalog.Problem, text, display string) (*Session, err
 }
 
 // Reset ends the session for a problem so the next turn starts clean.
-func (m *Manager) Reset(slug string) {
+func (m *Manager) Reset(scope *studydb.Scope, slug string) {
+	key := sessionKey{userID: userOf(scope), slug: slug}
 	m.mu.Lock()
-	s := m.sessions[slug]
-	delete(m.sessions, slug)
-	m.forget(slug)
-	if m.storage != nil {
-		if err := m.storage.RetireSession(slug); err != nil {
+	s := m.sessions[key]
+	delete(m.sessions, key)
+	m.forget(key)
+	if scope != nil {
+		if err := scope.RetireSession(slug); err != nil {
 			m.mu.Unlock()
 			panic(err)
 		}
@@ -204,8 +241,8 @@ func (m *Manager) Reset(slug string) {
 }
 
 // Interrupt stops the turn in progress for a problem.
-func (m *Manager) Interrupt(slug string) error {
-	s := m.Get(slug)
+func (m *Manager) Interrupt(scope *studydb.Scope, slug string) error {
+	s := m.Get(scope, slug)
 	if s == nil {
 		return fmt.Errorf("no tutor session for %s", slug)
 	}
@@ -225,7 +262,7 @@ func (m *Manager) Close() {
 	for _, s := range m.sessions {
 		live = append(live, s)
 	}
-	m.sessions = map[string]*Session{}
+	m.sessions = map[sessionKey]*Session{}
 	m.order = nil
 	m.mu.Unlock()
 
@@ -241,19 +278,20 @@ func (m *Manager) Close() {
 }
 
 // ensure returns the session for a problem, starting one if needed.
-func (m *Manager) ensure(p catalog.Problem) (*Session, error) {
+func (m *Manager) ensure(scope *studydb.Scope, p catalog.Problem) (*Session, error) {
+	key := sessionKey{userID: userOf(scope), slug: p.Slug}
 	m.mu.Lock()
 	if m.closed {
 		m.mu.Unlock()
 		return nil, fmt.Errorf("the server is shutting down")
 	}
-	existing, err := m.restoredLocked(p.Slug)
+	existing, err := m.restoredLocked(scope, p.Slug)
 	if err != nil {
 		m.mu.Unlock()
 		return nil, err
 	}
 	if existing != nil && !existing.restored {
-		m.touch(p.Slug)
+		m.touch(key)
 		m.mu.Unlock()
 		return existing, nil
 	}
@@ -261,20 +299,21 @@ func (m *Manager) ensure(p catalog.Problem) (*Session, error) {
 		m.mu.Unlock()
 		return nil, fmt.Errorf("%s", why)
 	}
-	// Retire the oldest rather than refuse the new one.
+	// Retire the oldest rather than refuse the new one. Per person as well as
+	// overall: without the per-person cap, one enthusiast with several problems
+	// open evicts everybody else's live conversation.
 	var evict *Session
-	if len(m.order) >= maxLive {
-		oldest := m.order[0]
-		evict = m.sessions[oldest]
-		delete(m.sessions, oldest)
-		m.forget(oldest)
+	if victim, ok := m.evictableLocked(key); ok {
+		evict = m.sessions[victim]
+		delete(m.sessions, victim)
+		m.forget(victim)
 	}
 
 	s := existing
 	if s == nil {
-		s = &Session{Slug: p.Slug, Started: time.Now(), subs: map[chan Event]struct{}{}, storage: m.storage}
-		if m.storage != nil {
-			s.storageID, err = m.storage.NewSession(p.Slug, string(m.provider), s.Started)
+		s = &Session{Slug: p.Slug, Started: time.Now(), subs: map[chan Event]struct{}{}, storage: scope, spend: m.onSpend}
+		if scope != nil {
+			s.storageID, err = scope.NewSession(p.Slug, string(m.provider), s.Started)
 			if err != nil {
 				m.mu.Unlock()
 				return nil, err
@@ -282,18 +321,19 @@ func (m *Manager) ensure(p catalog.Problem) (*Session, error) {
 		}
 	}
 	s.Problem = p
+	s.spend = m.onSpend
 	s.done = make(chan struct{})
 	s.stderrDone = make(chan struct{})
 	s.restored = false
-	m.sessions[p.Slug] = s
-	m.touch(p.Slug)
+	m.sessions[key] = s
+	m.touch(key)
 
 	// Starting under the manager lock makes the reservation atomic: another
 	// request cannot send to a half-started process, and Close cannot miss a
 	// process that is still being started.
-	if err := m.start(s); err != nil {
-		delete(m.sessions, p.Slug)
-		m.forget(p.Slug)
+	if err := m.start(scope, s); err != nil {
+		delete(m.sessions, key)
+		m.forget(key)
 		m.mu.Unlock()
 		if evict != nil {
 			go evict.closeSession()
@@ -309,30 +349,57 @@ func (m *Manager) ensure(p catalog.Problem) (*Session, error) {
 
 // touch and forget maintain the least-recently-used order. Both require the
 // lock.
-func (m *Manager) touch(slug string) {
-	m.forget(slug)
-	m.order = append(m.order, slug)
+func (m *Manager) touch(key sessionKey) {
+	m.forget(key)
+	m.order = append(m.order, key)
 }
 
-func (m *Manager) forget(slug string) {
+func (m *Manager) forget(key sessionKey) {
 	for i, s := range m.order {
-		if s == slug {
+		if s == key {
 			m.order = append(m.order[:i], m.order[i+1:]...)
 			return
 		}
 	}
 }
 
+// evictableLocked picks which live session to retire to make room for key, and
+// reports whether one has to go. Requires the lock.
+//
+// Agent processes are the expensive thing on the box, and they share it with
+// the test sandbox, so there are two ceilings: one per person so nobody is
+// starved by somebody else's open tabs, and one overall so the machine survives.
+func (m *Manager) evictableLocked(key sessionKey) (sessionKey, bool) {
+	mine := 0
+	var oldestMine sessionKey
+	found := false
+	for _, k := range m.order {
+		if k.userID == key.userID {
+			mine++
+			if !found {
+				oldestMine, found = k, true
+			}
+		}
+	}
+	if found && mine >= maxLivePerUser {
+		return oldestMine, true
+	}
+	if len(m.order) >= maxLive {
+		return m.order[0], true
+	}
+	return sessionKey{}, false
+}
+
 // start launches the process and the goroutines that read it.
-func (m *Manager) start(s *Session) error {
+func (m *Manager) start(scope *studydb.Scope, s *Session) error {
 	if m.provider == ProviderCodex {
-		return m.startCodex(s)
+		return m.startCodex(scope, s)
 	}
 	id, err := newUUID()
 	if err != nil {
 		return err
 	}
-	cmd := m.newCmd(context.Background(), s.Problem, id)
+	cmd := m.newCmd(context.Background(), scope, s.Problem, id)
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
@@ -373,15 +440,15 @@ func (s *Session) readStderr(r io.Reader) {
 }
 
 // realCmd is the actual invocation.
-func (m *Manager) realCmd(ctx context.Context, p catalog.Problem, sessionID string) *exec.Cmd {
-	cmd := exec.CommandContext(ctx, m.bin, m.args(p, sessionID)...)
+func (m *Manager) realCmd(ctx context.Context, scope *studydb.Scope, p catalog.Problem, sessionID string) *exec.Cmd {
+	cmd := exec.CommandContext(ctx, m.bin, m.args(scope, p, sessionID)...)
 	// The repository root, so the session picks up CLAUDE.md and AGENTS.md on
 	// its own and sees the paths the seed prompt refers to.
 	cmd.Dir = m.root
 	return cmd
 }
 
-func (m *Manager) args(p catalog.Problem, sessionID string) []string {
+func (m *Manager) args(scope *studydb.Scope, p catalog.Problem, sessionID string) []string {
 	a := []string{
 		"-p",
 		"--input-format", "stream-json",
@@ -391,7 +458,7 @@ func (m *Manager) args(p catalog.Problem, sessionID string) []string {
 		"--verbose",
 		"--include-partial-messages",
 		"--session-id", sessionID,
-		"--append-system-prompt", m.seed(p),
+		"--append-system-prompt", m.seed(scope, p),
 	}
 	if m.budget > 0 {
 		a = append(a, "--max-budget-usd", strconv.FormatFloat(m.budget, 'f', -1, 64))
@@ -413,7 +480,7 @@ func (m *Manager) args(p catalog.Problem, sessionID string) []string {
 // through CLAUDE.md, which the session reads because cmd.Dir is the repository;
 // this adds only what CLAUDE.md cannot know — which problem is open, and that
 // the person is in a browser rather than a terminal.
-func (m *Manager) seed(p catalog.Problem) string {
+func (m *Manager) seed(scope *studydb.Scope, p catalog.Problem) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "You are tutoring one NeetCode 150 problem in this repository: "+
 		"%d. %s (%s), pattern %q.\n\n", p.ID, p.Title, p.Slug, p.Pattern)
@@ -424,8 +491,8 @@ func (m *Manager) seed(p catalog.Problem) string {
 	fmt.Fprintf(&b, "Relevant paths:\n- statement: %s/problem.md\n- the user's solution: %s\n- their tests: %s\n\n",
 		p.ContentDir(), lay.Rel(p, "solution.go"), lay.Rel(p, "solution_test.go"))
 	b.WriteString("Personal notes, recorded hints and session logs are in study.sqlite3, not the old Markdown files. The application supplies historical learning evidence; never edit legacy personal files.\n")
-	if m.storage != nil {
-		if hints, err := m.storage.Document(p.Slug, "hints"); err == nil && hints != "" {
+	if scope != nil {
+		if hints, err := scope.Document(p.Slug, "hints"); err == nil && hints != "" {
 			if len(hints) > 16000 {
 				hints = hints[:16000]
 			}
@@ -444,8 +511,8 @@ func (m *Manager) seed(p catalog.Problem) string {
 		"effort, or self-correction before the next question. Treat mistakes as something to explore " +
 		"together, not as a judgement of ability. Avoid exaggerated praise and keep ratings honest.")
 	b.WriteString("\n\n" + LearningPolicy)
-	if m.storage != nil {
-		record, err := m.storage.Session(p.Slug)
+	if scope != nil {
+		record, err := scope.Session(p.Slug)
 		if err == nil && record != nil && len(record.Events) > 0 {
 			var history strings.Builder
 			for _, raw := range record.Events[max(0, len(record.Events)-300):] {

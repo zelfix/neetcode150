@@ -77,7 +77,7 @@ func New(root string, cat *catalog.Catalog, store *content.Store, prog *progress
 		tutor:              tutor.New(root, tutor.ModeTutor, 0),
 		pendingSubmissions: make(map[submissionKey]pendingSubmission),
 	}
-	s.tutor.UseStorage(s.db.Owner())
+	s.tutor.OnSpend(s.recordTutorSpend)
 	users, err := s.db.Users()
 	if err != nil {
 		return nil, err
@@ -98,7 +98,7 @@ func New(root string, cat *catalog.Catalog, store *content.Store, prog *progress
 			p.Checking = false
 			s.pendingSubmissions[submissionKey{u.ID, slug}] = p
 			if wasChecking && u.ID == studydb.OwnerID {
-				if session := s.tutor.Get(slug); session != nil {
+				if session := s.tutor.Get(s.db.For(u.ID), slug); session != nil {
 					session.PublishSubmissionQuestion("The review was interrupted by a server restart. Your solution is saved; send ‘continue’ to resume the review.")
 				}
 			}
@@ -121,7 +121,7 @@ func (s *Server) UseTutor(m *tutor.Manager) {
 	if s.tutor != nil {
 		s.tutor.Close()
 	}
-	m.UseStorage(s.db.Owner())
+	m.OnSpend(s.recordTutorSpend)
 	s.tutor = m
 }
 
@@ -170,12 +170,12 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /problems/{slug}/test", guardJSON(s.with((*session).handleRunTests)))
 	mux.HandleFunc("POST /problems/{slug}/submit", guardJSON(s.with((*session).handleSubmit)))
 	mux.HandleFunc("POST /problems/{slug}/resolve", guardJSON(s.with((*session).handleResolve)))
-	// The tutor keeps one process and one transcript per problem, not per
-	// person, so it stays the owner's until that is per-user.
-	mux.HandleFunc("GET /problems/{slug}/tutor/events", guardStream(s.ownerOnly((*session).handleTutorEvents)))
-	mux.HandleFunc("POST /problems/{slug}/tutor", guardJSON(s.ownerOnly((*session).handleTutorSend)))
-	mux.HandleFunc("POST /problems/{slug}/tutor/reset", guardJSON(s.ownerOnly((*session).handleTutorReset)))
-	mux.HandleFunc("POST /problems/{slug}/tutor/interrupt", guardJSON(s.ownerOnly((*session).handleTutorInterrupt)))
+	// Sessions are per person now. What still restricts the panel is whether
+	// the provider can read the server's files — see tutorGate.
+	mux.HandleFunc("GET /problems/{slug}/tutor/events", guardStream(s.tutorGate((*session).handleTutorEvents)))
+	mux.HandleFunc("POST /problems/{slug}/tutor", guardJSON(s.tutorGate((*session).handleTutorSend)))
+	mux.HandleFunc("POST /problems/{slug}/tutor/reset", guardJSON(s.tutorGate((*session).handleTutorReset)))
+	mux.HandleFunc("POST /problems/{slug}/tutor/interrupt", guardJSON(s.tutorGate((*session).handleTutorInterrupt)))
 
 	// Accept the paths without the trailing slash too.
 	for _, p := range []string{"/problems", "/patterns", "/review", "/coach"} {

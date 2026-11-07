@@ -44,7 +44,7 @@ done
 	if _, err := ownerSession(t, srv).askTutorAs(ctx, p, "begin follow-up", "Submit"); err != nil {
 		t.Fatal(err)
 	}
-	sess := srv.tutor.Get(p.Slug)
+	sess := srv.tutor.Get(prog.Scope(), p.Slug)
 	replay, events, stop := sess.Subscribe()
 	defer stop()
 	srv.pendingSubmissions[submissionKey{studydb.OwnerID, p.Slug}] = pendingSubmission{
@@ -149,7 +149,7 @@ func TestLearningEvidenceSurvivesANewSessionWithoutArchivedCode(t *testing.T) {
 }
 
 func TestSubmitCanRateWithoutAnObligatoryQuestion(t *testing.T) {
-	srv, _, _ := testSite(t)
+	srv, _, prog := testSite(t)
 	p, _ := srv.cat.BySlug("two-sum")
 	dir := workspace.Owner(srv.root).Dir(p)
 	if err := os.MkdirAll(dir, 0700); err != nil {
@@ -171,7 +171,7 @@ done
 	if rec.Code != http.StatusOK {
 		t.Fatalf("submit: %d %s", rec.Code, rec.Body.String())
 	}
-	sess := srv.tutor.Get("two-sum")
+	sess := srv.tutor.Get(prog.Scope(), "two-sum")
 	replay, events, stop := sess.Subscribe()
 	defer stop()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -302,14 +302,14 @@ done
 	if restored.Code != pending.Code || restored.Checking {
 		t.Fatal("pending state not restored for retry")
 	}
-	if next.tutor.Get(p.Slug) == nil {
+	if next.tutor.Get(next.db.Owner(), p.Slug) == nil {
 		t.Fatal("conversation was lost")
 	}
 	rec := postJSON(t, next.Handler(), "/problems/two-sum/tutor", tutorSendRequest{Text: "My independent explanation."})
 	if rec.Code != http.StatusOK {
 		t.Fatalf("resume: %d %s", rec.Code, rec.Body.String())
 	}
-	sess := next.tutor.Get(p.Slug)
+	sess := next.tutor.Get(next.db.Owner(), p.Slug)
 	replay, ch, stop := sess.Subscribe()
 	defer stop()
 	for {

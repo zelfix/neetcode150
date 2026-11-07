@@ -45,7 +45,7 @@ func (s *session) handleTutorEvents(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, fmt.Errorf("this server cannot stream"))
 		return
 	}
-	sess := s.tutor.Get(p.Slug)
+	sess := s.tutor.Get(s.progress.Scope(), p.Slug)
 	if sess == nil {
 		// Nothing to follow yet. The page opens this stream only once a session
 		// exists, so reaching here means it has just been reset; 404 tells the
@@ -128,6 +128,12 @@ func (s *session) handleTutorSend(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "nothing to send", http.StatusBadRequest)
 		return
 	}
+	// Checked before the turn rather than after: the ceiling is there to stop a
+	// runaway conversation, and a limit that only notices once the money is
+	// spent is not one.
+	if s.refuseIfOutOfBudget(w) {
+		return
+	}
 	s.submissionMu.Lock()
 	pending, inSubmission := s.pendingSubmissions[s.key(p)]
 	if inSubmission && pending.Checking {
@@ -147,7 +153,7 @@ func (s *session) handleTutorSend(w http.ResponseWriter, r *http.Request) {
 
 	var sess *tutor.Session
 	if inSubmission {
-		sess, err = s.tutor.Start(p)
+		sess, err = s.tutor.Start(s.progress.Scope(), p)
 		if err != nil {
 			// Preserve the pending assessment for a later retry.
 		} else if sess == nil {
@@ -161,10 +167,10 @@ func (s *session) handleTutorSend(w http.ResponseWriter, r *http.Request) {
 			var prompt string
 			prompt, err = s.postAttemptPrompt(p, entry, req.Text)
 			if err == nil {
-				sess, err = s.tutor.SendAs(p, prompt, req.Text)
+				sess, err = s.tutor.SendAs(s.progress.Scope(), p, prompt, req.Text)
 			}
 		} else {
-			sess, err = s.tutor.Send(p, req.Text)
+			sess, err = s.tutor.Send(s.progress.Scope(), p, req.Text)
 		}
 	}
 	if err != nil {
@@ -256,7 +262,7 @@ func (s *session) handleTutorReset(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "finish the tutor follow-up before starting over", http.StatusConflict)
 		return
 	}
-	s.tutor.Reset(p.Slug)
+	s.tutor.Reset(s.progress.Scope(), p.Slug)
 	available, why := s.tutor.Available()
 	writeJSON(w, http.StatusOK, tutorStatus{
 		Available: available,
@@ -272,7 +278,7 @@ func (s *session) handleTutorInterrupt(w http.ResponseWriter, r *http.Request) {
 		s.notFound(w, r, "No problem with that slug.")
 		return
 	}
-	if err := s.tutor.Interrupt(p.Slug); err != nil {
+	if err := s.tutor.Interrupt(s.progress.Scope(), p.Slug); err != nil {
 		http.Error(w, err.Error(), http.StatusConflict)
 		return
 	}

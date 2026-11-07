@@ -290,7 +290,7 @@ func (s *session) tutorView(slug string) tutorView {
 		Provider:  string(s.tutor.Provider()),
 		Mode:      string(s.tutor.Mode()),
 	}
-	if sess := s.tutor.Get(slug); sess != nil {
+	if sess := s.tutor.Get(s.progress.Scope(), slug); sess != nil {
 		v.Active = true
 		v.HasTurns = len(sess.Transcript()) > 0
 	}
@@ -414,14 +414,14 @@ func (s *session) handleSubmit(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, out)
 		return
 	}
-	sess, err := s.tutor.Start(p)
+	sess, err := s.tutor.Start(s.progress.Scope(), p)
 	if err != nil {
 		out.RatingError = err.Error()
 		writeJSON(w, http.StatusOK, out)
 		return
 	}
 	seq := 0
-	if sess := s.tutor.Get(p.Slug); sess != nil {
+	if sess := s.tutor.Get(s.progress.Scope(), p.Slug); sess != nil {
 		for _, event := range sess.Transcript() {
 			if event.Seq > seq {
 				seq = event.Seq
@@ -455,7 +455,7 @@ func (s *session) openLesson(p catalog.Problem) {
 	go func() {
 		// An empty display string keeps the prompt itself out of the
 		// transcript; the browser skips a user turn with no text.
-		if _, err := s.tutor.SendAs(p, s.openingPrompt(p), ""); err != nil {
+		if _, err := s.tutor.SendAs(s.progress.Scope(), p, s.openingPrompt(p), ""); err != nil {
 			return // a tutor that will not start is reported by the panel itself
 		}
 	}()
@@ -646,14 +646,14 @@ func formatTranscript(events []tutor.Event) string {
 
 func (s *session) askTutorAs(ctx context.Context, p catalog.Problem, prompt, display string) (string, error) {
 	var baseline int
-	if old := s.tutor.Get(p.Slug); old != nil {
+	if old := s.tutor.Get(s.progress.Scope(), p.Slug); old != nil {
 		for _, e := range old.Transcript() {
 			if e.Seq > baseline {
 				baseline = e.Seq
 			}
 		}
 	}
-	sess, err := s.tutor.SendAs(p, prompt, display)
+	sess, err := s.tutor.SendAs(s.progress.Scope(), p, prompt, display)
 	if err != nil {
 		return "", err
 	}
@@ -798,7 +798,7 @@ func (s *session) handleStartAttempt(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
-	s.tutor.Reset(p.Slug)
+	s.tutor.Reset(s.progress.Scope(), p.Slug)
 	s.openLesson(p)
 	code, _ := s.readSolution(p)
 	testCode := s.readTests(p)

@@ -977,7 +977,7 @@ func fakeTutor(t *testing.T, srv *Server, script string) {
 		t.Fatal(err)
 	}
 	m := tutor.NewWithCommand(t.TempDir(), tutor.ModeTutor,
-		func(ctx context.Context, p catalog.Problem, id string) *exec.Cmd {
+		func(ctx context.Context, _ *studydb.Scope, p catalog.Problem, id string) *exec.Cmd {
 			return exec.CommandContext(ctx, "/bin/sh", path, id)
 		})
 	srv.UseTutor(m)
@@ -1328,7 +1328,7 @@ func TestStatementIsTheFirstChatMessageBeforeAndDuringAnAttempt(t *testing.T) {
 // empty panel. The prompt that produces it is the application's, so it must not
 // appear as something the user said.
 func TestStartHasTheTutorSpeakFirst(t *testing.T) {
-	srv, _, _ := testSite(t)
+	srv, _, prog := testSite(t)
 	fakeTutor(t, srv, fakeTutorScript)
 	h := srv.Handler()
 
@@ -1338,10 +1338,10 @@ func TestStartHasTheTutorSpeakFirst(t *testing.T) {
 
 	// openLesson runs detached so Start can answer at once.
 	deadline := time.Now().Add(8 * time.Second)
-	for srv.tutor.Get("two-sum") == nil && time.Now().Before(deadline) {
+	for srv.tutor.Get(prog.Scope(), "two-sum") == nil && time.Now().Before(deadline) {
 		time.Sleep(20 * time.Millisecond)
 	}
-	if srv.tutor.Get("two-sum") == nil {
+	if srv.tutor.Get(prog.Scope(), "two-sum") == nil {
 		t.Fatal("Start did not open a tutor session")
 	}
 

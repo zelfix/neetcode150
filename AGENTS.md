@@ -96,8 +96,15 @@ identity. Only a token's hash is stored, which is why a link can be reissued but
 shown again. There is no exception for loopback or for a missing cookie: behind a reverse
 proxy every request looks local, so an exception would make a guest who clears their
 cookie into the owner. Each person's progress, notes, attempts and test runs are their
-own; the tutor is still one process per problem rather than per person, so it stays the
-owner's for now.
+own, and so is the tutor: sessions are keyed by person as well as problem.
+
+The panel is offered to guests only on a provider that cannot read the server. The CLI
+providers run an agent with the repository as its working directory, so a guest's tutor
+there could read everybody's solutions and the study database — wider than anything the
+test sandbox closes — and `tutorGate` refuses them. Each person has a monthly tutor
+allowance, checked before a turn starts and recorded as each turn finishes. Cost arrives
+as an *increment*: the Claude CLI reports `total_cost_usd` for the session so far, so
+summing what it reports across turns overstates a five-turn session threefold.
 
 The site's workspace at `/problems/<slug>/solve` writes `solution.go` and runs `go test`.
 Those endpoints require a same-origin JSON request (`internal/web/guard.go`) — a plain

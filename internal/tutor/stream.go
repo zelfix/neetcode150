@@ -139,12 +139,20 @@ func (s *Session) translate(ev rawEvent) {
 
 	case "result":
 		s.mu.Lock()
+		// total_cost_usd is the cost of the session so far, not of this turn, so
+		// the budget needs the difference. Summing these fields across turns —
+		// the obvious reading — overstates a five-turn session threefold.
+		var delta float64
 		if ev.TotalCost > 0 {
+			delta = ev.TotalCost - s.cost
 			s.cost = ev.TotalCost
 		}
 		cost := s.cost
 		s.streamed.Reset() // the turn is over; the next one starts clean
 		s.mu.Unlock()
+		if delta > 0 {
+			s.recordSpend(delta)
+		}
 
 		if ev.IsError || strings.HasPrefix(ev.Subtype, "error") {
 			text := ev.Result

@@ -1,7 +1,9 @@
 package web
 
 import (
+	"fmt"
 	"html/template"
+	"log"
 	"net/http"
 	"path/filepath"
 	"strconv"
@@ -193,4 +195,63 @@ func (s *session) runRequest(p catalog.Problem) runRequest {
 // each other's Go.
 func (s *session) work() workspace.Layout {
 	return workspace.For(s.root, s.user.ID)
+}
+
+// tutorGate fences off the panel when the provider can read the machine.
+//
+// The CLI providers run an agent with the repository as its working directory,
+// so a guest's tutor could read everybody's solutions and the study database —
+// a wider hole than the one the test sandbox closes. A provider that is handed
+// its context instead of fetching it has nothing to reach, so guests get the
+// panel there and nowhere else.
+func (s *Server) tutorGate(h func(*session, http.ResponseWriter, *http.Request)) http.HandlerFunc {
+	return s.with(func(v *session, w http.ResponseWriter, r *http.Request) {
+		if v.user.ID != studydb.OwnerID && s.tutor.FileAccess() {
+			http.Error(w, "the tutor on this instance reads the server's files, so it is the owner's only. "+
+				"Ask for an instance running a provider without file access.", http.StatusForbidden)
+			return
+		}
+		h(v, w, r)
+	})
+}
+
+// tutorBudgetLeft is what this person may still spend on the tutor this month,
+// and whether a ceiling applies at all.
+func (s *session) tutorBudgetLeft() (left float64, capped bool) {
+	if s.user.BudgetUSD <= 0 {
+		return 0, false
+	}
+	spent := s.user.SpendUSD
+	if s.user.SpendMonth != s.spendMonth() {
+		spent = 0
+	}
+	return s.user.BudgetUSD - spent, true
+}
+
+// spendMonth is the budget period a cost falls in.
+func (s *session) spendMonth() string { return s.now().Format("2006-01") }
+
+// refuseIfOutOfBudget writes the response and reports whether to stop.
+func (s *session) refuseIfOutOfBudget(w http.ResponseWriter) bool {
+	left, capped := s.tutorBudgetLeft()
+	if !capped || left > 0 {
+		return false
+	}
+	http.Error(w, fmt.Sprintf("the tutor allowance for this month is used up ($%.2f). It resets on the 1st.", s.user.BudgetUSD),
+		http.StatusPaymentRequired)
+	return true
+}
+
+// recordTutorSpend accumulates what the tutor cost one person.
+//
+// Hooked rather than computed in a handler because a turn outlives the request
+// that started it: the submission flow runs on after the browser has its
+// answer, and its cost still has to land.
+func (s *Server) recordTutorSpend(scope *studydb.Scope, delta float64) {
+	if scope == nil || delta <= 0 {
+		return
+	}
+	if _, err := s.db.AddTutorSpend(scope.UserID(), delta, s.now().Format("2006-01")); err != nil {
+		log.Printf("record tutor spend for user %d: %v", scope.UserID(), err)
+	}
 }
