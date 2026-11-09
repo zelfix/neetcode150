@@ -123,6 +123,12 @@ The site's workspace at `/problems/<slug>/solve` writes `solution.go` and runs `
 Those endpoints require a same-origin JSON request (`internal/web/guard.go`) — a plain
 `curl` is refused by design, so reach for the CLI rather than trying to work around it.
 
+Deploying a shared instance is [DEPLOY.md](DEPLOY.md); two of its steps are load-bearing
+and fail in misleading ways, so do not simplify them away — a reverse proxy must pass the
+original `Host` (the same-origin check compares `Origin` against it, and a rewritten Host
+makes every save fail while pages keep working) and `X-Forwarded-Proto` (without it the
+sign-in cookie is not marked `Secure`).
+
 `go test` runs in a one-shot container (`sandbox/Dockerfile`, built as
 `nc-sandbox:go1.26`). The mount set is the security model, and what it leaves out is the
 point: the repository root is never mounted, so a guest cannot

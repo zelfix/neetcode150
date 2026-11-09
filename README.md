@@ -131,6 +131,12 @@ attempts or change progress. Unstarted problems get their tests on **Start**. Th
 **Tests** tab shows every test file. Add your own cases locally as you explore a problem;
 the supplied cases check behavior, not asymptotic complexity.
 
+## Running it for other people
+
+One instance, each person signing in with their own link, tests in a container — see
+[DEPLOY.md](DEPLOY.md). The tutor there must be the `deepseek` provider: the CLI ones run
+an agent rooted at the repository, so a guest's tutor could read everybody's work.
+
 ## Agent setup
 
 The instructions live in two files at the root, both plain Markdown:
