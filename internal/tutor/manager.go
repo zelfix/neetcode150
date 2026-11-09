@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -44,6 +45,12 @@ type Manager struct {
 	provider Provider
 	mode     Mode
 	budget   float64
+
+	// The HTTP provider's settings. model is empty for the CLI providers, which
+	// choose their own.
+	model        string
+	deepseekKey  string
+	deepseekBase string
 
 	// bin is the resolved executable; why is non-empty exactly when sessions
 	// cannot be started, and says so in words. A missing claude is not a
@@ -88,6 +95,17 @@ func NewForProvider(root string, provider Provider, mode Mode, budget float64) *
 		budget:   budget,
 		sessions: map[sessionKey]*Session{},
 	}
+	if provider == ProviderDeepSeek {
+		// A missing key is reported the same way a missing binary is: the rest
+		// of the site does not depend on the tutor.
+		m.model = DefaultDeepSeekModel
+		m.deepseekKey = os.Getenv("DEEPSEEK_API_KEY")
+		m.deepseekBase = os.Getenv("DEEPSEEK_BASE_URL")
+		if m.deepseekKey == "" {
+			m.why = "DEEPSEEK_API_KEY is not set, so the tutor panel is unavailable"
+		}
+		return m
+	}
 	if bin, err := exec.LookPath(string(provider)); err == nil {
 		m.bin = bin
 	} else {
@@ -98,6 +116,16 @@ func NewForProvider(root string, provider Provider, mode Mode, budget float64) *
 	}
 	return m
 }
+
+// UseModel names the model for a provider that has a choice of them.
+func (m *Manager) UseModel(model string) {
+	if model != "" {
+		m.model = model
+	}
+}
+
+// Model is the model in use, where the provider has a choice.
+func (m *Manager) Model() string { return m.model }
 
 // NewWithCommand builds a Manager that runs something other than claude.
 //
@@ -392,8 +420,11 @@ func (m *Manager) evictableLocked(key sessionKey) (sessionKey, bool) {
 
 // start launches the process and the goroutines that read it.
 func (m *Manager) start(scope *studydb.Scope, s *Session) error {
-	if m.provider == ProviderCodex {
+	switch m.provider {
+	case ProviderCodex:
 		return m.startCodex(scope, s)
+	case ProviderDeepSeek:
+		return m.startDeepSeek(scope, s)
 	}
 	id, err := newUUID()
 	if err != nil {

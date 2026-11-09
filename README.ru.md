@@ -178,6 +178,7 @@ ln -s AGENTS.md .windsurfrules          # или .clinerules, или как у �
 | `nc serve [--port 8150] [--tutor-provider claude\|codex]` | Поднять сайт и выбрать репетитора |
 | `nc user list\|add\|link\|revoke\|rm` | Кто может зайти на сайт, и их ссылки-приглашения |
 | `nc serve --sandbox auto\|docker\|local` | Изолировать ли прогоны тестов в контейнере |
+| `nc serve --tutor-provider claude\|codex\|deepseek` | Какой репетитор отвечает; гостям доступен только `deepseek` |
 | `nc next` | Над чем работать сейчас |
 | `nc start <задача>` | Создать заготовку решения, теста и заметок |
 | `nc status <задача> <состояние>` | `new`, `attempted`, `solved` или `shaky` |

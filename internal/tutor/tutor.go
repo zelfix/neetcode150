@@ -126,6 +126,7 @@ type Session struct {
 
 	cmd        *exec.Cmd
 	codex      *codexClient
+	deep       *deepseekClient
 	stdin      interface{ Close() error }
 	writer     *bufio.Writer
 	stderr     strings.Builder
@@ -240,6 +241,9 @@ func (s *Session) Send(text string) error {
 
 // SendAs sends a full instruction while showing a short label in the transcript.
 func (s *Session) SendAs(text, display string) error {
+	if s.deep != nil {
+		return s.deep.sendAs(text, display)
+	}
 	if s.codex != nil {
 		return s.codex.sendAs(text, display)
 	}
@@ -322,6 +326,9 @@ func (s *Session) PublishSubmissionDone(text string) {
 // Interrupt ends the turn in progress without ending the session: SIGINT is
 // handled as "stop what you are doing", where SIGTERM would kill the process.
 func (s *Session) Interrupt() error {
+	if s.deep != nil {
+		return s.deep.interrupt()
+	}
 	if s.codex != nil {
 		return s.codex.interrupt()
 	}

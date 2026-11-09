@@ -77,6 +77,8 @@ go run ./cmd/nc stats                 # progress by pattern, and how securely ea
 go run ./cmd/nc history <ref>         # every rating one problem has had
 go run ./cmd/nc fetch [--force]       # download statements and signatures
 go run ./cmd/nc serve [--port 8150]   # the study site, incl. the browser workspace
+                                      #   --tutor-provider claude|codex|deepseek
+                                      #   --tutor-model <name>, DEEPSEEK_API_KEY from the env
                                       #   --sandbox auto|docker|local, --max-runs <n>
 go run ./cmd/nc user list             # who can reach the site
 go run ./cmd/nc user add <name>       # invite someone; prints their join link once
@@ -99,9 +101,20 @@ cookie into the owner. Each person's progress, notes, attempts and test runs are
 own, and so is the tutor: sessions are keyed by person as well as problem.
 
 The panel is offered to guests only on a provider that cannot read the server. The CLI
-providers run an agent with the repository as its working directory, so a guest's tutor
-there could read everybody's solutions and the study database — wider than anything the
-test sandbox closes — and `tutorGate` refuses them. Each person has a monthly tutor
+providers (`claude`, `codex`) run an agent with the repository as its working directory,
+so a guest's tutor there could read everybody's solutions and the study database — wider
+than anything the test sandbox closes — and `tutorGate` refuses them. `deepseek` talks to
+an HTTP API with no tools and no file access, so guests get the panel there.
+
+Because it fetches nothing, that provider is *handed* its context: `internal/tutor/prompt.go`
+assembles the protocol, the references, the statement and the recorded ladder into the
+system prompt, and the person's current source into the turn. That split is about money,
+not tidiness — a cached prefix costs about a thirtieth of a fresh one, and source changes
+every turn, so putting the code in the system prompt would miss the cache on every single
+turn. Keep it out of there. Cost comes from the `usage` the API reports, priced per model
+with the published peak and off-peak rates (peak is 01:00–04:00 and 06:00–10:00 UTC on
+weekdays), and an unknown model is priced as the dearest so an allowance is never
+under-charged. Each person has a monthly tutor
 allowance, checked before a turn starts and recorded as each turn finishes. Cost arrives
 as an *increment*: the Claude CLI reports `total_cost_usd` for the session so far, so
 summing what it reports across turns overstates a five-turn session threefold.

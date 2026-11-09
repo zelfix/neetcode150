@@ -42,8 +42,8 @@ Usage:
   nc log                       read the study log (--append-file path to append)
   nc fetch [--force]           download the problem list, statements and Go signatures
   nc serve [--port 8150]       serve the study site and the tutor panel
-                               --tutor-provider claude|codex (default claude)
-                               --tutor-mode full|tutor, --tutor-budget <usd>
+                               --tutor-provider claude|codex|deepseek
+                               --tutor-mode full|tutor, --tutor-model <name>
                                --sandbox auto|docker|local, --max-runs <n>
   nc next                      what to work on now
   nc start <problem>           scaffold the Go solution and notes, mark it in progress
@@ -313,6 +313,7 @@ func cmdServe(root string, args []string) error {
 	mode := fs.String("tutor-mode", string(tutor.ModeTutor),
 		"tutor permissions: tutor (read-only, default) or full")
 	budget := fs.Float64("tutor-budget", 0, "dollar ceiling per tutor session, 0 for none")
+	model := fs.String("tutor-model", "", "model for an API provider, e.g. deepseek-pro")
 	sandbox := fs.String("sandbox", string(web.SandboxAuto), "test isolation: auto, docker or local")
 	image := fs.String("sandbox-image", "", "container image for test runs")
 	maxRuns := fs.Int("max-runs", 0, "concurrent test runs, 0 to size from the CPU count")
@@ -320,7 +321,8 @@ func cmdServe(root string, args []string) error {
 		return err
 	}
 	if p := tutor.Provider(*provider); !p.Valid() {
-		return fmt.Errorf("--tutor-provider must be %q or %q, got %q", tutor.ProviderClaude, tutor.ProviderCodex, *provider)
+		return fmt.Errorf("--tutor-provider must be %q, %q or %q, got %q",
+			tutor.ProviderClaude, tutor.ProviderCodex, tutor.ProviderDeepSeek, *provider)
 	}
 	if m := tutor.Mode(*mode); !m.Valid() {
 		return fmt.Errorf("--tutor-mode must be %q or %q, got %q", tutor.ModeFull, tutor.ModeTutor, *mode)
@@ -328,8 +330,12 @@ func cmdServe(root string, args []string) error {
 	if *budget < 0 || math.IsNaN(*budget) || math.IsInf(*budget, 0) {
 		return fmt.Errorf("--tutor-budget must be a finite number greater than or equal to 0")
 	}
-	if tutor.Provider(*provider) == tutor.ProviderCodex && *budget > 0 {
-		return fmt.Errorf("--tutor-budget only applies to the Claude provider")
+	if tutor.Provider(*provider) != tutor.ProviderClaude && *budget > 0 {
+		return fmt.Errorf("--tutor-budget is a Claude CLI flag and caps one session; " +
+			"for a per-person monthly ceiling use `nc user add --budget`")
+	}
+	if *model != "" && tutor.Provider(*provider) != tutor.ProviderDeepSeek {
+		return fmt.Errorf("--tutor-model applies to the deepseek provider; the CLI providers choose their own")
 	}
 	cat, prog, err := load(root)
 	if err != nil {
@@ -349,6 +355,7 @@ func cmdServe(root string, args []string) error {
 	}
 
 	coach := tutor.NewForProvider(root, tutor.Provider(*provider), tutor.Mode(*mode), *budget)
+	coach.UseModel(*model)
 	srv.UseTutor(coach)
 	// The server owns claude child processes now, so it has to be stopped in
 	// order rather than killed where it stands.

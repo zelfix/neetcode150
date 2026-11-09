@@ -208,6 +208,7 @@ ladder in tutor/TUTOR.md — one rung only"* and it will generally get back on t
 | `nc serve [--port 8150] [--tutor-provider claude\|codex]` | Serve the study site and choose its tutor |
 | `nc user list\|add\|link\|revoke\|rm` | Who can reach the site, and their join links |
 | `nc serve --sandbox auto\|docker\|local` | Whether test runs are isolated in a container |
+| `nc serve --tutor-provider claude\|codex\|deepseek` | Which tutor answers; only `deepseek` is offered to guests |
 | `nc next` | What to work on now |
 | `nc start <problem>` | Scaffold the Go solution, test and notes |
 | `nc status <problem> <state>` | `new`, `attempted`, `solved` or `shaky` |
