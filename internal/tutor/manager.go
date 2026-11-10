@@ -48,9 +48,10 @@ type Manager struct {
 
 	// The HTTP provider's settings. model is empty for the CLI providers, which
 	// choose their own.
-	model        string
-	deepseekKey  string
-	deepseekBase string
+	model         string
+	deepseekKey   string
+	deepseekBase  string
+	deepseekRates DeepSeekRates
 
 	// bin is the resolved executable; why is non-empty exactly when sessions
 	// cannot be started, and says so in words. A missing claude is not a
@@ -121,6 +122,13 @@ func NewForProvider(root string, provider Provider, mode Mode, budget float64) *
 func (m *Manager) UseModel(model string) {
 	if model != "" {
 		m.model = model
+	}
+}
+
+// UseRates replaces the compiled-in DeepSeek price list, see LoadDeepSeekRates.
+func (m *Manager) UseRates(r DeepSeekRates) {
+	if len(r) > 0 {
+		m.deepseekRates = r
 	}
 }
 

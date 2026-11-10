@@ -1,8 +1,10 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -134,5 +136,39 @@ func capture(t *testing.T, f func()) string {
 	case <-time.After(5 * time.Second):
 		t.Fatal("capture timed out")
 		return ""
+	}
+}
+
+// An export is the one way a person on a shared instance gets their own work
+// back, so it has to be theirs alone and must not clobber an earlier one.
+func TestExportWritesOnePersonsDataOnce(t *testing.T) {
+	root := t.TempDir()
+	writeCatalog(t, root)
+	if err := cmdUser(root, []string{"add", "dima"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := cmdStatus(root, []string{"two-sum", "solved"}); err != nil {
+		t.Fatal(err) // the owner's row, which must stay out of dima's export
+	}
+	out := filepath.Join(t.TempDir(), "dima.json")
+	if err := cmdExport(root, []string{"dima", out}); err != nil {
+		t.Fatal(err)
+	}
+	var ex studydb.Export
+	b, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(b, &ex); err != nil {
+		t.Fatal(err)
+	}
+	if ex.User.Name != "dima" || len(ex.Tables["progress"]) != 0 {
+		t.Errorf("export = user %q with %d progress rows, want dima with none", ex.User.Name, len(ex.Tables["progress"]))
+	}
+	if err := cmdExport(root, []string{"dima", out}); err == nil {
+		t.Error("a second export overwrote the first")
+	}
+	if err := cmdExport(root, []string{"nobody", filepath.Join(t.TempDir(), "x.json")}); err == nil {
+		t.Error("an unknown name was exported")
 	}
 }

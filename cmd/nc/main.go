@@ -37,6 +37,7 @@ const usage = `nc — local NeetCode 150 study kit
 Usage:
   nc migrate                   import existing personal data into SQLite once
   nc backup <file.sqlite3>      create a consistent database backup
+  nc export <name> <file.json>  one person's progress, notes, attempts and tutor transcripts
   nc user list|add|link|revoke|rm   who can reach the site (--base-url, --budget)
                                link --budget <usd> also changes their monthly ceiling
   nc notes <problem>           read notes (--file path to replace)
@@ -46,6 +47,7 @@ Usage:
   nc serve [--port 8150]       serve the study site and the tutor panel
                                --tutor-provider claude|codex|deepseek
                                --tutor-mode full|tutor, --tutor-model <name>
+                               --tutor-rates <file.json> replaces the DeepSeek price list
                                --sandbox auto|docker|local, --max-runs <n>
   nc next                      what to work on now
   nc start <problem>           scaffold the Go solution and notes, mark it in progress
@@ -134,6 +136,8 @@ func dispatch(cmd, root string, rest []string) error {
 		return cmdDatabase(root, rest, false)
 	case "backup":
 		return cmdDatabase(root, rest, true)
+	case "export":
+		return cmdExport(root, rest)
 	case "user":
 		return cmdUser(root, rest)
 	case "notes", "hints", "log":
@@ -190,6 +194,50 @@ func load(root string) (*catalog.Catalog, *progress.Store, error) {
 		return nil, nil, err
 	}
 	return cat, prog, nil
+}
+
+// cmdExport writes one person's data as JSON. `nc backup` is the whole
+// database, token hashes included, which is not something to hand to a guest
+// who asks for their own work back.
+func cmdExport(root string, args []string) error {
+	if len(args) != 2 {
+		return fmt.Errorf("usage: nc export <name> <new-file.json>")
+	}
+	db, err := studydb.Open(root)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	u, err := findUser(db, args[0])
+	if err != nil {
+		return err
+	}
+	path, err := filepath.Abs(args[1])
+	if err != nil {
+		return err
+	}
+	if _, err = os.Stat(path); err == nil {
+		return fmt.Errorf("export already exists: %s", path)
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	ex, err := db.ExportUser(u.ID)
+	if err != nil {
+		return err
+	}
+	b, err := json.MarshalIndent(ex, "", "  ")
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(path, append(b, '\n'), 0o600); err != nil {
+		return err
+	}
+	rows := 0
+	for _, t := range ex.Tables {
+		rows += len(t)
+	}
+	fmt.Printf("Exported %s: %s across %d tables to %s\n", u.Name, plural(rows, "row", "rows"), len(ex.Tables), path)
+	return nil
 }
 
 // Document commands expose personal Markdown without making legacy files live again.
@@ -358,6 +406,7 @@ func cmdServe(root string, args []string) error {
 		"tutor permissions: tutor (read-only, default) or full")
 	budget := fs.Float64("tutor-budget", 0, "dollar ceiling per tutor session, 0 for none")
 	model := fs.String("tutor-model", "", "model for an API provider, e.g. deepseek-pro")
+	ratesPath := fs.String("tutor-rates", "", "JSON price list for the deepseek provider, see DEPLOY.md")
 	sandbox := fs.String("sandbox", string(web.SandboxAuto), "test isolation: auto, docker or local")
 	image := fs.String("sandbox-image", "", "container image for test runs")
 	maxRuns := fs.Int("max-runs", 0, "concurrent test runs, 0 to size from the CPU count")
@@ -400,6 +449,16 @@ func cmdServe(root string, args []string) error {
 
 	coach := tutor.NewForProvider(root, tutor.Provider(*provider), tutor.Mode(*mode), *budget)
 	coach.UseModel(*model)
+	if *ratesPath != "" {
+		if tutor.Provider(*provider) != tutor.ProviderDeepSeek {
+			return fmt.Errorf("--tutor-rates prices DeepSeek turns and means nothing for %s", *provider)
+		}
+		rates, err := tutor.LoadDeepSeekRates(*ratesPath)
+		if err != nil {
+			return fmt.Errorf("--tutor-rates: %w", err)
+		}
+		coach.UseRates(rates)
+	}
 	srv.UseTutor(coach)
 	// The server owns claude child processes now, so it has to be stopped in
 	// order rather than killed where it stands.

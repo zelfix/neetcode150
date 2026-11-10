@@ -108,6 +108,7 @@ EnvironmentFile=/srv/neetcode150/env
 ExecStart=/srv/neetcode150/bin/nc serve \
   --host 127.0.0.1 --port 8150 \
   --tutor-provider deepseek \
+  --tutor-rates /srv/neetcode150/deepseek-rates.json \
   --sandbox docker \
   --max-runs 4
 Restart=on-failure
@@ -228,7 +229,15 @@ cd /srv/neetcode150 && ./bin/nc backup /var/backups/neetcode150/study-$(date +%F
 ```
 
 `nc backup` runs an integrity check first and writes a consistent copy with
-`VACUUM INTO`. It is whole-database: there is no per-person export yet.
+`VACUUM INTO`. It is whole-database, token hashes included, so it is yours to keep
+rather than something to hand out. When one person wants their own work back:
+
+```sh
+./bin/nc export dima /tmp/dima.json
+```
+
+That is their progress, notes, archived attempts, test runs and tutor transcripts as
+plain JSON, keyed by table and column, and nothing of anybody else's.
 
 Not in the backup, and not needing one: `content/` (`nc fetch` rebuilds it), the sandbox
 image, `.nc-cache/`. **`solutions/` and `_work/` are** people's working files — the
@@ -255,9 +264,28 @@ problems a week each, on `deepseek-pro`, comes to roughly **$6 a month**; the `$
 person ceiling is there to stop a runaway conversation, not as a real limit. The VPS is
 the bill.
 
+## When DeepSeek changes its prices
+
+The allowance is computed from the price list compiled into the binary, which is dated in
+`internal/tutor/deepseek.go`. When the vendor publishes new numbers, write them to a file
+and start the server with `--tutor-rates`:
+
+```json
+{
+  "deepseek-pro":   {"peak":     {"cache_hit": 0.044, "cache_miss": 1.32, "output": 3.96},
+                     "off_peak": {"cache_hit": 0.022, "cache_miss": 0.66, "output": 1.98}},
+  "deepseek-flash": {"peak":     {"cache_hit": 0.006, "cache_miss": 0.30, "output": 1.20},
+                     "off_peak": {"cache_hit": 0.003, "cache_miss": 0.15, "output": 0.60}}
+}
+```
+
+Prices are dollars per million tokens. Every number must be present and positive; a model
+not in the list is charged as the dearest one listed, so a renamed model costs more on
+paper rather than less. The peak window (01:00–04:00 and 06:00–10:00 UTC on weekdays) is
+still in the code; if the vendor moves it, that is a rebuild.
+
 ## Known limits
 
-- **No per-person export.** `nc backup` is whole-database.
 - **The tutor has not been evaluated against this protocol.** Whether `deepseek-pro`
   actually holds the hint ladder — reveals one rung per request, and does not hand over a
   solution — is unverified. That matters more than the money: a tutor that leaks the

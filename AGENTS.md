@@ -86,6 +86,7 @@ go run ./cmd/nc serve [--port 8150]   # the study site, incl. the browser worksp
                                       #   --tutor-mode full|tutor (what the agent may touch)
                                       #   --tutor-model <name>, DEEPSEEK_API_KEY from the env
                                       #   --tutor-budget <usd>, a per-session cap (claude only)
+                                      #   --tutor-rates <file.json>, a DeepSeek price list (DEPLOY.md)
                                       #   --sandbox auto|docker|local, --max-runs <n>
 go run ./cmd/nc user list             # who can reach the site
 go run ./cmd/nc user add <name>       # invite someone; prints their join link once
@@ -96,6 +97,7 @@ go run ./cmd/nc user revoke <name>    # stop a link working, keeping their work
 go run ./cmd/nc user rm <name> --yes  # delete someone and everything of theirs
 go run ./cmd/nc migrate               # import legacy JSON/Markdown into SQLite once
 go run ./cmd/nc backup <file.sqlite3> # a consistent copy of the database
+go run ./cmd/nc export <name> <file.json>  # one person's data, nobody else's, no token hashes
 go run ./cmd/nc <command> --help      # that command's line and flags
 ```
 

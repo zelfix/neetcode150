@@ -5,8 +5,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
+	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -28,18 +31,73 @@ const defaultDeepSeekBase = "https://api.deepseek.com"
 // way it is. The published rates halve outside peak hours, so the cost of a
 // turn depends on when it happened.
 type deepseekPrices struct {
-	cacheHit, cacheMiss, output float64
+	CacheHit  float64 `json:"cache_hit"`
+	CacheMiss float64 `json:"cache_miss"`
+	Output    float64 `json:"output"`
 }
 
-var deepseekRates = map[string]struct{ peak, offPeak deepseekPrices }{
+// DeepSeekRates is the price list per model. It is JSON so an operator can
+// replace it with `nc serve --tutor-rates <file>` when the vendor changes the
+// numbers, which happens more often than this code is rebuilt.
+type DeepSeekRates map[string]struct {
+	Peak    deepseekPrices `json:"peak"`
+	OffPeak deepseekPrices `json:"off_peak"`
+}
+
+// defaultDeepSeekRates are the published prices as of 2026-11-09. A model
+// not listed here is priced as the dearest one, see pricesFor.
+var defaultDeepSeekRates = DeepSeekRates{
 	"deepseek-pro": {
-		peak:    deepseekPrices{cacheHit: 0.044, cacheMiss: 1.32, output: 3.96},
-		offPeak: deepseekPrices{cacheHit: 0.022, cacheMiss: 0.66, output: 1.98},
+		Peak:    deepseekPrices{CacheHit: 0.044, CacheMiss: 1.32, Output: 3.96},
+		OffPeak: deepseekPrices{CacheHit: 0.022, CacheMiss: 0.66, Output: 1.98},
 	},
 	"deepseek-flash": {
-		peak:    deepseekPrices{cacheHit: 0.006, cacheMiss: 0.30, output: 1.20},
-		offPeak: deepseekPrices{cacheHit: 0.003, cacheMiss: 0.15, output: 0.60},
+		Peak:    deepseekPrices{CacheHit: 0.006, CacheMiss: 0.30, Output: 1.20},
+		OffPeak: deepseekPrices{CacheHit: 0.003, CacheMiss: 0.15, Output: 0.60},
 	},
+}
+
+// LoadDeepSeekRates reads a price list in the shape of defaultDeepSeekRates:
+//
+//	{"deepseek-pro": {"peak": {"cache_hit": 0.044, "cache_miss": 1.32, "output": 3.96},
+//	                  "off_peak": {"cache_hit": 0.022, "cache_miss": 0.66, "output": 1.98}}}
+//
+// Every number has to be present and non-negative; a zero would make a turn
+// free and quietly defeat the allowance.
+func LoadDeepSeekRates(path string) (DeepSeekRates, error) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var r DeepSeekRates
+	dec := json.NewDecoder(bytes.NewReader(b))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&r); err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
+	if len(r) == 0 {
+		return nil, fmt.Errorf("%s: no models listed", path)
+	}
+	for model, m := range r {
+		for _, p := range []deepseekPrices{m.Peak, m.OffPeak} {
+			if p.CacheHit <= 0 || p.CacheMiss <= 0 || p.Output <= 0 {
+				return nil, fmt.Errorf("%s: %s needs positive cache_hit, cache_miss and output prices", path, model)
+			}
+		}
+	}
+	return r, nil
+}
+
+// dearest is the model whose peak output price is highest, which is what an
+// unknown model is charged as.
+func (r DeepSeekRates) dearest() string {
+	best, bestPrice := "", -1.0
+	for model, m := range r {
+		if m.Peak.Output > bestPrice || (m.Peak.Output == bestPrice && model < best) {
+			best, bestPrice = model, m.Peak.Output
+		}
+	}
+	return best
 }
 
 // peakHours are 01:00–04:00 and 06:00–10:00 UTC, Monday to Friday. Outside
@@ -53,17 +111,20 @@ func isPeak(t time.Time) bool {
 	return (h >= 1 && h < 4) || (h >= 6 && h < 10)
 }
 
-// pricesFor falls back to the dearer model so an unknown name over-estimates
+// pricesFor falls back to the dearest model so an unknown name over-estimates
 // rather than under-charges somebody's allowance.
-func pricesFor(model string, at time.Time) deepseekPrices {
-	r, ok := deepseekRates[model]
+func pricesFor(rates DeepSeekRates, model string, at time.Time) deepseekPrices {
+	if rates == nil {
+		rates = defaultDeepSeekRates
+	}
+	r, ok := rates[model]
 	if !ok {
-		r = deepseekRates["deepseek-pro"]
+		r = rates[rates.dearest()]
 	}
 	if isPeak(at) {
-		return r.peak
+		return r.Peak
 	}
-	return r.offPeak
+	return r.OffPeak
 }
 
 // deepseekUsage is what the API reports for one request. Unlike the Claude
@@ -81,8 +142,8 @@ type deepseekUsage struct {
 }
 
 // cost converts a usage report into dollars.
-func (u deepseekUsage) cost(model string, at time.Time) float64 {
-	p := pricesFor(model, at)
+func (u deepseekUsage) cost(rates DeepSeekRates, model string, at time.Time) float64 {
+	p := pricesFor(rates, model, at)
 	hit, miss := u.PromptCacheHit, u.PromptCacheMiss
 	if hit == 0 && miss == 0 {
 		// Older or OpenAI-shaped responses report the split differently, and
@@ -95,9 +156,9 @@ func (u deepseekUsage) cost(model string, at time.Time) float64 {
 		}
 	}
 	const perMillion = 1_000_000.0
-	return float64(hit)*p.cacheHit/perMillion +
-		float64(miss)*p.cacheMiss/perMillion +
-		float64(u.CompletionTokens)*p.output/perMillion
+	return float64(hit)*p.CacheHit/perMillion +
+		float64(miss)*p.CacheMiss/perMillion +
+		float64(u.CompletionTokens)*p.Output/perMillion
 }
 
 // deepseekClient drives one conversation over HTTP.
@@ -112,6 +173,11 @@ type deepseekClient struct {
 	model   string
 	base    string
 	system  string
+	rates   DeepSeekRates
+
+	// retryWait is how long to wait before attempt n (1-based) after a
+	// transient failure; tests shorten it.
+	retryWait func(attempt int, retryAfter time.Duration) time.Duration
 
 	// context is what the turn appends to each message: the person's files as
 	// they stand. Rebuilt per turn by the manager.
@@ -135,7 +201,14 @@ func (m *Manager) startDeepSeek(scope *studydb.Scope, s *Session) error {
 		key:     m.deepseekKey,
 		model:   m.model,
 		base:    m.deepseekBase,
+		rates:   m.deepseekRates,
 		system:  m.systemPrompt(scope, s.Problem),
+		retryWait: func(attempt int, retryAfter time.Duration) time.Duration {
+			if retryAfter > 0 {
+				return min(retryAfter, 10*time.Second)
+			}
+			return time.Duration(attempt) * 500 * time.Millisecond
+		},
 		turnContext: func() string {
 			return m.turnContext(scope, s.Problem)
 		},
@@ -225,7 +298,7 @@ func (c *deepseekClient) turn(text string) {
 	c.history = append(c.history, deepseekMessage{Role: "assistant", Content: reply})
 	c.mu.Unlock()
 
-	cost := usage.cost(c.model, time.Now())
+	cost := usage.cost(c.rates, c.model, time.Now())
 	c.session.mu.Lock()
 	c.session.cost += cost
 	total := c.session.cost
@@ -257,6 +330,11 @@ type deepseekChunk struct {
 	Usage *deepseekUsage `json:"usage"`
 }
 
+// deepseekAttempts is how many times a turn is tried before the failure is
+// shown. Only the request is retried: once text has started streaming, a cut
+// stream is reported, since part of the reply is already on the screen.
+const deepseekAttempts = 3
+
 // stream posts the request and publishes text as it arrives.
 func (c *deepseekClient) stream(ctx context.Context, msgs []deepseekMessage) (string, deepseekUsage, error) {
 	var usage deepseekUsage
@@ -266,24 +344,28 @@ func (c *deepseekClient) stream(ctx context.Context, msgs []deepseekMessage) (st
 	if err != nil {
 		return "", usage, err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
-		strings.TrimRight(c.base, "/")+"/chat/completions", bytes.NewReader(raw))
+
+	var resp *http.Response
+	for attempt := 1; ; attempt++ {
+		var retryAfter time.Duration
+		resp, retryAfter, err = c.post(ctx, raw)
+		if err == nil || attempt == deepseekAttempts || ctx.Err() != nil {
+			break
+		}
+		var transient *transientError
+		if !errors.As(err, &transient) {
+			break
+		}
+		select {
+		case <-time.After(c.retryWait(attempt, retryAfter)):
+		case <-ctx.Done():
+			return "", usage, ctx.Err()
+		}
+	}
 	if err != nil {
 		return "", usage, err
 	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+c.key)
-	req.Header.Set("Accept", "text/event-stream")
-
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return "", usage, fmt.Errorf("the tutor could not be reached: %w", err)
-	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		snippet, _ := bufio.NewReader(resp.Body).Peek(400)
-		return "", usage, fmt.Errorf("the tutor service answered %s: %s", resp.Status, strings.TrimSpace(string(snippet)))
-	}
 
 	var reply strings.Builder
 	sc := bufio.NewScanner(resp.Body)
@@ -324,6 +406,47 @@ func (c *deepseekClient) stream(ctx context.Context, msgs []deepseekMessage) (st
 		return "", usage, fmt.Errorf("the tutor returned an empty reply")
 	}
 	return reply.String(), usage, nil
+}
+
+// transientError marks a failure worth another try: the service was busy or
+// unreachable, rather than refusing the request.
+type transientError struct{ err error }
+
+func (e *transientError) Error() string { return e.err.Error() }
+func (e *transientError) Unwrap() error { return e.err }
+
+// post sends one request and returns the response only when it can be read as
+// a stream. retryAfter is what the service asked for, when it said.
+func (c *deepseekClient) post(ctx context.Context, raw []byte) (*http.Response, time.Duration, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		strings.TrimRight(c.base, "/")+"/chat/completions", bytes.NewReader(raw))
+	if err != nil {
+		return nil, 0, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+c.key)
+	req.Header.Set("Accept", "text/event-stream")
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, 0, &transientError{fmt.Errorf("the tutor could not be reached: %w", err)}
+	}
+	if resp.StatusCode == http.StatusOK {
+		return resp, 0, nil
+	}
+	snippet, _ := bufio.NewReader(resp.Body).Peek(400)
+	resp.Body.Close()
+	err = fmt.Errorf("the tutor service answered %s: %s", resp.Status, strings.TrimSpace(string(snippet)))
+	switch resp.StatusCode {
+	case http.StatusTooManyRequests, http.StatusInternalServerError, http.StatusBadGateway,
+		http.StatusServiceUnavailable, http.StatusGatewayTimeout:
+		var wait time.Duration
+		if secs, convErr := strconv.Atoi(resp.Header.Get("Retry-After")); convErr == nil && secs > 0 {
+			wait = time.Duration(secs) * time.Second
+		}
+		return nil, wait, &transientError{err}
+	}
+	return nil, 0, err
 }
 
 // interrupt stops the turn in progress.

@@ -233,6 +233,7 @@ ladder in tutor/TUTOR.md — one rung only"* and it will generally get back on t
 | `nc info <problem>` | Paths and state for one problem |
 | `nc notes\|hints <problem>`, `nc log` | Your notes, the hint ladder, the study log; `--file` replaces, `--append-file` adds |
 | `nc backup <file.sqlite3>` | A consistent copy of the database; `nc migrate` imports legacy files once |
+| `nc export <name> <file.json>` | One person's progress, notes, attempts and transcripts as JSON |
 | `nc <command> --help` | That command's line and flags |
 
 `<problem>` takes a slug, a LeetCode number, a directory name, or part of a title —

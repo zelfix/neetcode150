@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -116,8 +117,8 @@ func TestDeepSeekStreamsAnAnswerAndChargesTheTurn(t *testing.T) {
 	}
 
 	// 10k miss at $0.66/M plus 50 out at $1.98/M, halved off-peak.
-	want := pricesFor(DefaultDeepSeekModel, time.Now())
-	expect := 10000*want.cacheMiss/1e6 + 50*want.output/1e6
+	want := pricesFor(nil, DefaultDeepSeekModel, time.Now())
+	expect := 10000*want.CacheMiss/1e6 + 50*want.Output/1e6
 	mu.Lock()
 	defer mu.Unlock()
 	if charged < expect*0.99 || charged > expect*1.01 {
@@ -223,22 +224,22 @@ func TestDeepSeekCostFollowsTheCacheSplitAndTheClock(t *testing.T) {
 	}
 
 	u := deepseekUsage{PromptTokens: 1_000_000, PromptCacheHit: 900_000, PromptCacheMiss: 100_000, CompletionTokens: 1_000}
-	cheap, dear := u.cost(DefaultDeepSeekModel, off), u.cost(DefaultDeepSeekModel, peak)
+	cheap, dear := u.cost(nil, DefaultDeepSeekModel, off), u.cost(nil, DefaultDeepSeekModel, peak)
 	if dear < cheap*1.99 || dear > cheap*2.01 {
 		t.Errorf("peak %.5f is not double off-peak %.5f", dear, cheap)
 	}
 	// A hit is far cheaper than a miss, which is the whole reason for the split.
 	allMiss := deepseekUsage{PromptTokens: 1_000_000, PromptCacheMiss: 1_000_000}
-	if allMiss.cost(DefaultDeepSeekModel, off) < u.cost(DefaultDeepSeekModel, off)*5 {
+	if allMiss.cost(nil, DefaultDeepSeekModel, off) < u.cost(nil, DefaultDeepSeekModel, off)*5 {
 		t.Error("a fully uncached prompt should cost far more than a mostly cached one")
 	}
 	// An unknown model must over-estimate rather than under-charge.
-	if u.cost("deepseek-who", off) < u.cost("deepseek-flash", off) {
+	if u.cost(nil, "deepseek-who", off) < u.cost(nil, "deepseek-flash", off) {
 		t.Error("an unknown model priced below the cheapest known one")
 	}
 	// A response that reports no split at all is treated as uncached.
 	noSplit := deepseekUsage{PromptTokens: 1_000_000, CompletionTokens: 0}
-	if noSplit.cost(DefaultDeepSeekModel, off) != allMiss.cost(DefaultDeepSeekModel, off) {
+	if noSplit.cost(nil, DefaultDeepSeekModel, off) != allMiss.cost(nil, DefaultDeepSeekModel, off) {
 		t.Error("an unsplit usage report should be charged as a miss")
 	}
 }
@@ -259,6 +260,101 @@ func TestDeepSeekReportsAServiceFailureInWords(t *testing.T) {
 	last := events[len(events)-1]
 	if !strings.Contains(last.Text, "429") && !strings.Contains(last.Text, "rate limited") {
 		t.Errorf("the failure was not explained: %q", last.Text)
+	}
+}
+
+// A busy service is tried again before the person sees an error, and a
+// Retry-After is respected rather than guessed at.
+func TestDeepSeekRetriesATransientFailure(t *testing.T) {
+	root := deepseekRoot(t)
+	var calls int32
+	m, _ := deepseekManager(t, root, func(w http.ResponseWriter, r *http.Request) {
+		if atomic.AddInt32(&calls, 1) < 3 {
+			w.Header().Set("Retry-After", "1")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		sseReply(w, []string{"third time"}, deepseekUsage{})
+	})
+	s, err := m.Start(nil, twoSum)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var waits []time.Duration
+	s.deep.retryWait = func(attempt int, retryAfter time.Duration) time.Duration {
+		waits = append(waits, retryAfter)
+		return time.Millisecond
+	}
+	if err := s.Send("q"); err != nil {
+		t.Fatal(err)
+	}
+	_, ch, stop := s.Subscribe()
+	defer stop()
+	if got := textOf(collect(t, ch, KindDone)); got != "third time" {
+		t.Fatalf("reply = %q", got)
+	}
+	if atomic.LoadInt32(&calls) != 3 {
+		t.Errorf("made %d requests, want 3", calls)
+	}
+	if len(waits) != 2 || waits[0] != time.Second {
+		t.Errorf("Retry-After was not passed to the wait: %v", waits)
+	}
+}
+
+// A refusal is not retried: the second request would fail the same way and
+// the person would wait for nothing.
+func TestDeepSeekDoesNotRetryARefusal(t *testing.T) {
+	root := deepseekRoot(t)
+	var calls int32
+	m, _ := deepseekManager(t, root, func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&calls, 1)
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"error":{"message":"bad key"}}`))
+	})
+	s, err := m.Send(nil, twoSum, "q")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, ch, stop := s.Subscribe()
+	defer stop()
+	collect(t, ch, KindError)
+	if atomic.LoadInt32(&calls) != 1 {
+		t.Errorf("a 401 was retried: %d requests", calls)
+	}
+}
+
+func TestDeepSeekRatesLoadFromAFileAndRejectAFreeModel(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, body string) string {
+		t.Helper()
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+	good := write("good.json", `{"deepseek-pro": {
+		"peak": {"cache_hit": 1, "cache_miss": 2, "output": 4},
+		"off_peak": {"cache_hit": 0.5, "cache_miss": 1, "output": 2}}}`)
+	rates, err := LoadDeepSeekRates(good)
+	if err != nil {
+		t.Fatal(err)
+	}
+	u := deepseekUsage{CompletionTokens: 1_000_000}
+	if got := u.cost(rates, "deepseek-pro", time.Date(2026, 1, 3, 12, 0, 0, 0, time.UTC)); got != 2 {
+		t.Errorf("a loaded off-peak output price was not used: %v", got)
+	}
+	if got := u.cost(rates, "unknown", time.Date(2026, 1, 3, 12, 0, 0, 0, time.UTC)); got != 2 {
+		t.Errorf("an unknown model was not priced as the dearest listed: %v", got)
+	}
+	for name, body := range map[string]string{
+		"free.json":    `{"deepseek-pro": {"peak": {"cache_hit": 0, "cache_miss": 2, "output": 4}, "off_peak": {"cache_hit": 1, "cache_miss": 1, "output": 2}}}`,
+		"empty.json":   `{}`,
+		"unknown.json": `{"deepseek-pro": {"peak": {"cache_hit": 1, "cache_miss": 2, "output": 4, "extra": 1}, "off_peak": {"cache_hit": 1, "cache_miss": 1, "output": 2}}}`,
+	} {
+		if _, err := LoadDeepSeekRates(write(name, body)); err == nil {
+			t.Errorf("%s was accepted", name)
+		}
 	}
 }
 
