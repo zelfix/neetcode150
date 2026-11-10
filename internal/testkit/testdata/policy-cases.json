@@ -1,0 +1,20 @@
+[
+  {"name": "unordered pair", "policy": "unordered", "args": [[2, 7], 9], "want": [0, 1], "returns": [1, 0], "valid": true},
+  {"name": "duplicate result", "policy": "unordered", "args": [[2, 7], 9], "want": [0, 1], "returns": [0, 0], "valid": false},
+  {"name": "group order", "policy": "unordered-groups", "args": [], "want": [["a", "b"], ["c"]], "returns": [["c"], ["b", "a"]], "valid": true},
+  {"name": "inner order matters", "policy": "unordered", "args": [], "want": [[1, 2], [2, 1]], "returns": [[1, 2], [1, 2]], "valid": false},
+  {"name": "alternative palindrome", "policy": "palindrome", "args": ["babad"], "want": "bab", "returns": "aba", "valid": true},
+  {"name": "nonpalindrome", "policy": "palindrome", "args": ["babad"], "want": "bab", "returns": "bad", "valid": false},
+  {"name": "nonmaximal palindrome", "policy": "palindrome", "args": ["babad"], "want": "bab", "returns": "b", "valid": false},
+  {"name": "other topological order", "policy": "topological", "args": [3, [[2, 0], [2, 1]]], "want": [0, 1, 2], "returns": [1, 0, 2], "valid": true},
+  {"name": "invalid topological order", "policy": "topological", "args": [3, [[2, 0], [2, 1]]], "want": [0, 1, 2], "returns": [2, 1, 0], "valid": false},
+  {"name": "duplicate course", "policy": "topological", "args": [3, []], "want": [0, 1, 2], "returns": [0, 0, 2], "valid": false},
+  {"name": "empty order on cycle", "policy": "topological", "args": [2, [[0, 1], [1, 0]]], "want": [], "returns": [], "valid": true},
+  {"name": "independent alphabet letters", "policy": "alphabet", "args": [["za", "zb"]], "want": "zab", "returns": "abz", "valid": true},
+  {"name": "alphabet edge violated", "policy": "alphabet", "args": [["za", "zb"]], "want": "zab", "returns": "baz", "valid": false},
+  {"name": "alphabet duplicate", "policy": "alphabet", "args": [["za", "zb"]], "want": "zab", "returns": "aab", "valid": false},
+  {"name": "nil empty slice", "policy": "", "args": [], "want": [], "returns": [], "valid": true},
+  {"name": "integer comparison exact", "policy": "", "args": [], "want": 1000000000, "returns": 1000000001, "valid": false},
+  {"name": "float rounding", "policy": "float", "args": [], "want": 9.261, "returns": 9.261000000000001, "valid": true},
+  {"name": "tiny nonzero must not equal zero", "policy": "float", "args": [], "want": 9.094947017729282e-13, "returns": 0, "valid": false}
+]

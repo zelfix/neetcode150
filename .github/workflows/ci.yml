@@ -19,6 +19,12 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      # The Python practice harness (internal/testkit/py) runs under the
+      # oldest interpreter the sandbox image ships.
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
       # gofmt's rules are not negotiable in Go, so an unformatted file is a
       # build failure rather than a review comment.
       - name: gofmt
@@ -66,6 +72,12 @@ jobs:
         uses: golangci/golangci-lint-action@v8
         with:
           version: latest
+
+      # Stdlib only, so the checks are the interpreter's own.
+      - name: python harness
+        run: |
+          python3 -I -B -m compileall -q internal/testkit/py
+          python3 -I -B -m unittest discover -s internal/testkit/py/tests -t internal/testkit/py
 
       # solutions/ is gitignored, so this runs the CLI and server tests only.
       # -count=1 keeps a flaky test from hiding behind the test cache.

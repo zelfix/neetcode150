@@ -2,6 +2,7 @@ package testkit
 
 import (
 	"encoding/json"
+	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -17,12 +18,14 @@ func fixture(args string, want string) testbank.Case {
 	return testbank.Case{Args: a, Want: json.RawMessage(want)}
 }
 
-func TestPoliciesAcceptAlternativesAndRejectWrongAnswers(t *testing.T) {
-	cases := []struct {
-		name, policy, args, want string
-		fn                       any
-		valid                    bool
-	}{
+type policyCase struct {
+	name, policy, args, want string
+	fn                       any
+	valid                    bool
+}
+
+func policyCases() []policyCase {
+	return []policyCase{
 		{"unordered pair", "unordered", `[[2,7],9]`, `[0,1]`, func([]int, int) []int { return []int{1, 0} }, true},
 		{"duplicate result", "unordered", `[[2,7],9]`, `[0,1]`, func([]int, int) []int { return []int{0, 0} }, false},
 		{"group order", "unordered-groups", `[]`, `[["a","b"],["c"]]`, func() [][]string { return [][]string{{"c"}, {"b", "a"}} }, true},
@@ -42,7 +45,10 @@ func TestPoliciesAcceptAlternativesAndRejectWrongAnswers(t *testing.T) {
 		{"float rounding", "float", `[]`, `9.261`, func() float64 { return 9.261000000000001 }, true},
 		{"tiny nonzero must not equal zero", "float", `[]`, `9.094947017729282e-13`, func() float64 { return 0 }, false},
 	}
-	for _, tc := range cases {
+}
+
+func TestPoliciesAcceptAlternativesAndRejectWrongAnswers(t *testing.T) {
+	for _, tc := range policyCases() {
 		t.Run(tc.name, func(t *testing.T) {
 			err := checkCase(testbank.Suite{Mode: "function", Policy: tc.policy}, fixture(tc.args, tc.want), false, tc.fn)
 			if (err == nil) != tc.valid {
@@ -223,5 +229,65 @@ func TestTopologicalValidationUsesOriginalPrerequisites(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("mutated prerequisites hid an invalid order")
+	}
+}
+
+// The Python harness in py/ reimplements every policy, and two hand-kept
+// copies of eighteen rules will drift. testdata/policy-cases.json is the one
+// table both suites run; this test pins the Go table above to it, so a case
+// added to one side without the other fails here rather than months later.
+func TestPolicyTableMatchesTheSharedFixture(t *testing.T) {
+	data, err := os.ReadFile("testdata/policy-cases.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var shared []struct {
+		Name, Policy string
+		Args, Want   json.RawMessage
+		Returns      json.RawMessage
+		Valid        bool
+	}
+	if err := json.Unmarshal(data, &shared); err != nil {
+		t.Fatal(err)
+	}
+	goCases := policyCases()
+	if len(shared) != len(goCases) {
+		t.Fatalf("shared table has %d cases, the Go table %d", len(shared), len(goCases))
+	}
+	for i, row := range shared {
+		tc := goCases[i]
+		if tc.name != row.Name || tc.policy != row.Policy || tc.valid != row.Valid {
+			t.Errorf("row %d: shared %q/%q/%v, Go %q/%q/%v", i, row.Name, row.Policy, row.Valid, tc.name, tc.policy, tc.valid)
+			continue
+		}
+		var a, b any
+		_ = json.Unmarshal([]byte(tc.args), &a)
+		_ = json.Unmarshal(row.Args, &b)
+		if !equivalent(a, b, "") {
+			t.Errorf("%s: args differ: %s vs %s", row.Name, tc.args, row.Args)
+		}
+		_ = json.Unmarshal([]byte(tc.want), &a)
+		_ = json.Unmarshal(row.Want, &b)
+		if !equivalent(a, b, "") {
+			t.Errorf("%s: want differs: %s vs %s", row.Name, tc.want, row.Want)
+		}
+		// The Go closures ignore their input, so calling them with the fixture
+		// arguments yields the constant the shared table says they return.
+		fn := reflect.ValueOf(tc.fn)
+		var raw []json.RawMessage
+		_ = json.Unmarshal([]byte(tc.args), &raw)
+		args, err := arguments(raw, fn.Type())
+		if err != nil {
+			t.Fatalf("%s: %v", row.Name, err)
+		}
+		got, err := normalize(fn.Call(args)[0])
+		if err != nil {
+			t.Fatal(err)
+		}
+		var returns any
+		_ = json.Unmarshal(row.Returns, &returns)
+		if !equivalent(got, returns, "") {
+			t.Errorf("%s: Go returns %v, shared table says %s", row.Name, got, row.Returns)
+		}
 	}
 }

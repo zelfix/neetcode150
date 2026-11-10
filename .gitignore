@@ -57,3 +57,6 @@ content/problems/*/signature.txt
 # The tutor's session log: your study history, not ours.
 # ---------------------------------------------------------------------------
 /tutor/log.md
+
+# Python bytecode from the practice harness and its tests.
+__pycache__/
