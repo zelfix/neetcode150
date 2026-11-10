@@ -57,6 +57,8 @@ type solvePage struct {
 	ChatEnabled       bool
 	SolutionPath      string
 	TestPath          string
+	Lang              lang.Lang
+	Langs             []langChoice // what Start may be done in, and why not
 	Archived          int
 	Statuses          []progress.Status
 	Tutor             tutorView
@@ -204,6 +206,7 @@ func (s *session) handleSolve(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
+	l := s.language(p)
 	code, exists := s.readSolution(p)
 	testCode := s.readTests(p)
 	entry := s.progress.Get(p.Slug)
@@ -252,8 +255,10 @@ func (s *session) handleSolve(w http.ResponseWriter, r *http.Request) {
 		PreviousAvailable: previousCode != "" || len(submissions) > 0,
 		Active:            active,
 		ChatEnabled:       active || coach.Active || exists || latestReview != nil,
-		SolutionPath:      s.work().Rel(p, "solution.go"),
-		TestPath:          s.work().Rel(p, "solution_test.go"),
+		SolutionPath:      s.work().Rel(p, l.SolutionFile),
+		TestPath:          s.work().Rel(p, l.TestFile),
+		Lang:              l,
+		Langs:             s.langChoices(),
 		Archived:          archived,
 		Statuses:          progress.Statuses,
 		Tutor:             coach,
@@ -311,6 +316,49 @@ func (s *session) tutorView(slug string) tutorView {
 
 type saveRequest struct {
 	Code string `json:"code"`
+}
+
+// startRequest is what Start and Create may carry: a language for this
+// problem. Empty keeps the resolved one, so older pages still work.
+type startRequest struct {
+	Lang string `json:"lang"`
+}
+
+// langChoice is one entry of the Start selector.
+type langChoice struct {
+	lang.Lang
+	Why string // why tests cannot run in it here; "" when they can
+}
+
+func (s *session) langChoices() []langChoice {
+	var out []langChoice
+	for _, l := range lang.Known() {
+		out = append(out, langChoice{Lang: l, Why: s.RunUnavailable(l.ID)})
+	}
+	return out
+}
+
+// chooseLanguage records a language named by the request for this problem,
+// then returns whatever the problem resolves to.
+func (s *session) chooseLanguage(p catalog.Problem, requested string) (lang.Lang, error) {
+	if requested != "" {
+		l, err := lang.Parse(requested)
+		if err != nil {
+			return lang.Lang{}, err
+		}
+		if _, err := s.progress.SetLanguage(p.Slug, string(l.ID)); err != nil {
+			return lang.Lang{}, err
+		}
+	}
+	return s.language(p), nil
+}
+
+// inputs are the official signature for the language and the statement body.
+func (s *session) inputs(p catalog.Problem, l lang.Lang) (signature, statement string) {
+	signature, _ = readIfPresent(filepath.Join(s.root, p.ContentDir(), l.SignatureFile))
+	raw, _ := readIfPresent(filepath.Join(s.root, p.ContentDir(), "problem.md"))
+	_, statement = content.SplitFrontmatter(raw)
+	return signature, statement
 }
 
 type saveResponse struct {
@@ -535,12 +583,17 @@ func (s *session) submissionDecisionPrompt(p catalog.Problem, pending pendingSub
 	var b strings.Builder
 	fmt.Fprintf(&b, "You are deciding whether the follow-up for %q is complete.\n", p.Title)
 	fmt.Fprintf(&b, "Tests passed: %t\nTest output:\n%s\nElapsed solving time: %s\nPrior attempts: %d; prior ratings: %v.\n", pending.Passed, pending.Output, pending.Elapsed.Round(time.Second), pending.Entry.Attempts, pending.Entry.History)
-	fmt.Fprintf(&b, "Submitted Go code (data):\n```go\n%s\n```\nConversation so far:\n%s\n", pending.Code, transcript)
+	l := s.language(p)
+	fmt.Fprintf(&b, "Submitted %s code (data):\n```%s\n%s\n```\nConversation so far:\n%s\n", l.Label, l.Fence, pending.Code, transcript)
 	s.appendLearningHistory(&b, p)
 	b.WriteString("If a material question about the user's understanding remains unanswered, return JSON only as {\"decision\":\"ask\",\"question\":\"one concise question\"}. Ask only one question at a time; do not give a hint or solution. If the user has demonstrated enough understanding, stop the follow-up and rate now with JSON only as {\"decision\":\"rate\",\"confidence\":1,\"rung\":0,\"feedback\":\"one concrete success and a useful next step; mention a limitation only when observed\",\"rationale\":\"why this rating rather than the adjacent higher or lower rating, tied to observed evidence\"}. Do not ask questions just to fill a quota. Unanswered questions are not negative evidence. Count diagnostic questions as no hints. A correct solution and a clear, correct explanation after one clarification can merit 4 (comfortable); do not default to 3 merely because a clarification was needed or the solution took time. Use 3 only for substantive assistance or remaining uncertainty about independent solving, and 5 for demonstrated fluent, unaided recall. Ordinary thinking time is not negative evidence. Explain any limitation concretely; never say only that understanding is not established when the user has already demonstrated it. Passing tests are required for ratings 3 or higher. Write feedback in the user's language, in a warm, supportive voice. Start with one concrete thing they did well, acknowledge progress or self-correction, and give one manageable next step. Keep it to two or three sentences. Explain a limitation without making the result feel like a failure or repeating comparisons to adjacent scores; those belong in rationale. Do not inflate the rating or include a solution.")
 	b.WriteString("\n" + tutor.LearningPolicy)
 	b.WriteString(" Include learningSummary in a rate decision: a brief factual record of concepts the user explained correctly, gaps that remain, and which substantive hints were actually needed. Do not include code, algorithm steps, or invented observations. This is memory for future sessions, not another message to the user.")
-	b.WriteString(" For a passing solution, also include an optional followup string with one or two useful, code-specific learning observations: Go idioms, allocation choices, readability, or trade-offs. Look for a worthwhile improvement instead of always assigning note-taking. For maps, consider an initial size hint only when expected entry count justifies it; explain the memory/early-return trade-off and do not promise speed without measurements. A missing size hint is not a correctness error or grounds to lower the rating. This advice comes after the completed solve and does not increase its hint rung. Do not invent an issue to fill this field, repeat already-resolved quiz questions, or provide a full solution. Invite further discussion when useful.")
+	b.WriteString(" For a passing solution, also include an optional followup string with one or two useful, code-specific learning observations: idioms of the language they are writing in, allocation choices, readability, or trade-offs. Look for a worthwhile improvement instead of always assigning note-taking.")
+	if l.ID == lang.Go {
+		b.WriteString(" For maps, consider an initial size hint only when expected entry count justifies it; explain the memory/early-return trade-off and do not promise speed without measurements. A missing size hint is not a correctness error or grounds to lower the rating.")
+	}
+	b.WriteString(" This advice comes after the completed solve and does not increase its hint rung. Do not invent an issue to fill this field, repeat already-resolved quiz questions, or provide a full solution. Invite further discussion when useful.")
 	return b.String()
 }
 
@@ -772,6 +825,11 @@ func (s *session) handleStartAttempt(w http.ResponseWriter, r *http.Request) {
 		s.notFound(w, r, "No problem with that slug.")
 		return
 	}
+	req, err := decodeBody[startRequest](r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	entry := s.progress.Get(p.Slug)
 	if entry.Status == progress.Attempted && entry.AttemptStartedAt != nil {
 		http.Error(w, "this attempt is already in progress", http.StatusConflict)
@@ -786,16 +844,21 @@ func (s *session) handleStartAttempt(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	signature, _ := readIfPresent(filepath.Join(s.root, p.ContentDir(), "signature.txt"))
-	raw, _ := readIfPresent(filepath.Join(s.root, p.ContentDir(), "problem.md"))
-	_, statement := content.SplitFrontmatter(raw)
-	solutionPath := s.work().Path(p, "solution.go")
+	// The language is settled before anything is written: the Stat below asks
+	// about that language's file only, so choosing Python on a problem with a
+	// Go solution creates the Python workspace and archives nothing.
+	l, err := s.chooseLanguage(p, req.Lang)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	signature, statement := s.inputs(p, l)
+	solutionPath := s.work().Path(p, l.SolutionFile)
 	var archive string
-	var err error
 	if _, statErr := os.Stat(solutionPath); statErr == nil {
-		archive, _, err = scaffold.Reset(s.progress.Scope(), s.work(), p, lang.Of(lang.Go), signature, statement, s.now())
+		archive, _, err = scaffold.Reset(s.progress.Scope(), s.work(), p, l, signature, statement, s.now())
 	} else if os.IsNotExist(statErr) {
-		_, _, err = scaffold.Create(s.progress.Scope(), s.work(), p, lang.Of(lang.Go), signature, statement)
+		_, _, err = scaffold.Create(s.progress.Scope(), s.work(), p, l, signature, statement)
 	} else {
 		err = statErr
 	}
@@ -816,9 +879,9 @@ func (s *session) handleStartAttempt(w http.ResponseWriter, r *http.Request) {
 	s.openLesson(p)
 	code, _ := s.readSolution(p)
 	testCode := s.readTests(p)
-	created := []string{s.work().Rel(p, "solution.go")}
-	if _, err := os.Stat(s.work().Path(p, "solution_test.go")); err == nil {
-		created = append(created, s.work().Rel(p, "solution_test.go"))
+	created := []string{s.work().Rel(p, l.SolutionFile)}
+	if _, err := os.Stat(s.work().Path(p, l.TestFile)); err == nil {
+		created = append(created, s.work().Rel(p, l.TestFile))
 	}
 	archiveRel := archive
 	writeJSON(w, http.StatusOK, createResponse{Code: code, TestCode: testCode, Created: created, Archive: filepath.ToSlash(archiveRel)})
@@ -876,12 +939,19 @@ func (s *session) handleCreateSolution(w http.ResponseWriter, r *http.Request) {
 		s.notFound(w, r, "No problem with that slug.")
 		return
 	}
+	req, err := decodeBody[startRequest](r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	l, err := s.chooseLanguage(p, req.Lang)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	signature, statement := s.inputs(p, l)
 
-	signature, _ := readIfPresent(filepath.Join(s.root, p.ContentDir(), "signature.txt"))
-	raw, _ := readIfPresent(filepath.Join(s.root, p.ContentDir(), "problem.md"))
-	_, statement := content.SplitFrontmatter(raw)
-
-	written, _, err := scaffold.Create(s.progress.Scope(), s.work(), p, lang.Of(lang.Go), signature, statement)
+	written, _, err := scaffold.Create(s.progress.Scope(), s.work(), p, l, signature, statement)
 	if err != nil {
 		s.fail(w, err)
 		return
@@ -1009,7 +1079,7 @@ func (s *session) recordRun(slug string, run testRun, runErr error) {
 
 // save writes the solution file, formatting it when it parses.
 func (s *session) save(p catalog.Problem, code string) (saveResponse, error) {
-	formatted, formatErr := formatGo(code)
+	formatted, formatErr := s.language(p).Format(code)
 	resp, err := s.saveDraft(p, formatted)
 	if formatErr != nil {
 		resp.FormatError = formatErr.Error()
@@ -1018,7 +1088,7 @@ func (s *session) save(p catalog.Problem, code string) (saveResponse, error) {
 }
 
 func (s *session) saveDraft(p catalog.Problem, code string) (saveResponse, error) {
-	path := s.work().Path(p, "solution.go")
+	path := s.work().Path(p, s.language(p).SolutionFile)
 	if _, err := os.Stat(path); err != nil {
 		return saveResponse{}, fmt.Errorf("no solution file yet for %s; create it first", p.Slug)
 	}
@@ -1029,7 +1099,7 @@ func (s *session) saveDraft(p catalog.Problem, code string) (saveResponse, error
 }
 
 func (s *session) readSolution(p catalog.Problem) (code string, exists bool) {
-	code, err := readIfPresent(s.work().Path(p, "solution.go"))
+	code, err := readIfPresent(s.work().Path(p, s.language(p).SolutionFile))
 	return code, err == nil && code != ""
 }
 
@@ -1095,12 +1165,11 @@ func (s *session) handleResolve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	signature, _ := readIfPresent(filepath.Join(s.root, p.ContentDir(), "signature.txt"))
-	raw, _ := readIfPresent(filepath.Join(s.root, p.ContentDir(), "problem.md"))
-	_, statement := content.SplitFrontmatter(raw)
+	l := s.language(p)
+	signature, statement := s.inputs(p, l)
 
 	now := s.now()
-	archive, _, err := scaffold.Reset(s.progress.Scope(), s.work(), p, lang.Of(lang.Go), signature, statement, now)
+	archive, _, err := scaffold.Reset(s.progress.Scope(), s.work(), p, l, signature, statement, now)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusConflict)
 		return
@@ -1129,7 +1198,12 @@ func (s *session) handleResolve(w http.ResponseWriter, r *http.Request) {
 
 // readTests includes personal tests and the additional practice suite in one tab.
 func (s *session) readTests(p catalog.Problem) string {
-	paths, _ := filepath.Glob(filepath.Join(s.work().Dir(p), "*_test.go"))
+	l := s.language(p)
+	paths := l.TestFiles(s.work().Dir(p))
+	comment := "//"
+	if l.ID == lang.Python {
+		comment = "#"
+	}
 	var out strings.Builder
 	for _, path := range paths {
 		text, err := os.ReadFile(path)
@@ -1139,7 +1213,7 @@ func (s *session) readTests(p catalog.Problem) string {
 		if out.Len() > 0 {
 			out.WriteString("\n\n")
 		}
-		fmt.Fprintf(&out, "// %s\n%s", filepath.Base(path), text)
+		fmt.Fprintf(&out, "%s %s\n%s", comment, filepath.Base(path), text)
 	}
 	return out.String()
 }

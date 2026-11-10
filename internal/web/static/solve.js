@@ -163,7 +163,8 @@
       try {
         if (notesInput) notesInput.readOnly = true;
         await saveNotes();
-        await post("start");
+        const pick = root.querySelector("[data-lang-pick]");
+        await post("start", pick ? { lang: pick.value } : {});
         await reloadWorkspace();
       } catch (err) {
         startBtn.disabled = false;
@@ -711,23 +712,27 @@
     }
     if (mod) return;
 
+    // One indent unit is the language's: a tab for Go, four spaces for Python.
+    const unit = editor.dataset.indent || "\t";
+
     if (e.key === "Tab") {
       // Trapping Tab costs keyboard users the ability to leave the field, so
       // Escape-then-Tab is the way out and Shift+Tab still moves backwards.
       if (e.shiftKey) return;
       e.preventDefault();
-      replaceSelection("\t");
+      replaceSelection(unit);
       return;
     }
 
     if (e.key === "Enter") {
       // Carry the current line's indentation onto the next one, and add a level
-      // after an opening brace. Explicit test runs format the rest.
+      // after an opening bracket or a block-opening colon. Explicit test runs
+      // format the rest, where the language has a formatter.
       const at = editor.selectionStart;
       const lineStart = editor.value.lastIndexOf("\n", at - 1) + 1;
       const line = editor.value.slice(lineStart, at);
       const indent = (line.match(/^[\t ]*/) || [""])[0];
-      const deeper = /[{(\[]\s*$/.test(line) ? "\t" : "";
+      const deeper = /[{(\[:]\s*$/.test(line) ? unit : "";
       e.preventDefault();
       replaceSelection("\n" + indent + deeper);
     }

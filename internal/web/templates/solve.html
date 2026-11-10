@@ -22,13 +22,13 @@
     {{if .Tutor.Available}}
     <div class="tutor-presets" data-study-presets{{if not .Active}} hidden{{end}}>
       <button type="button" class="chip" data-ask="What pattern is this, and why that one?">Which pattern?</button>
-      <button type="button" class="chip" data-ask="I have written something. Review my solution — complexity and Go idioms — but do not rewrite it for me.">Review mine</button>
+      <button type="button" class="chip" data-ask="I have written something. Review my solution — complexity and {{.Lang.Label}} idioms — but do not rewrite it for me.">Review mine</button>
       <button type="button" class="chip" data-ask="The test is failing. Give me the failing case and one question, not a fix.">Why is it failing?</button>
       <button type="button" class="chip" data-ask="Give me the next hint, one rung only.">Next hint</button>
     </div>
 
     <div class="tutor-presets" data-review-presets{{if .Active}} hidden{{end}}>
-      <button type="button" class="chip" data-ask="What useful Go idioms or small improvements are worth discussing in my completed solution? Explain the trade-offs without rewriting it.">Go idioms</button>
+      <button type="button" class="chip" data-ask="What useful {{.Lang.Label}} idioms or small improvements are worth discussing in my completed solution? Explain the trade-offs without rewriting it.">{{.Lang.Label}} idioms</button>
       <button type="button" class="chip" data-ask="What time, memory, or readability trade-offs are worth exploring in my solution?">Trade-offs</button>
       <button type="button" class="chip" data-ask="Explain your last feedback in more detail. Keep my completed attempt's rating unchanged.">Explain feedback</button>
     </div>
@@ -54,6 +54,7 @@
   <section class="workspace">
     <header class="work-head">
       <span class="path there">{{.SolutionPath}}</span>
+      <span class="lang-badge" title="This problem is worked in {{.Lang.Label}}">{{.Lang.Label}}</span>
       <time class="solve-clock"{{if .Active}} data-clock{{end}} data-seconds="{{.ElapsedSeconds}}">{{.ElapsedLabel}}</time>
       {{if and .Active (not .PendingSubmit)}}<button type="button" class="link" data-cancel>Cancel attempt</button>{{end}}
     </header>
@@ -71,7 +72,7 @@
 
     {{if .Active}}
     <textarea data-editor spellcheck="false" autocomplete="off" autocapitalize="off"
-      wrap="off" aria-label="Your solution" {{if .PendingSubmit}}disabled{{end}}>{{.Code}}</textarea>
+      wrap="off" aria-label="Your solution" data-indent="{{.Lang.Indent}}" {{if .PendingSubmit}}disabled{{end}}>{{.Code}}</textarea>
     {{else}}
     {{/* The record sits in the editor's box, so beginning the attempt swaps the
          contents of the pane without moving the pane. */}}
@@ -85,6 +86,11 @@
       {{end}}
       <div class="start-gate{{if .P.IsDue}} solve-warn{{end}}">
         <button type="button" class="primary" data-start>{{if .PreviousAvailable}}Start again{{else}}Start attempt{{end}}</button>
+        <label class="start-lang">in
+          <select data-lang-pick aria-label="Language for this attempt">
+            {{range .Langs}}<option value="{{.ID}}"{{if eq .ID $.Lang.ID}} selected{{end}}{{if .Why}} disabled title="{{.Why}}"{{end}}>{{.Label}}{{if .Why}} (unavailable){{end}}</option>{{end}}
+          </select>
+        </label>
         <p>{{if .PreviousAvailable}}Begin a fresh attempt. Your previous work stays in History.{{else}}Start when you’re ready. Your timer and tutor will begin.{{end}}</p>
       </div>
       <div class="record-head">

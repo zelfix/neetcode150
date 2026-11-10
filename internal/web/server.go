@@ -181,6 +181,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /patterns/{slug}", s.with((*session).handlePattern))
 	mux.HandleFunc("GET /review/{$}", s.with((*session).handleReview))
 	mux.HandleFunc("GET /coach/{$}", s.with((*session).handleCoach))
+	// A person's own default language: it changes one row, their own, and
+	// mints nothing, so it is not an admin surface.
+	mux.HandleFunc("POST /me/language", guardJSON(s.with((*session).handleSetLanguage)))
 	mux.HandleFunc("POST /problems/{slug}/status", guard(s.with((*session).handleSetStatus)))
 	mux.HandleFunc("POST /problems/{slug}/rate", guard(s.with((*session).handleRate)))
 	// These write files and run code, so they carry the stricter guard.
@@ -229,12 +232,16 @@ type common struct {
 	// a button row to the bottom of their panes, which only reads as one screen
 	// if the page itself does not scroll.
 	Full bool
+	// Language is this person's default, shown and changed in the header.
+	Language  lang.Lang
+	Languages []lang.Lang
 }
 
 func (s *session) common(title, nav string) common {
 	now := s.now()
 	sum := s.progress.Summarize(s.cat.Problems, now)
-	return common{Title: title, Nav: nav, Summary: sum, Due: sum.DueNow}
+	return common{Title: title, Nav: nav, Summary: sum, Due: sum.DueNow,
+		Language: lang.Of(lang.ID(s.user.Language)), Languages: lang.Known()}
 }
 
 func (s *session) wideCommon(title, nav string) common {
@@ -424,7 +431,7 @@ func (s *session) handleProblem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	solution := s.work().Rel(p, "solution.go")
+	solution := s.work().Rel(p, s.language(p).SolutionFile)
 	_, statErr := os.Stat(filepath.Join(s.root, solution))
 
 	page := problemPage{
@@ -562,6 +569,26 @@ func (s *session) handleRate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.redirectBack(w, r, p)
+}
+
+// handleSetLanguage records the language this person's problems default to.
+// Problems that chose their own keep it.
+func (s *session) handleSetLanguage(w http.ResponseWriter, r *http.Request) {
+	req, err := decodeBody[startRequest](r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	l, err := lang.Parse(req.Lang)
+	if err != nil || req.Lang == "" {
+		http.Error(w, "lang must be go or python", http.StatusBadRequest)
+		return
+	}
+	if err := s.db.SetUserLanguage(s.user.ID, string(l.ID)); err != nil {
+		s.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"lang": string(l.ID)})
 }
 
 // redirectBack returns to the page the form was submitted from, so rating a

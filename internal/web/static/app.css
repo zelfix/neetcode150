@@ -1070,3 +1070,20 @@ textarea[aria-label="Your solution"]:disabled { cursor: not-allowed; opacity: 0.
   font-size: var(--t-s);
   color: var(--dimmer);
 }
+
+/* Language: the header default and the per-problem badge. */
+.lang-pick select {
+  background: transparent; border: 1px solid var(--dimmer); border-radius: 4px;
+  color: var(--dim); font: inherit; font-size: var(--t-s); padding: 0.1rem 0.35rem;
+}
+.lang-pick select:hover, .lang-pick select:focus { color: var(--text); border-color: var(--dim); }
+.lang-badge {
+  border: 1px solid var(--dimmer); border-radius: 999px; color: var(--dim);
+  font-size: var(--t-s); padding: 0 0.5em; white-space: nowrap;
+}
+.start-lang { color: var(--dim); font-size: var(--t-s); margin-left: 0.5rem; }
+.start-lang select { font: inherit; margin-left: 0.25rem; }
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}
