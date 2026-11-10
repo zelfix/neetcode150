@@ -118,6 +118,13 @@ func (d *DB) SetUserToken(id int64, token string) error {
 	return err
 }
 
+// SetUserBudget changes a person's monthly tutor ceiling. What they have
+// already spent this month stands; only the line it is measured against moves.
+func (d *DB) SetUserBudget(id int64, budgetUSD float64) error {
+	_, err := d.SQL.Exec("UPDATE users SET tutor_budget_usd=? WHERE id=?", budgetUSD, id)
+	return err
+}
+
 func (d *DB) SetUserDisabled(id int64, disabled bool) error {
 	_, err := d.SQL.Exec("UPDATE users SET disabled=? WHERE id=?", disabled, id)
 	return err

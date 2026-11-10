@@ -211,10 +211,12 @@ ladder in tutor/TUTOR.md — one rung only"* and it will generally get back on t
 | Command | What it does |
 |---|---|
 | `nc fetch [--force]` | Download the problem list, statements and Go signatures |
-| `nc serve [--port 8150] [--tutor-provider claude\|codex]` | Serve the study site and choose its tutor |
-| `nc user list\|add\|link\|revoke\|rm` | Who can reach the site, and their join links |
-| `nc serve --sandbox auto\|docker\|local` | Whether test runs are isolated in a container |
+| `nc serve [--host addr] [--port 8150]` | Serve the study site |
 | `nc serve --tutor-provider claude\|codex\|deepseek` | Which tutor answers; only `deepseek` is offered to guests |
+| `nc serve --tutor-mode full\|tutor [--tutor-budget usd]` | What the agent may touch, and a per-session cap on Claude |
+| `nc serve --sandbox auto\|docker\|local` | Whether test runs are isolated in a container |
+| `nc user list\|add\|link\|revoke\|rm` | Who can reach the site, and their join links |
+| `nc user add\|link <name> --budget <usd>` | Set, or later change, someone's monthly tutor ceiling |
 | `nc next` | What to work on now |
 | `nc start <problem>` | Scaffold the Go solution, test and notes |
 | `nc status <problem> <state>` | `new`, `attempted`, `solved` or `shaky` |
@@ -229,6 +231,9 @@ ladder in tutor/TUTOR.md — one rung only"* and it will generally get back on t
 | `nc stats` | Progress by pattern, with how securely each is held |
 | `nc history <problem>` | Every rating one problem has had |
 | `nc info <problem>` | Paths and state for one problem |
+| `nc notes\|hints <problem>`, `nc log` | Your notes, the hint ladder, the study log; `--file` replaces, `--append-file` adds |
+| `nc backup <file.sqlite3>` | A consistent copy of the database; `nc migrate` imports legacy files once |
+| `nc <command> --help` | That command's line and flags |
 
 `<problem>` takes a slug, a LeetCode number, a directory name, or part of a title —
 `nc start two-sum`, `nc start 1` and `nc start "valid anag"` all work.
@@ -241,7 +246,7 @@ longer than six hours is ignored rather than believed.
 
 ```
 AGENTS.md                        instructions for any coding agent
-CLAUDE.md, GEMINI.md             two-line pointers to AGENTS.md
+CLAUDE.md, GEMINI.md             short pointers to AGENTS.md
 tutor/
   TUTOR.md                       the tutoring protocol
   references/                    complexity targets, Go idioms, loop invariants

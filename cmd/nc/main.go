@@ -6,6 +6,7 @@ import (
 	"context"
 	crand "crypto/rand"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"math"
@@ -37,6 +38,7 @@ Usage:
   nc migrate                   import existing personal data into SQLite once
   nc backup <file.sqlite3>      create a consistent database backup
   nc user list|add|link|revoke|rm   who can reach the site (--base-url, --budget)
+                               link --budget <usd> also changes their monthly ceiling
   nc notes <problem>           read notes (--file path to replace)
   nc hints <problem>           read hint ladder (--file path to replace)
   nc log                       read the study log (--append-file path to append)
@@ -64,6 +66,8 @@ Usage:
 
 <problem> is a slug, a LeetCode number, a directory name, or part of a title:
   nc start two-sum        nc start 1        nc start "valid anag"
+
+nc <command> --help shows that command's line and its flags.
 `
 
 func main() {
@@ -79,12 +83,52 @@ func run(args []string) error {
 		return nil
 	}
 	cmd, rest := args[0], args[1:]
+	if len(rest) > 0 && (rest[0] == "-h" || rest[0] == "--help") {
+		return commandHelp(cmd)
+	}
 
 	root, err := catalog.FindRoot()
 	if err != nil {
 		return err
 	}
 
+	return commandHelpOnErr(cmd, dispatch(cmd, root, rest))
+}
+
+// commandHelpOnErr finishes `nc rate two-sum --help`: the command's own flag
+// set has printed its flags and returned ErrHelp, so add the usage line rather
+// than report a failure.
+func commandHelpOnErr(cmd string, err error) error {
+	if errors.Is(err, flag.ErrHelp) {
+		return commandHelp(cmd)
+	}
+	return err
+}
+
+// commandHelp prints one command's lines out of usage, so the flags on rate,
+// drill or serve can be found without reading the whole block.
+func commandHelp(cmd string) error {
+	var out []string
+	capturing := false
+	for _, line := range strings.Split(usage, "\n") {
+		switch {
+		case strings.HasPrefix(line, "  nc "+cmd+" ") || line == "  nc "+cmd:
+			capturing = true
+			out = append(out, line)
+		case capturing && strings.HasPrefix(line, "    "):
+			out = append(out, line)
+		default:
+			capturing = false
+		}
+	}
+	if len(out) == 0 {
+		return fmt.Errorf("unknown command %q\n\n%s", cmd, usage)
+	}
+	fmt.Println(strings.Join(out, "\n"))
+	return nil
+}
+
+func dispatch(cmd, root string, rest []string) error {
 	switch cmd {
 	case "migrate":
 		return cmdDatabase(root, rest, false)
@@ -402,6 +446,7 @@ func cmdNext(root string) error {
 	if err != nil {
 		return err
 	}
+	defer prog.Close()
 	now := time.Now()
 	p, reason, ok := prog.Next(cat.Problems, now)
 	if !ok {
@@ -427,6 +472,7 @@ func cmdStart(root string, args []string) error {
 	if err != nil {
 		return err
 	}
+	defer prog.Close()
 	p, err := resolve(cat, args)
 	if err != nil {
 		return err
@@ -511,6 +557,7 @@ func cmdStatus(root string, args []string) error {
 	if err != nil {
 		return err
 	}
+	defer prog.Close()
 	p, err := resolve(cat, args[:len(args)-1])
 	if err != nil {
 		return err
@@ -605,6 +652,7 @@ func cmdRateUndo(root string, args []string) error {
 	if err != nil {
 		return err
 	}
+	defer prog.Close()
 	p, err := resolve(cat, args)
 	if err != nil {
 		return err
@@ -651,6 +699,7 @@ func cmdRate(root string, args []string) error {
 	if err != nil {
 		return err
 	}
+	defer prog.Close()
 	p, err := resolve(cat, args[:len(args)-1])
 	if err != nil {
 		return err
@@ -732,6 +781,7 @@ func cmdHistory(root string, args []string) error {
 	if err != nil {
 		return err
 	}
+	defer prog.Close()
 	p, err := resolve(cat, args)
 	if err != nil {
 		return err
@@ -793,6 +843,7 @@ func cmdTime(root string, args []string) error {
 	if err != nil {
 		return err
 	}
+	defer prog.Close()
 	p, err := resolve(cat, args[:len(args)-1])
 	if err != nil {
 		return err
@@ -819,6 +870,7 @@ func cmdReview(root string, args []string) error {
 	if err != nil {
 		return err
 	}
+	defer prog.Close()
 	now := time.Now()
 	total := len(prog.DueReview(cat.Problems, now))
 	if total == 0 {
@@ -849,6 +901,7 @@ func cmdStats(root string) error {
 	if err != nil {
 		return err
 	}
+	defer prog.Close()
 	now := time.Now()
 	reports := prog.Patterns(cat.Problems, now)
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
@@ -890,6 +943,7 @@ func cmdInfo(root string, args []string) error {
 	if err != nil {
 		return err
 	}
+	defer prog.Close()
 	p, err := resolve(cat, args)
 	if err != nil {
 		return err
@@ -971,6 +1025,7 @@ func cmdResolve(root string, args []string) error {
 	if err != nil {
 		return err
 	}
+	defer prog.Close()
 	p, err := resolve(cat, args)
 	if err != nil {
 		return err
@@ -1081,6 +1136,7 @@ func cmdDrill(root string, args []string) error {
 	if err != nil {
 		return err
 	}
+	defer prog.Close()
 
 	pool := cat.Problems
 	if *pattern != "" {
@@ -1102,7 +1158,9 @@ func cmdDrill(root string, args []string) error {
 		switch st := prog.Get(p.Slug).Status; {
 		case *solved && (st == progress.Solved || st == progress.Shaky):
 			candidates = append(candidates, p)
-		case !*solved && st == progress.New:
+		case !*solved && (st == progress.New || st == progress.Attempted):
+			// Started but not finished is still unsolved; leaving those out
+			// made a pool of twenty open problems report "nothing left".
 			candidates = append(candidates, p)
 		}
 	}
@@ -1140,6 +1198,7 @@ func cmdWeak(root string, args []string) error {
 	if err != nil {
 		return err
 	}
+	defer prog.Close()
 	weak := prog.Weakest(cat.Problems, *limit)
 
 	if len(weak) == 0 {
@@ -1183,7 +1242,7 @@ func cmdUser(root string, args []string) error {
 	case "link":
 		return userLink(db, rest)
 	case "revoke":
-		return userSetLink(db, rest, false)
+		return userRevoke(db, rest)
 	case "rm":
 		return userRemove(db, rest)
 	default:
@@ -1235,16 +1294,32 @@ func parseWithPositional(fs *flag.FlagSet, args []string) ([]string, error) {
 	}
 }
 
-func userFlags(name string, args []string) (names []string, base *string, budget *float64, err error) {
+// userFlags parses the flags add and link share. budget is nil unless --budget
+// was given, so link can tell "leave it" from "set it to the default".
+func userFlags(name string, args []string, defaultBudget float64) (names []string, base *string, budget *float64, err error) {
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	base = fs.String("base-url", "http://127.0.0.1:8150", "site address the join link points at")
-	budget = fs.Float64("budget", 5, "monthly tutor ceiling in dollars, 0 for none")
+	b := fs.Float64("budget", defaultBudget, "monthly tutor ceiling in dollars, 0 for none")
 	names, err = parseWithPositional(fs, args)
-	return names, base, budget, err
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == "budget" {
+			budget = b
+		}
+	})
+	if budget == nil && name == "user add" {
+		budget = b
+	}
+	if budget != nil && (*budget < 0 || math.IsNaN(*budget) || math.IsInf(*budget, 0)) {
+		return nil, nil, nil, fmt.Errorf("--budget must be a finite number greater than or equal to 0")
+	}
+	return names, base, budget, nil
 }
 
 func userAdd(db *studydb.DB, args []string) error {
-	names, base, budget, err := userFlags("user add", args)
+	names, base, budget, err := userFlags("user add", args, 5)
 	if err != nil {
 		return err
 	}
@@ -1252,9 +1327,6 @@ func userAdd(db *studydb.DB, args []string) error {
 		return fmt.Errorf("expected one name")
 	}
 	name := names[0]
-	if *budget < 0 || math.IsNaN(*budget) || math.IsInf(*budget, 0) {
-		return fmt.Errorf("--budget must be a finite number greater than or equal to 0")
-	}
 	token := crand.Text()
 	u, err := db.CreateUser(name, studydb.HashToken(token), *budget, time.Now())
 	if err != nil {
@@ -1265,9 +1337,11 @@ func userAdd(db *studydb.DB, args []string) error {
 	return nil
 }
 
-// userLink issues a new link, which also invalidates the previous one.
+// userLink issues a new link, which also invalidates the previous one. It is
+// also where a budget gets changed, since reissuing is the one time an operator
+// has the person's row in front of them.
 func userLink(db *studydb.DB, args []string) error {
-	names, base, _, err := userFlags("user link", args)
+	names, base, budget, err := userFlags("user link", args, 0)
 	if err != nil {
 		return err
 	}
@@ -1277,6 +1351,12 @@ func userLink(db *studydb.DB, args []string) error {
 	u, err := findUser(db, names[0])
 	if err != nil {
 		return err
+	}
+	if budget != nil {
+		if err := db.SetUserBudget(u.ID, *budget); err != nil {
+			return err
+		}
+		fmt.Printf("%s's monthly tutor ceiling is now $%.2f.\n", u.Name, *budget)
 	}
 	token := crand.Text()
 	if err := db.SetUserToken(u.ID, token); err != nil {
@@ -1294,7 +1374,7 @@ func printJoinLink(base, token string) {
 	fmt.Println("issue another with `nc user link`.")
 }
 
-func userSetLink(db *studydb.DB, args []string, enable bool) error {
+func userRevoke(db *studydb.DB, args []string) error {
 	if len(args) != 1 {
 		return fmt.Errorf("expected one name")
 	}

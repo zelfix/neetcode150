@@ -11,10 +11,19 @@ import (
 	"neetcode150/internal/testbank"
 )
 
+// jsonValue rounds a Go value through JSON so that []int and []any, or a
+// struct and a map, compare by content. A value JSON cannot carry (NaN, a
+// channel) used to come back nil and fail the comparison with no hint why;
+// the panic is caught by checkCase and reported as the case's error.
 func jsonValue(v any) any {
-	b, _ := json.Marshal(v)
+	b, err := json.Marshal(v)
+	if err != nil {
+		panic(fmt.Sprintf("testkit: cannot compare a %T: %v", v, err))
+	}
 	var out any
-	_ = json.Unmarshal(b, &out)
+	if err := json.Unmarshal(b, &out); err != nil {
+		panic(fmt.Sprintf("testkit: cannot compare a %T: %v", v, err))
+	}
 	return out
 }
 

@@ -71,20 +71,32 @@ go run ./cmd/nc time <ref> <minutes>  # log time spent, if the clock missed it
 go run ./cmd/nc resolve <ref>         # archive the solution, reset it for a cold re-solve
 go run ./cmd/nc diff <ref>            # last archived attempt vs the current one
 go run ./cmd/nc drill [--pattern p]   # a problem at random, pattern withheld
+                                      #   --solved draws from solved ones, for retrieval practice
 go run ./cmd/nc weak [-n 10]          # what is least secure, and why
 go run ./cmd/nc review [--limit 8]    # what is due, most overdue first
 go run ./cmd/nc stats                 # progress by pattern, and how securely each is held
 go run ./cmd/nc history <ref>         # every rating one problem has had
+go run ./cmd/nc notes <ref>           # the user's notes; --file <path> replaces them
+go run ./cmd/nc hints <ref>           # the recorded hint ladder; --file <path> replaces it
+go run ./cmd/nc log                   # the study log; --append-file <path> adds an entry
 go run ./cmd/nc fetch [--force]       # download statements and signatures
 go run ./cmd/nc serve [--port 8150]   # the study site, incl. the browser workspace
+                                      #   --host <addr> to listen beyond loopback
                                       #   --tutor-provider claude|codex|deepseek
+                                      #   --tutor-mode full|tutor (what the agent may touch)
                                       #   --tutor-model <name>, DEEPSEEK_API_KEY from the env
+                                      #   --tutor-budget <usd>, a per-session cap (claude only)
                                       #   --sandbox auto|docker|local, --max-runs <n>
 go run ./cmd/nc user list             # who can reach the site
 go run ./cmd/nc user add <name>       # invite someone; prints their join link once
+                                      #   --budget <usd> sets their monthly tutor ceiling
 go run ./cmd/nc user link <name>      # issue a new link, invalidating the old one
+                                      #   --budget <usd> changes the ceiling at the same time
 go run ./cmd/nc user revoke <name>    # stop a link working, keeping their work
 go run ./cmd/nc user rm <name> --yes  # delete someone and everything of theirs
+go run ./cmd/nc migrate               # import legacy JSON/Markdown into SQLite once
+go run ./cmd/nc backup <file.sqlite3> # a consistent copy of the database
+go run ./cmd/nc <command> --help      # that command's line and flags
 ```
 
 The site's Coach page at `/coach/` reports what is not secure yet: the share of problems
