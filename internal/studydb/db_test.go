@@ -143,7 +143,7 @@ func TestVersionOneWithoutSubmissionKeyUpgradesWithoutLosingData(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ref, err := db.Owner().Archive("two-sum", "existing snapshot", time.Now())
+	ref, err := db.Owner().Archive("two-sum", "go", "existing snapshot", time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -197,7 +197,7 @@ PRAGMA user_version=1;`); err != nil {
 	}
 	insert := func() error {
 		return db.Write(func(tx *sql.Tx) error {
-			_, err := InsertAttempt(tx, OwnerID, "two-sum", "new snapshot", nil, time.Now(), "submission-token")
+			_, err := InsertAttempt(tx, OwnerID, "two-sum", "go", "new snapshot", nil, time.Now(), "submission-token")
 			return err
 		})
 	}

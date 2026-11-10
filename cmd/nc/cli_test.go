@@ -172,3 +172,85 @@ func TestExportWritesOnePersonsDataOnce(t *testing.T) {
 		t.Error("an unknown name was exported")
 	}
 }
+
+// The language a problem is worked in is decided once, here, and everything
+// after reads it back: a Python start writes Python files and records the
+// choice, while the owner's default covers problems that never chose.
+func TestStartInPythonRecordsTheChoiceAndWritesPythonFiles(t *testing.T) {
+	root := t.TempDir()
+	writeCatalog(t, root)
+	writeSignatures(t, root)
+
+	if err := cmdStart(root, []string{"two-sum", "--lang", "python"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"solution.py", "test_solution.py", "practice_cases.py"} {
+		if _, err := os.Stat(filepath.Join(root, "solutions/0001-two-sum", name)); err != nil {
+			t.Errorf("%s was not written: %v", name, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(root, "solutions/0001-two-sum/solution.go")); err == nil {
+		t.Error("a Python start wrote a Go file")
+	}
+	if e := entry(t, root, "two-sum"); e.Lang != "python" || e.Status != progress.Attempted {
+		t.Errorf("entry = lang %q status %s", e.Lang, e.Status)
+	}
+
+	// The owner's default applies to a problem with no choice of its own.
+	if err := cmdUser(root, []string{"lang", "owner", "python"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := cmdStart(root, []string{"valid-anagram"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "solutions/0242-valid-anagram/solution.py")); err != nil {
+		t.Errorf("the default language was not applied: %v", err)
+	}
+	if e := entry(t, root, "valid-anagram"); e.Lang != "" {
+		t.Errorf("a default start recorded a per-problem language %q", e.Lang)
+	}
+	if err := cmdUser(root, []string{"lang", "owner", "cobol"}); err == nil {
+		t.Error("an unknown language was accepted")
+	}
+	// Info names the language, and a Python resolve archives a Python attempt.
+	out := capture(t, func() {
+		if err := cmdInfo(root, []string{"two-sum"}); err != nil {
+			t.Error(err)
+		}
+	})
+	if !strings.Contains(out, "language   Python") || !strings.Contains(out, "solution.py") {
+		t.Errorf("info did not name the language:\n%s", out)
+	}
+	if err := cmdResolve(root, []string{"two-sum"}); err != nil {
+		t.Fatal(err)
+	}
+	capture(t, func() {
+		if err := cmdDiff(root, []string{"two-sum"}); err != nil {
+			t.Errorf("diff after a python resolve: %v", err)
+		}
+	})
+}
+
+func writeSignatures(t *testing.T, root string) {
+	t.Helper()
+	for dir, files := range map[string]map[string]string{
+		"0001-two-sum": {
+			"signature.txt": "func twoSum(nums []int, target int) []int {\n    \n}\n",
+			"signature.py":  "class Solution:\n    def twoSum(self, nums: List[int], target: int) -> List[int]:\n        \n",
+		},
+		"0242-valid-anagram": {
+			"signature.txt": "func isAnagram(s string, t string) bool {\n    \n}\n",
+			"signature.py":  "class Solution:\n    def isAnagram(self, s: str, t: str) -> bool:\n        \n",
+		},
+	} {
+		full := filepath.Join(root, "content/problems", dir)
+		if err := os.MkdirAll(full, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		for name, body := range files {
+			if err := os.WriteFile(filepath.Join(full, name), []byte(body), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+}

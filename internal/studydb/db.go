@@ -18,7 +18,7 @@ import (
 
 const Filename = "study.sqlite3"
 
-const schemaVersion = 4
+const schemaVersion = 5
 
 // OwnerID is the first user. The CLI is the owner's own tool and always acts as
 // this id; the legacy import and every pre-multi-user row belong to it.
@@ -167,8 +167,37 @@ PRAGMA user_version=3;`)
 			}
 			version = 4
 		}
+		if version == 4 {
+			if err := migrateV5(tx); err != nil {
+				return err
+			}
+			if _, err := tx.Exec("PRAGMA user_version=5"); err != nil {
+				return err
+			}
+			version = 5
+		}
 		return nil
 	})
+}
+
+// migrateV5 adds the language dimension: a person's default and the language
+// each archived attempt was written in. Both default to Go, which is what
+// every row written before this step was, so an existing database changes
+// nothing about how it behaves. The schedule stays keyed by problem alone.
+func migrateV5(tx *sql.Tx) error {
+	for _, t := range []string{"users", "attempts"} {
+		has, err := hasColumn(tx, t, "language")
+		if err != nil {
+			return err
+		}
+		if has {
+			continue
+		}
+		if _, err := tx.Exec("ALTER TABLE " + t + " ADD COLUMN language TEXT NOT NULL DEFAULT 'go'"); err != nil {
+			return fmt.Errorf("schema v5 (%s): %w", t, err)
+		}
+	}
+	return nil
 }
 
 // migrateV4 adds the user dimension.
@@ -422,6 +451,7 @@ func (s *Scope) EnsureDocument(slug, kind, text string) error {
 type Attempt struct {
 	ID        int64
 	Slug      string
+	Language  string // "go" or "python"
 	CreatedAt time.Time
 	Code      string
 	Review    json.RawMessage
@@ -431,7 +461,10 @@ func (a Attempt) Ref() string { return fmt.Sprintf("attempt:%d", a.ID) }
 
 // InsertAttempt takes userID explicitly because it runs inside a caller's
 // transaction, where there is no Scope to carry it.
-func InsertAttempt(tx *sql.Tx, userID int64, slug, code string, review []byte, now time.Time, keys ...string) (string, error) {
+func InsertAttempt(tx *sql.Tx, userID int64, slug, language, code string, review []byte, now time.Time, keys ...string) (string, error) {
+	if language == "" {
+		language = "go"
+	}
 	var report any
 	if len(review) > 0 {
 		report = string(review)
@@ -440,22 +473,22 @@ func InsertAttempt(tx *sql.Tx, userID int64, slug, code string, review []byte, n
 	if len(keys) > 0 && keys[0] != "" {
 		key = keys[0]
 	}
-	res, err := tx.Exec("INSERT INTO attempts(user_id,slug,created_at,code,review,submission_key) VALUES(?,?,?,?,?,?)", userID, slug, now.Format(time.RFC3339Nano), code, report, key)
+	res, err := tx.Exec("INSERT INTO attempts(user_id,slug,language,created_at,code,review,submission_key) VALUES(?,?,?,?,?,?,?)", userID, slug, language, now.Format(time.RFC3339Nano), code, report, key)
 	if err != nil {
 		return "", err
 	}
 	id, err := res.LastInsertId()
 	return fmt.Sprintf("attempt:%d", id), err
 }
-func (s *Scope) Archive(slug, code string, now time.Time) (ref string, err error) {
+func (s *Scope) Archive(slug, language, code string, now time.Time) (ref string, err error) {
 	err = s.db.Write(func(tx *sql.Tx) error {
-		ref, err = InsertAttempt(tx, s.userID, slug, code, nil, now)
+		ref, err = InsertAttempt(tx, s.userID, slug, language, code, nil, now)
 		return err
 	})
 	return
 }
 func (s *Scope) Attempts(slug string) ([]Attempt, error) {
-	rows, err := s.db.SQL.Query("SELECT id,slug,created_at,code,review FROM attempts WHERE user_id=? AND slug=? ORDER BY id", s.userID, slug)
+	rows, err := s.db.SQL.Query("SELECT id,slug,language,created_at,code,review FROM attempts WHERE user_id=? AND slug=? ORDER BY id", s.userID, slug)
 	if err != nil {
 		return nil, err
 	}
@@ -465,7 +498,7 @@ func (s *Scope) Attempts(slug string) ([]Attempt, error) {
 		var a Attempt
 		var created string
 		var review sql.NullString
-		if err := rows.Scan(&a.ID, &a.Slug, &created, &a.Code, &review); err != nil {
+		if err := rows.Scan(&a.ID, &a.Slug, &a.Language, &created, &a.Code, &review); err != nil {
 			return nil, err
 		}
 		a.CreatedAt, err = time.Parse(time.RFC3339Nano, created)
@@ -488,7 +521,7 @@ func (s *Scope) Attempt(ref string) (Attempt, error) {
 	var created string
 	var review sql.NullString
 	id := strings.TrimPrefix(ref, "attempt:")
-	err := s.db.SQL.QueryRow("SELECT id,slug,created_at,code,review FROM attempts WHERE id=? AND user_id=?", id, s.userID).Scan(&a.ID, &a.Slug, &created, &a.Code, &review)
+	err := s.db.SQL.QueryRow("SELECT id,slug,language,created_at,code,review FROM attempts WHERE id=? AND user_id=?", id, s.userID).Scan(&a.ID, &a.Slug, &a.Language, &created, &a.Code, &review)
 	if err != nil {
 		return a, err
 	}

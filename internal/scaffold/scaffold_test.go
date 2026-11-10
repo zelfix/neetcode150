@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"neetcode150/internal/catalog"
+	"neetcode150/internal/lang"
 	"neetcode150/internal/studydb"
 	"neetcode150/internal/workspace"
 )
@@ -214,18 +215,18 @@ func TestAttemptsKeepStableIDsAndSnapshots(t *testing.T) {
 	day := time.Date(2026, 10, 31, 12, 0, 0, 0, time.UTC)
 	var want []string
 	for i := 1; i <= 12; i++ {
-		path, err := ArchiveAttempt(ownerScope(t, root), p, []byte(fmt.Sprintf("attempt %d", i)), day)
+		path, err := ArchiveAttempt(ownerScope(t, root), p, lang.Of(lang.Go), []byte(fmt.Sprintf("attempt %d", i)), day)
 		if err != nil {
 			t.Fatal(err)
 		}
 		want = append(want, path)
 	}
 	// Creation order must not override the dates encoded in the filenames.
-	earlier, err := ArchiveAttempt(ownerScope(t, root), p, nil, day.AddDate(0, 0, -1))
+	earlier, err := ArchiveAttempt(ownerScope(t, root), p, lang.Of(lang.Go), nil, day.AddDate(0, 0, -1))
 	if err != nil {
 		t.Fatal(err)
 	}
-	later, err := ArchiveAttempt(ownerScope(t, root), p, nil, day.AddDate(0, 0, 1))
+	later, err := ArchiveAttempt(ownerScope(t, root), p, lang.Of(lang.Go), nil, day.AddDate(0, 0, 1))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -272,7 +273,7 @@ func TestCreateWritesFilesAndDoesNotOverwriteExisting(t *testing.T) {
 	root := t.TempDir()
 	lay := workspace.Owner(root)
 
-	written, f, err := Create(ownerScope(t, root), lay, fakeProblem, fakeSignature, "")
+	written, f, err := Create(ownerScope(t, root), lay, fakeProblem, lang.Of(lang.Go), fakeSignature, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -306,7 +307,7 @@ func TestCreateWritesFilesAndDoesNotOverwriteExisting(t *testing.T) {
 	}
 
 	// A second Create must not touch the modified solution.go.
-	written2, _, err := Create(ownerScope(t, root), lay, fakeProblem, fakeSignature, "")
+	written2, _, err := Create(ownerScope(t, root), lay, fakeProblem, lang.Of(lang.Go), fakeSignature, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -330,7 +331,7 @@ func TestResetArchivesCurrentSolutionAndWritesFreshScaffold(t *testing.T) {
 	now := time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC)
 
 	// Create an initial workspace so solution.go exists on disk.
-	if _, _, err := Create(ownerScope(t, root), lay, fakeProblem, fakeSignature, ""); err != nil {
+	if _, _, err := Create(ownerScope(t, root), lay, fakeProblem, lang.Of(lang.Go), fakeSignature, ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -341,7 +342,7 @@ func TestResetArchivesCurrentSolutionAndWritesFreshScaffold(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	archive, _, err := Reset(ownerScope(t, root), lay, fakeProblem, fakeSignature, "", now)
+	archive, _, err := Reset(ownerScope(t, root), lay, fakeProblem, lang.Of(lang.Go), fakeSignature, "", now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -378,7 +379,7 @@ func TestResetArchivesCurrentSolutionAndWritesFreshScaffold(t *testing.T) {
 
 	// Resetting a workspace that has no solution.go must fail.
 	emptyRoot := t.TempDir()
-	if _, _, err := Reset(ownerScope(t, emptyRoot), workspace.Owner(emptyRoot), fakeProblem, fakeSignature, "", now); err == nil {
+	if _, _, err := Reset(ownerScope(t, emptyRoot), workspace.Owner(emptyRoot), fakeProblem, lang.Of(lang.Go), fakeSignature, "", now); err == nil {
 		t.Error("Reset with no solution.go returned nil error")
 	}
 }

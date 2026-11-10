@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"neetcode150/internal/catalog"
+	"neetcode150/internal/lang"
 	"neetcode150/internal/testbank"
 	"neetcode150/internal/workspace"
 )
@@ -112,14 +113,14 @@ func TestAddingPracticeTestsPreservesWork(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	written, err := EnsurePracticeTests(workspace.Owner(root), twoSum)
+	written, err := EnsurePracticeTests(workspace.Owner(root), twoSum, lang.Of(lang.Go))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(written) != 1 {
 		t.Fatalf("created %v", written)
 	}
-	written, err = EnsurePracticeTests(workspace.Owner(root), twoSum)
+	written, err = EnsurePracticeTests(workspace.Owner(root), twoSum, lang.Of(lang.Go))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -136,7 +137,7 @@ func TestAddingPracticeTestsPreservesWork(t *testing.T) {
 		}
 	}
 	root2 := t.TempDir()
-	if paths, err := EnsurePracticeTests(workspace.Owner(root2), twoSum); err != nil || len(paths) > 0 {
+	if paths, err := EnsurePracticeTests(workspace.Owner(root2), twoSum, lang.Of(lang.Go)); err != nil || len(paths) > 0 {
 		t.Fatalf("unstarted: %v %v", paths, err)
 	}
 	if _, err := os.Stat(filepath.Join(root2, "solutions")); !os.IsNotExist(err) {

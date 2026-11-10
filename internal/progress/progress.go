@@ -119,6 +119,11 @@ type Entry struct {
 	MinutesSpent int        `json:"minutesSpent,omitempty"`
 	History      []Review   `json:"history,omitempty"`
 
+	// Lang is the language this problem is being worked in, when it was
+	// chosen for the problem itself; empty means the person's default. The
+	// schedule above does not depend on it.
+	Lang string `json:"lang,omitempty"`
+
 	// AttemptStartedAt is the clock for the sitting in progress, so time spent
 	// is measured rather than remembered. Rate consumes and clears it.
 	AttemptStartedAt *time.Time `json:"attemptStartedAt,omitempty"`
@@ -296,6 +301,12 @@ func (s *Store) Update(slug string, fn func(*Entry)) (e Entry, err error) {
 
 // SetStatus records a status change, keeping the review schedule consistent:
 // a first solve enters the ladder, and marking something shaky pulls it back.
+// SetLanguage records the language a problem is worked in; empty clears the
+// choice back to the person's default.
+func (s *Store) SetLanguage(slug, lang string) (Entry, error) {
+	return s.Update(slug, func(e *Entry) { e.Lang = lang })
+}
+
 func (s *Store) SetStatus(slug string, status Status, now time.Time) (Entry, error) {
 	return s.Update(slug, func(e *Entry) {
 		prev := e.Status

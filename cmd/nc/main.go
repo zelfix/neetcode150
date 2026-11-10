@@ -23,6 +23,7 @@ import (
 	"neetcode150/internal/catalog"
 	"neetcode150/internal/content"
 	"neetcode150/internal/fetcher"
+	"neetcode150/internal/lang"
 	"neetcode150/internal/progress"
 	"neetcode150/internal/scaffold"
 	"neetcode150/internal/studydb"
@@ -38,20 +39,23 @@ Usage:
   nc migrate                   import existing personal data into SQLite once
   nc backup <file.sqlite3>      create a consistent database backup
   nc export <name> <file.json>  one person's progress, notes, attempts and tutor transcripts
-  nc user list|add|link|revoke|rm   who can reach the site (--base-url, --budget)
+  nc user list|add|link|revoke|rm   who can reach the site (--base-url, --budget, --lang)
                                link --budget <usd> also changes their monthly ceiling
+  nc user lang <name> <go|python>   the language their problems default to
   nc notes <problem>           read notes (--file path to replace)
   nc hints <problem>           read hint ladder (--file path to replace)
   nc log                       read the study log (--append-file path to append)
-  nc fetch [--force]           download the problem list, statements and Go signatures
+  nc fetch [--force]           download the problem list, statements and signatures
   nc serve [--port 8150]       serve the study site and the tutor panel
                                --tutor-provider claude|codex|deepseek
                                --tutor-mode full|tutor, --tutor-model <name>
                                --tutor-rates <file.json> replaces the DeepSeek price list
                                --sandbox auto|docker|local, --max-runs <n>
   nc next                      what to work on now
-  nc start <problem>           scaffold the Go solution and notes, mark it in progress
+  nc start <problem>           scaffold the solution and notes, mark it in progress
+                               --lang go|python chooses the language for this problem
   nc tests <problem>|--all     add example and corner-case tests to existing workspaces
+                               --lang go|python picks which workspace (default go)
   nc status <problem> <state>  set state: new | attempted | solved | shaky
   nc rate <problem> <1-5>      record how it went and reschedule the review
                                --rung <0-5> notes the highest hint you needed
@@ -517,7 +521,7 @@ func cmdNext(root string) error {
 	fmt.Printf("  %s · %s · %s\n", p.Difficulty, p.Pattern, reason)
 	fmt.Printf("  slug      %s\n", p.Slug)
 	fmt.Printf("  statement %s/problem.md\n", p.ContentDir())
-	fmt.Printf("  solution  %s\n", workspace.Owner(root).Rel(p, "solution.go"))
+	fmt.Printf("  solution  %s\n", workspace.Owner(root).Rel(p, languageFor(prog, p.Slug).SolutionFile))
 	fmt.Printf("  state     %s", e.Status.Label())
 	if e.Attempts > 0 {
 		fmt.Printf(", %s", plural(e.Attempts, "attempt", "attempts"))
@@ -527,18 +531,36 @@ func cmdNext(root string) error {
 }
 
 func cmdStart(root string, args []string) error {
+	fs := flag.NewFlagSet("start", flag.ContinueOnError)
+	langFlag := fs.String("lang", "", "go or python; the default is the owner's setting")
+	refArgs, err := parseWithPositional(fs, args)
+	if err != nil {
+		return err
+	}
 	cat, prog, err := load(root)
 	if err != nil {
 		return err
 	}
 	defer prog.Close()
-	p, err := resolve(cat, args)
+	p, err := resolve(cat, refArgs)
 	if err != nil {
 		return err
 	}
+	if *langFlag != "" {
+		chosen, err := lang.Parse(*langFlag)
+		if err != nil {
+			return err
+		}
+		// Recorded before anything is written, so the site and later
+		// commands agree on which workspace this problem means.
+		if _, err := prog.SetLanguage(p.Slug, string(chosen.ID)); err != nil {
+			return err
+		}
+	}
+	l := languageFor(prog, p.Slug)
 
-	signature, statement := problemInputs(root, p)
-	written, files, err := scaffold.Create(prog.Scope(), workspace.Owner(root), p, signature, statement)
+	signature, statement := problemInputs(root, p, l)
+	written, files, err := scaffold.Create(prog.Scope(), workspace.Owner(root), p, l, signature, statement)
 	if err != nil {
 		return err
 	}
@@ -551,7 +573,7 @@ func cmdStart(root string, args []string) error {
 		return err
 	}
 
-	fmt.Printf("%d. %s — %s, %s\n", p.ID, p.Title, p.Difficulty, p.Pattern)
+	fmt.Printf("%d. %s — %s, %s (%s)\n", p.ID, p.Title, p.Difficulty, p.Pattern, l.Label)
 	if len(written) == 0 {
 		fmt.Println("  files already exist, left untouched")
 	}
@@ -565,24 +587,39 @@ func cmdStart(root string, args []string) error {
 	case files.TableDriven:
 		fmt.Printf("  entry point %s() — the test is a table, fill in the cases\n", files.FuncName)
 	case strings.TrimSpace(string(signature)) == "":
-		fmt.Println("  no Go signature on file — write the entry point yourself")
+		fmt.Printf("  no %s signature on file — write the entry point yourself\n", l.Label)
 	default:
 		fmt.Println("  the test is a plain skeleton — this one is not one function with one result")
 	}
 	fmt.Printf("  read   %s/problem.md\n", p.ContentDir())
-	fmt.Printf("  test   go test %s\n", workspace.Owner(root).Pattern(p))
+	if l.ID == lang.Go {
+		fmt.Printf("  test   go test %s\n", workspace.Owner(root).Pattern(p))
+	} else {
+		fmt.Printf("  test   %s %s\n", l.RunHint, workspace.Owner(root).PkgDir(p))
+	}
 	return nil
 }
 
 // cmdTests only writes tests: it does not open or change personal study data.
 func cmdTests(root string, args []string) error {
+	fs := flag.NewFlagSet("tests", flag.ContinueOnError)
+	all := fs.Bool("all", false, "every workspace that exists")
+	langFlag := fs.String("lang", "go", "which language's workspaces: go or python")
+	rest, err := parseWithPositional(fs, args)
+	if err != nil {
+		return err
+	}
+	l, err := lang.Parse(*langFlag)
+	if err != nil {
+		return err
+	}
 	cat, err := catalog.Load(catalogPath(root))
 	if err != nil {
 		return err
 	}
 	problems := cat.Problems
-	if len(args) != 1 || args[0] != "--all" {
-		p, err := resolve(cat, args)
+	if !*all {
+		p, err := resolve(cat, rest)
 		if err != nil {
 			return err
 		}
@@ -590,7 +627,7 @@ func cmdTests(root string, args []string) error {
 	}
 	added := 0
 	for _, p := range problems {
-		paths, err := scaffold.EnsurePracticeTests(workspace.Owner(root), p)
+		paths, err := scaffold.EnsurePracticeTests(workspace.Owner(root), p, l)
 		if err != nil {
 			return err
 		}
@@ -1018,8 +1055,14 @@ func cmdInfo(root string, args []string) error {
 	fmt.Printf("  statement  %s/problem.md\n", p.ContentDir())
 	fmt.Printf("  hints      nc hints %s (SQLite)\n", p.Slug)
 	fmt.Printf("  notes      nc notes %s (SQLite)\n", p.Slug)
-	fmt.Printf("  signature  %s/signature.txt\n", p.ContentDir())
-	fmt.Printf("  solution   %s\n", workspace.Owner(root).Rel(p, "solution.go"))
+	l := languageFor(prog, p.Slug)
+	fmt.Printf("  language   %s", l.Label)
+	if e.Lang == "" {
+		fmt.Print(" (your default)")
+	}
+	fmt.Println()
+	fmt.Printf("  signature  %s/%s\n", p.ContentDir(), l.SignatureFile)
+	fmt.Printf("  solution   %s\n", workspace.Owner(root).Rel(p, l.SolutionFile))
 	fmt.Printf("  leetcode   %s\n", p.LeetCodeURL)
 	if u := p.VideoURL(); u != "" {
 		fmt.Printf("  walkthrough %s\n", u)
@@ -1064,11 +1107,21 @@ func bar(done, total int) string {
 // problemInputs reads the two files a scaffold is generated from. A missing
 // file is not an error: a scaffold without a signature still gives you
 // somewhere to write, and `nc fetch` fills the gap later.
-func problemInputs(root string, p catalog.Problem) (signature, statement string) {
-	sig, _ := os.ReadFile(filepath.Join(root, p.ContentDir(), "signature.txt"))
+func problemInputs(root string, p catalog.Problem, l lang.Lang) (signature, statement string) {
+	sig, _ := os.ReadFile(filepath.Join(root, p.ContentDir(), l.SignatureFile))
 	raw, _ := os.ReadFile(filepath.Join(root, p.ContentDir(), "problem.md"))
 	_, body := content.SplitFrontmatter(string(raw))
 	return string(sig), body
+}
+
+// languageFor is the CLI's one call to the resolution rule: the problem's own
+// choice, else the owner's default. The CLI always acts as the owner.
+func languageFor(prog *progress.Store, slug string) lang.Lang {
+	user, err := prog.DB().User(studydb.OwnerID)
+	if err != nil {
+		return lang.Resolve(prog.Get(slug).Lang, "")
+	}
+	return lang.Resolve(prog.Get(slug).Lang, user.Language)
 }
 
 // ---------- re-solving ----------
@@ -1091,8 +1144,9 @@ func cmdResolve(root string, args []string) error {
 	}
 
 	now := time.Now()
-	signature, statement := problemInputs(root, p)
-	archive, _, err := scaffold.Reset(prog.Scope(), workspace.Owner(root), p, signature, statement, now)
+	l := languageFor(prog, p.Slug)
+	signature, statement := problemInputs(root, p, l)
+	archive, _, err := scaffold.Reset(prog.Scope(), workspace.Owner(root), p, l, signature, statement, now)
 	if err != nil {
 		return fmt.Errorf("%w — `nc start %s` starts a first attempt", err, p.Slug)
 	}
@@ -1107,7 +1161,7 @@ func cmdResolve(root string, args []string) error {
 	rel := archive
 	fmt.Printf("%d. %s — %s, %s\n", p.ID, p.Title, p.Difficulty, p.Pattern)
 	fmt.Printf("  archived %s\n", filepath.ToSlash(rel))
-	fmt.Printf("  reset    %s\n", workspace.Owner(root).Rel(p, "solution.go"))
+	fmt.Printf("  reset    %s\n", workspace.Owner(root).Rel(p, l.SolutionFile))
 	fmt.Println("  the test file is left alone — it holds the cases, not the approach")
 	fmt.Println()
 	fmt.Println("  Solve it cold. Do not open the archive until the test passes;")
@@ -1127,21 +1181,29 @@ func cmdDiff(root string, args []string) error {
 	if err != nil {
 		return err
 	}
-	attempts, err := scaffold.Attempts(prog.Scope(), p)
+	l := languageFor(prog, p.Slug)
+	all, err := prog.Scope().Attempts(p.Slug)
 	if err != nil {
 		return err
+	}
+	// A Go attempt against a Python solution is noise, not a diff.
+	var attempts []studydb.Attempt
+	for _, a := range all {
+		if lang.Of(lang.ID(a.Language)).ID == l.ID {
+			attempts = append(attempts, a)
+		}
 	}
 	if len(attempts) == 0 {
+		if len(all) > 0 {
+			return fmt.Errorf("no archived %s attempts for %s (%s in another language) — `nc resolve %s` archives one",
+				l.Label, p.Slug, plural(len(all), "attempt", "attempts"), p.Slug)
+		}
 		return fmt.Errorf("no archived attempts for %s — `nc resolve %s` archives one", p.Slug, p.Slug)
 	}
-	previous := attempts[len(attempts)-1]
-
-	oldAttempt, err := scaffold.ReadAttempt(prog.Scope(), previous)
+	oldAttempt := attempts[len(attempts)-1]
+	previous := oldAttempt.Ref()
 	oldSrc := []byte(oldAttempt.Code)
-	if err != nil {
-		return err
-	}
-	newSrc, err := os.ReadFile(workspace.Owner(root).Path(p, "solution.go"))
+	newSrc, err := os.ReadFile(workspace.Owner(root).Path(p, l.SolutionFile))
 	if err != nil {
 		return err
 	}
@@ -1150,6 +1212,9 @@ func cmdDiff(root string, args []string) error {
 	fmt.Printf("%d. %s — %s against the current solution\n", p.ID, p.Title, filepath.ToSlash(rel))
 	if len(attempts) > 1 {
 		fmt.Printf("  (%s archived in total)\n", plural(len(attempts), "attempt", "attempts"))
+	}
+	if skipped := len(all) - len(attempts); skipped > 0 {
+		fmt.Printf("  (%s in another language skipped)\n", plural(skipped, "attempt", "attempts"))
 	}
 	fmt.Println()
 
@@ -1302,6 +1367,8 @@ func cmdUser(root string, args []string) error {
 		return userLink(db, rest)
 	case "revoke":
 		return userRevoke(db, rest)
+	case "lang":
+		return userLang(db, rest)
 	case "rm":
 		return userRemove(db, rest)
 	default:
@@ -1314,7 +1381,7 @@ func userList(db *studydb.DB) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("%-4s %-16s %-6s %-9s %-9s %s\n", "id", "name", "link", "budget", "spent", "state")
+	fmt.Printf("%-4s %-16s %-6s %-9s %-9s %-8s %s\n", "id", "name", "link", "budget", "spent", "lang", "state")
 	for _, u := range users {
 		link := "no"
 		if u.HasToken {
@@ -1328,7 +1395,7 @@ func userList(db *studydb.DB) error {
 		if u.BudgetUSD > 0 {
 			budget = fmt.Sprintf("$%.2f", u.BudgetUSD)
 		}
-		fmt.Printf("%-4d %-16s %-6s %-9s $%-8.2f %s\n", u.ID, u.Name, link, budget, u.SpendUSD, state)
+		fmt.Printf("%-4d %-16s %-6s %-9s $%-8.2f %-8s %s\n", u.ID, u.Name, link, budget, u.SpendUSD, lang.Of(lang.ID(u.Language)).ID, state)
 	}
 	if len(users) == 1 {
 		fmt.Println("\nOnly the owner exists. `nc user add <name>` invites someone.")
@@ -1356,12 +1423,26 @@ func parseWithPositional(fs *flag.FlagSet, args []string) ([]string, error) {
 // userFlags parses the flags add and link share. budget is nil unless --budget
 // was given, so link can tell "leave it" from "set it to the default".
 func userFlags(name string, args []string, defaultBudget float64) (names []string, base *string, budget *float64, err error) {
+	names, base, budget, _, err = userFlagsWithLang(name, args, defaultBudget)
+	return
+}
+
+// userFlagsWithLang also parses --lang; language is nil unless it was given.
+func userFlagsWithLang(name string, args []string, defaultBudget float64) (names []string, base *string, budget *float64, language *lang.Lang, err error) {
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	base = fs.String("base-url", "http://127.0.0.1:8150", "site address the join link points at")
 	b := fs.Float64("budget", defaultBudget, "monthly tutor ceiling in dollars, 0 for none")
+	langFlag := fs.String("lang", "", "the language their problems default to: go or python")
 	names, err = parseWithPositional(fs, args)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
+	}
+	if *langFlag != "" {
+		l, err := lang.Parse(*langFlag)
+		if err != nil {
+			return nil, nil, nil, nil, err
+		}
+		language = &l
 	}
 	fs.Visit(func(f *flag.Flag) {
 		if f.Name == "budget" {
@@ -1372,13 +1453,13 @@ func userFlags(name string, args []string, defaultBudget float64) (names []strin
 		budget = b
 	}
 	if budget != nil && (*budget < 0 || math.IsNaN(*budget) || math.IsInf(*budget, 0)) {
-		return nil, nil, nil, fmt.Errorf("--budget must be a finite number greater than or equal to 0")
+		return nil, nil, nil, nil, fmt.Errorf("--budget must be a finite number greater than or equal to 0")
 	}
-	return names, base, budget, nil
+	return names, base, budget, language, nil
 }
 
 func userAdd(db *studydb.DB, args []string) error {
-	names, base, budget, err := userFlags("user add", args, 5)
+	names, base, budget, language, err := userFlagsWithLang("user add", args, 5)
 	if err != nil {
 		return err
 	}
@@ -1390,6 +1471,11 @@ func userAdd(db *studydb.DB, args []string) error {
 	u, err := db.CreateUser(name, studydb.HashToken(token), *budget, time.Now())
 	if err != nil {
 		return err
+	}
+	if language != nil {
+		if err := db.SetUserLanguage(u.ID, string(language.ID)); err != nil {
+			return err
+		}
 	}
 	fmt.Printf("%s is user %d.\n\n", u.Name, u.ID)
 	printJoinLink(*base, token)
@@ -1431,6 +1517,28 @@ func printJoinLink(base, token string) {
 	fmt.Println("Opening it once in a browser is the whole sign-in. Only its hash is")
 	fmt.Println("stored, so this is the one time it can be shown — send it now or")
 	fmt.Println("issue another with `nc user link`.")
+}
+
+// userLang sets the language a person's problems default to. A problem that
+// was started in the other language keeps it; this is the default, not a
+// migration.
+func userLang(db *studydb.DB, args []string) error {
+	if len(args) != 2 {
+		return fmt.Errorf("usage: nc user lang <name> <go|python>")
+	}
+	u, err := findUser(db, args[0])
+	if err != nil {
+		return err
+	}
+	l, err := lang.Parse(args[1])
+	if err != nil {
+		return err
+	}
+	if err := db.SetUserLanguage(u.ID, string(l.ID)); err != nil {
+		return err
+	}
+	fmt.Printf("%s's problems now default to %s. Problems already started keep their language.\n", u.Name, l.Label)
+	return nil
 }
 
 func userRevoke(db *studydb.DB, args []string) error {

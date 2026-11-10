@@ -18,6 +18,7 @@ import (
 	"database/sql"
 	"neetcode150/internal/catalog"
 	"neetcode150/internal/content"
+	"neetcode150/internal/lang"
 	"neetcode150/internal/progress"
 	"neetcode150/internal/scaffold"
 	"neetcode150/internal/studydb"
@@ -625,7 +626,7 @@ func (s *session) recordSubmission(p catalog.Problem, pending pendingSubmission,
 				return err
 			}
 		}
-		archive, err = studydb.InsertAttempt(tx, s.progress.UserID(), p.Slug, pending.Code, data, now, pending.Token)
+		archive, err = studydb.InsertAttempt(tx, s.progress.UserID(), p.Slug, string(lang.Go), pending.Code, data, now, pending.Token)
 		if err != nil {
 			return err
 		}
@@ -792,9 +793,9 @@ func (s *session) handleStartAttempt(w http.ResponseWriter, r *http.Request) {
 	var archive string
 	var err error
 	if _, statErr := os.Stat(solutionPath); statErr == nil {
-		archive, _, err = scaffold.Reset(s.progress.Scope(), s.work(), p, signature, statement, s.now())
+		archive, _, err = scaffold.Reset(s.progress.Scope(), s.work(), p, lang.Of(lang.Go), signature, statement, s.now())
 	} else if os.IsNotExist(statErr) {
-		_, _, err = scaffold.Create(s.progress.Scope(), s.work(), p, signature, statement)
+		_, _, err = scaffold.Create(s.progress.Scope(), s.work(), p, lang.Of(lang.Go), signature, statement)
 	} else {
 		err = statErr
 	}
@@ -880,7 +881,7 @@ func (s *session) handleCreateSolution(w http.ResponseWriter, r *http.Request) {
 	raw, _ := readIfPresent(filepath.Join(s.root, p.ContentDir(), "problem.md"))
 	_, statement := content.SplitFrontmatter(raw)
 
-	written, _, err := scaffold.Create(s.progress.Scope(), s.work(), p, signature, statement)
+	written, _, err := scaffold.Create(s.progress.Scope(), s.work(), p, lang.Of(lang.Go), signature, statement)
 	if err != nil {
 		s.fail(w, err)
 		return
@@ -1092,7 +1093,7 @@ func (s *session) handleResolve(w http.ResponseWriter, r *http.Request) {
 	_, statement := content.SplitFrontmatter(raw)
 
 	now := s.now()
-	archive, _, err := scaffold.Reset(s.progress.Scope(), s.work(), p, signature, statement, now)
+	archive, _, err := scaffold.Reset(s.progress.Scope(), s.work(), p, lang.Of(lang.Go), signature, statement, now)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusConflict)
 		return

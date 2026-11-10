@@ -31,7 +31,7 @@ func TestExportUserKeepsToOnePersonAndLeavesTheTokenOut(t *testing.T) {
 		if err := who.scope.SaveDocument("two-sum", "notes", who.notes); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := who.scope.Archive("two-sum", "package main\n", now); err != nil {
+		if _, err := who.scope.Archive("two-sum", "go", "package main\n", now); err != nil {
 			t.Fatal(err)
 		}
 	}

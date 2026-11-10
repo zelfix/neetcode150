@@ -6,9 +6,12 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"neetcode150/internal/catalog"
+	"neetcode150/internal/lang"
 	"neetcode150/internal/testbank"
+	"neetcode150/internal/workspace"
 )
 
 const pyListStub = `# Definition for singly-linked list.
@@ -206,5 +209,70 @@ func TestGeneratePythonProducesValidPython(t *testing.T) {
 	design := GeneratePython(catalog.Problem{ID: 146, Slug: "lru-cache", Dir: "0146-lru-cache"}, pyDesignStub, "")
 	if !strings.Contains(design.Test, "skipTest") || !strings.Contains(design.Practice, `"cls": "LRUCache"`) {
 		t.Errorf("design files:\n%s\n%s", design.Test, design.Practice)
+	}
+}
+
+// Starting a problem in Python beside its Go workspace adds the three Python
+// files and leaves the Go ones exactly as they were.
+func TestCreateInPythonLeavesTheGoWorkspaceAlone(t *testing.T) {
+	root := t.TempDir()
+	lay := workspace.Owner(root)
+	p := catalog.Problem{ID: 1, Slug: "two-sum", Title: "Two Sum", Dir: "0001-two-sum"}
+	goSig := "func twoSum(nums []int, target int) []int {\n    \n}\n"
+	pySig := "class Solution:\n    def twoSum(self, nums: List[int], target: int) -> List[int]:\n        \n"
+	if err := os.MkdirAll(filepath.Join(root, p.ContentDir()), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, p.ContentDir(), "signature.py"), []byte(pySig), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	scope := ownerScope(t, root)
+	if _, _, err := Create(scope, lay, p, lang.Of(lang.Go), goSig, ""); err != nil {
+		t.Fatal(err)
+	}
+	mine := "package twosum\n// my own work\n"
+	if err := os.WriteFile(lay.Path(p, "solution.go"), []byte(mine), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	written, f, err := Create(scope, lay, p, lang.Of(lang.Python), pySig, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, w := range written {
+		names = append(names, filepath.Base(w))
+	}
+	if strings.Join(names, ",") != "practice_cases.py,solution.py,test_solution.py" {
+		t.Errorf("python create wrote %v", names)
+	}
+	if f.PracticeCases == 0 {
+		t.Error("the Python scaffold carried no practice cases")
+	}
+	if got, _ := os.ReadFile(lay.Path(p, "solution.go")); string(got) != mine {
+		t.Error("the Go solution was touched")
+	}
+	// A second Python start is a no-op too, and so is `nc tests` afterwards.
+	if again, _, err := Create(scope, lay, p, lang.Of(lang.Python), pySig, ""); err != nil || len(again) != 0 {
+		t.Errorf("second python create: %v %v", again, err)
+	}
+	if added, err := EnsurePracticeTests(lay, p, lang.Of(lang.Python)); err != nil || len(added) != 0 {
+		t.Errorf("practice file written twice: %v %v", added, err)
+	}
+
+	// Reset archives the Python file as a Python attempt.
+	if err := os.WriteFile(lay.Path(p, "solution.py"), []byte("class Solution:\n    pass\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ref, _, err := Reset(scope, lay, p, lang.Of(lang.Python), pySig, "", time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, err := ReadAttempt(scope, ref)
+	if err != nil || a.Language != "python" || a.Code != "class Solution:\n    pass\n" {
+		t.Errorf("archived attempt = %+v, %v", a, err)
+	}
+	if got, _ := os.ReadFile(lay.Path(p, "solution.py")); !strings.Contains(string(got), "raise NotImplementedError") {
+		t.Error("reset did not put a fresh Python scaffold in place")
 	}
 }

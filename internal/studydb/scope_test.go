@@ -65,7 +65,7 @@ func TestScopesDoNotSeeEachOther(t *testing.T) {
 		if err := c.scope.SaveDocument("two-sum", "notes", c.mark+" notes"); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := c.scope.Archive("two-sum", c.mark+" code", now); err != nil {
+		if _, err := c.scope.Archive("two-sum", "go", c.mark+" code", now); err != nil {
 			t.Fatal(err)
 		}
 		if err := c.scope.SavePending("two-sum", []byte(`{"Code":"`+c.mark+`"}`)); err != nil {
@@ -176,7 +176,7 @@ func TestDeletingAUserRemovesEverythingOfTheirs(t *testing.T) {
 	if err := scope.SaveDocument("two-sum", "notes", "guest notes"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := scope.Archive("two-sum", "guest code", now); err != nil {
+	if _, err := scope.Archive("two-sum", "go", "guest code", now); err != nil {
 		t.Fatal(err)
 	}
 	if err := scope.RecordTestRun("two-sum", now, 1, 0, nil); err != nil {

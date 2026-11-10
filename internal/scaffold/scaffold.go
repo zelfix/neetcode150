@@ -17,10 +17,19 @@ import (
 	"unicode"
 
 	"neetcode150/internal/catalog"
+	"neetcode150/internal/lang"
 	"neetcode150/internal/studydb"
 	"neetcode150/internal/testbank"
 	"neetcode150/internal/workspace"
 )
+
+// GenerateFor is Generate or GeneratePython, by language.
+func GenerateFor(l lang.Lang, p catalog.Problem, signature, statement string) Files {
+	if l.ID == lang.Python {
+		return GeneratePython(p, signature, statement)
+	}
+	return Generate(p, signature, statement)
+}
 
 // Files is a generated solution scaffold.
 type Files struct {
@@ -374,8 +383,11 @@ _In your own words, before you look at anything else._
 //
 // An existing file is left exactly as it is, so running this against a problem
 // already in progress cannot destroy a solution.
-func Create(scope *studydb.Scope, lay workspace.Layout, p catalog.Problem, signature, statement string) (written []string, f Files, err error) {
-	f = Generate(p, signature, statement)
+//
+// Both languages share one directory per problem, so starting a problem in
+// Python beside an existing Go solution adds files and touches nothing.
+func Create(scope *studydb.Scope, lay workspace.Layout, p catalog.Problem, l lang.Lang, signature, statement string) (written []string, f Files, err error) {
+	f = GenerateFor(l, p, signature, statement)
 
 	solDir := lay.Dir(p)
 	if err := os.MkdirAll(solDir, 0o755); err != nil {
@@ -384,16 +396,22 @@ func Create(scope *studydb.Scope, lay workspace.Layout, p catalog.Problem, signa
 	if err := scope.EnsureDocument(p.Slug, "notes", NotesTemplate(p)); err != nil {
 		return nil, f, err
 	}
-	written, err = writeNew(map[string]string{
-		filepath.Join(solDir, "solution.go"):      f.Solution,
-		filepath.Join(solDir, "solution_test.go"): f.Test,
-	})
-	if err == nil {
-		var added []string
-		added, err = EnsurePracticeTests(lay, p)
-		written = append(written, added...)
-		sort.Strings(written)
+	files := map[string]string{
+		filepath.Join(solDir, l.SolutionFile): f.Solution,
+		filepath.Join(solDir, l.TestFile):     f.Test,
 	}
+	if f.Practice != "" {
+		// Go embeds the suite in a test file EnsurePracticeTests writes; the
+		// Python suite is generated alongside because it needs the signature.
+		files[filepath.Join(solDir, l.PracticeFile)] = f.Practice
+	}
+	written, err = writeNew(files)
+	if err == nil && f.Practice == "" {
+		var added []string
+		added, err = EnsurePracticeTests(lay, p, l)
+		written = append(written, added...)
+	}
+	sort.Strings(written)
 	return written, f, err
 }
 
@@ -419,13 +437,6 @@ func writeNew(files map[string]string) ([]string, error) {
 	return written, nil
 }
 
-// AttemptExt is the extension archived attempts carry.
-//
-// Deliberately not ".go": archives sit inside the solution's own package
-// directory, and a second file declaring the same functions would stop the
-// package compiling.
-const AttemptExt = ".go.txt"
-
 // Attempts returns stable database references, oldest first.
 func Attempts(scope *studydb.Scope, p catalog.Problem) ([]string, error) {
 	attempts, err := scope.Attempts(p.Slug)
@@ -442,9 +453,9 @@ func ReadAttempt(scope *studydb.Scope, ref string) (studydb.Attempt, error) {
 	return scope.Attempt(ref)
 }
 
-// ArchiveAttempt preserves a snapshot without changing the working Go file.
-func ArchiveAttempt(scope *studydb.Scope, p catalog.Problem, code []byte, now time.Time) (string, error) {
-	return scope.Archive(p.Slug, string(code), now)
+// ArchiveAttempt preserves a snapshot without changing the working file.
+func ArchiveAttempt(scope *studydb.Scope, p catalog.Problem, l lang.Lang, code []byte, now time.Time) (string, error) {
+	return scope.Archive(p.Slug, string(l.ID), string(code), now)
 }
 
 // Reset archives the current solution and puts a blank scaffold in its place,
@@ -458,19 +469,19 @@ func ArchiveAttempt(scope *studydb.Scope, p catalog.Problem, code []byte, now ti
 // and rewriting it would throw away edge cases the user added.
 //
 // The caller updates progress; this touches files only.
-func Reset(scope *studydb.Scope, lay workspace.Layout, p catalog.Problem, signature, statement string, now time.Time) (archive string, f Files, err error) {
-	solPath := lay.Path(p, "solution.go")
+func Reset(scope *studydb.Scope, lay workspace.Layout, p catalog.Problem, l lang.Lang, signature, statement string, now time.Time) (archive string, f Files, err error) {
+	solPath := lay.Path(p, l.SolutionFile)
 	current, err := os.ReadFile(solPath)
 	if err != nil {
-		return "", f, fmt.Errorf("no solution to archive at %s", lay.Rel(p, "solution.go"))
+		return "", f, fmt.Errorf("no solution to archive at %s", lay.Rel(p, l.SolutionFile))
 	}
 
-	archive, err = ArchiveAttempt(scope, p, current, now)
+	archive, err = ArchiveAttempt(scope, p, l, current, now)
 	if err != nil {
 		return "", f, err
 	}
 
-	f = Generate(p, signature, statement)
+	f = GenerateFor(l, p, signature, statement)
 	if err := os.WriteFile(solPath, []byte(f.Solution), 0o644); err != nil {
 		return archive, f, err
 	}
