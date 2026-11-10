@@ -64,6 +64,9 @@ For k-th smallest in a static array, quickselect is `O(n)` on average and beats 
 
 ## Go mechanics
 
+_The mechanics below are Go. The same structures in Python are in
+`tutor/references/python-idioms.md`; a Python section for each pattern is still to come._
+
 - `container/heap` needs five methods. `Push` and `Pop` must be on the **pointer** receiver because they change the slice length; `Len`, `Less` and `Swap` can be on the value.
 - `heap.Pop` returns the root. The `Pop` *method* you write returns the **last** element — the package swaps the root to the end before calling it. Writing that method to return `old[0]` is the classic mistake.
 - Always call `heap.Push(h, x)` and `heap.Pop(h)`, not `h.Push(x)` / `h.Pop()`. The methods skip the sifting that maintains the invariant.

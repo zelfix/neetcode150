@@ -24,6 +24,7 @@ There are no solutions in this repository, and that is the point. See
 ## Requirements
 
 - **Go 1.26+** — `go version` to check.
+- **Python 3.12+** (optional) — only if you want to solve in Python; `python3 --version`.
 - **A coding agent** (optional) — for the tutoring flow. See [Agent setup](#agent-setup).
   The CLI and the study site work fine on their own.
 
@@ -33,7 +34,7 @@ There are no solutions in this repository, and that is the point. See
 git clone https://github.com/zelfix/neetcode150.git
 cd neetcode150
 
-go run ./cmd/nc fetch     # one-off: download statements and Go signatures (a few minutes)
+go run ./cmd/nc fetch     # one-off: download statements and signatures (a few minutes)
 go run ./cmd/nc serve     # http://127.0.0.1:8150
 ```
 
@@ -119,7 +120,10 @@ nc rate two-sum 4         # how it went; sets the next review date
 ```
 
 `nc start` writes a `solution.go` carrying the official Go signature and whatever node
-types the problem needs, plus populated table-driven tests. All 150 problems have worked
+types the problem needs, plus populated table-driven tests. Prefer Python? `nc start
+two-sum --lang python` writes `solution.py` instead, and `nc user lang owner python` makes
+that the default; the site has the same choice beside its Start button and in the header.
+Either way the same fixtures run, and the schedule does not care which language it was. All 150 problems have worked
 examples and additional corner cases in `internal/testbank/cases/`. The standard-library
 helper in `internal/testkit/` handles lists, trees, graphs, stateful operation sequences,
 in-place changes and answers with several valid orderings. Codec tests check round trips
@@ -218,7 +222,8 @@ ladder in tutor/TUTOR.md — one rung only"* and it will generally get back on t
 | `nc user list\|add\|link\|revoke\|rm` | Who can reach the site, and their join links |
 | `nc user add\|link <name> --budget <usd>` | Set, or later change, someone's monthly tutor ceiling |
 | `nc next` | What to work on now |
-| `nc start <problem>` | Scaffold the Go solution, test and notes |
+| `nc start <problem> [--lang go\|python]` | Scaffold the solution, test and notes |
+| `nc user lang <name> <go\|python>` | The language someone's problems default to |
 | `nc status <problem> <state>` | `new`, `attempted`, `solved` or `shaky` |
 | `nc rate <problem> <1-5>` | Record how it went and reschedule the review |
 | `nc rate <problem> <1-5> --rung <0-5>` | The same, noting the highest hint you needed |
@@ -250,7 +255,7 @@ AGENTS.md                        instructions for any coding agent
 CLAUDE.md, GEMINI.md             short pointers to AGENTS.md
 tutor/
   TUTOR.md                       the tutoring protocol
-  references/                    complexity targets, Go idioms, loop invariants
+  references/                    complexity targets, Go and Python idioms, loop invariants
 
 content/
   problems.json                  the 150, in roadmap order
@@ -258,8 +263,8 @@ content/
   patterns/<slug>.md             18 pattern guides
   problems/<NNNN>-<slug>/
     problem.md                   the statement          (fetched)
-    signature.txt                the official Go signature (fetched)
-solutions/<NNNN>-<slug>/         your Go solution and its tests
+    signature.txt, signature.py  the official Go and Python signatures (fetched)
+solutions/<NNNN>-<slug>/         your solution and its tests, in either language
 _work/<userID>/solutions/...     a guest's, on a shared instance
 study.sqlite3                    your progress, attempts, chat, notes and reviews
 
@@ -269,7 +274,8 @@ internal/
   fetcher/                       LeetCode + neetcode-gh download, HTML → Markdown
   content/                       Markdown rendering and the content store
   progress/                      status, ratings, the review schedule
-  scaffold/                      solution and test generation from a Go signature
+  lang/                          what differs between Go and Python, in one place
+  scaffold/                      solution and test generation from a Go or Python signature
   web/                           the study site
 .claude/skills/neetcode-tutor/   wraps tutor/TUTOR.md as a Claude Code command
 ```

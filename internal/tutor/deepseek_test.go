@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"neetcode150/internal/lang"
 	"neetcode150/internal/studydb"
 	"neetcode150/internal/workspace"
 )
@@ -445,5 +446,61 @@ func TestDeepSeekResumesAStoredConversation(t *testing.T) {
 	}
 	if replies == 0 {
 		t.Error("the earlier answer was not replayed, so the model will repeat itself")
+	}
+}
+
+// A Python problem gets the Python reference and the Python file, and not the
+// Go ones: a second idioms file would cut the active one's budget and invite
+// advice about the language the person is not writing.
+func TestDeepSeekSpeaksTheProblemsLanguage(t *testing.T) {
+	root := deepseekRoot(t)
+	write := func(rel, body string) {
+		t.Helper()
+		full := filepath.Join(root, rel)
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(full, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("tutor/references/go-idioms.md", "GO IDIOMS HERE\n")
+	write("tutor/references/python-idioms.md", "PYTHON IDIOMS HERE\n")
+	write(filepath.Join(workspace.Owner(root).PkgDir(twoSum), "solution.py"), "class Solution:\n    pass  # PY SOURCE\n")
+	write(filepath.Join(workspace.Owner(root).PkgDir(twoSum), "practice_cases.py"), "SPEC = 'GENERATED PY FIXTURES'\n")
+	write(filepath.Join(workspace.Owner(root).PkgDir(twoSum), "test_solution.py"), "# MY PY TEST\n")
+
+	var body deepseekRequest
+	m, _ := deepseekManager(t, root, func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		sseReply(w, []string{"ok"}, deepseekUsage{PromptTokens: 1, PromptCacheMiss: 1, CompletionTokens: 1})
+	})
+	m.OnLanguage(func(*studydb.Scope, string) lang.Lang { return lang.Of(lang.Python) })
+	db, err := studydb.Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	s, err := m.Send(db.Owner(), twoSum, "q")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, ch, stop := s.Subscribe()
+	defer stop()
+	collect(t, ch, KindDone)
+
+	system, turn := body.Messages[0].Content, body.Messages[len(body.Messages)-1].Content
+	if !strings.Contains(system, "PYTHON IDIOMS HERE") || strings.Contains(system, "GO IDIOMS HERE") {
+		t.Error("the system prompt does not carry exactly the Python reference")
+	}
+	if !strings.Contains(system, "solving it in Python") {
+		t.Error("the system prompt does not name the language")
+	}
+	if !strings.Contains(turn, "```python\nclass Solution:") || strings.Contains(turn, "func twoSum") {
+		t.Errorf("the turn does not carry the Python file:\n%s", turn)
+	}
+	if !strings.Contains(turn, "MY PY TEST") || strings.Contains(turn, "GENERATED PY FIXTURES") {
+		t.Error("the turn should carry the person's own tests and not the generated suite")
 	}
 }

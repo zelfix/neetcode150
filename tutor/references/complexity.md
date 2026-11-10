@@ -34,7 +34,9 @@ nudge toward sorting or hashing rather than counting.
 ## Space
 
 - Recursion costs `O(depth)`. On a tree that is `O(h)` — `O(log n)` balanced, `O(n)`
-  degenerate. On a `250×250` grid DFS it is fine; Go grows stacks dynamically.
+  degenerate. On a `250×250` grid DFS it is fine: Go grows stacks dynamically, and the
+  Python harness raises the recursion limit, though an iterative stack is the safer habit
+  there.
 - A hash map of `n` entries is `O(n)`. If the problem says `O(1)` extra space, that is a
   ban on the map and usually a hint toward two pointers, in-place marking, or XOR.
 - An output array does not normally count toward "extra" space. Read the follow-up

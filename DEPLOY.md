@@ -39,11 +39,16 @@ go build -o /srv/neetcode150/bin/nc ./cmd/nc
 ./bin/nc fetch            # a few minutes; re-runs only fill in what is missing
 ```
 
-## 3. Build the sandbox image
+## 3. Build the sandbox images
 
 ```sh
 docker build -t nc-sandbox:go1.26 -f sandbox/Dockerfile .
+docker build -t nc-sandbox:py3.12 -f sandbox/Dockerfile.python .
 ```
+
+The second one is for people solving in Python. It is optional: without it the server
+starts, says so, and offers Python nowhere. It never falls back to running Python
+unisolated.
 
 This compiles a package shaped like a generated practice test so the image carries a warm
 build cache: a cold run then takes about a second instead of four. Rebuild it when
@@ -54,6 +59,7 @@ Check it before going further. The server refuses to start without it anyway:
 
 ```sh
 docker run --rm nc-sandbox:go1.26 go version
+docker run --rm nc-sandbox:py3.12 python3 -c 'import heapq; print("ok")'
 ```
 
 ## 4. The API key
@@ -136,7 +142,7 @@ The startup lines say what it chose:
 
 ```
 neetcode150 on http://127.0.0.1:8150  (150 problems, Ctrl-C to stop)
-sandbox: nc-sandbox:go1.26, 4 at a time
+sandbox: nc-sandbox:go1.26, 4 at a time; python: nc-sandbox:py3.12
 3 people, 3 of them with a link.
 tutor panel: deepseek, tutor mode
 ```
@@ -250,6 +256,7 @@ include them if you care about that.
 sudo -u nc -H bash -c 'cd /srv/neetcode150 && ./bin/nc backup /var/backups/neetcode150/pre-update.sqlite3'
 sudo -u nc -H bash -c 'cd /srv/neetcode150 && git pull && go build -o bin/nc ./cmd/nc'
 sudo -u nc -H bash -c 'cd /srv/neetcode150 && docker build -t nc-sandbox:go1.26 -f sandbox/Dockerfile .'
+sudo -u nc -H bash -c 'cd /srv/neetcode150 && docker build -t nc-sandbox:py3.12 -f sandbox/Dockerfile.python .'
 systemctl restart neetcode150
 ```
 

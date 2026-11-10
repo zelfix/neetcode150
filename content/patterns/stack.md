@@ -55,6 +55,9 @@ for i, v := range temps {
 
 ## Go mechanics
 
+_The mechanics below are Go. The same structures in Python are in
+`tutor/references/python-idioms.md`; a Python section for each pattern is still to come._
+
 - A slice is the idiomatic stack. Push with `append`, peek with `s[len(s)-1]`, pop with `s = s[:len(s)-1]`.
 - **Always check `len(stack) > 0` before peeking.** Indexing an empty slice panics, and this is the single commonest bug here.
 - Store *indices*, not values, whenever the answer involves a distance or a width.

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"neetcode150/internal/catalog"
+	"neetcode150/internal/lang"
 	"neetcode150/internal/studydb"
 	"neetcode150/internal/workspace"
 )
@@ -32,15 +33,16 @@ const (
 // systemPrompt is everything that does not change while a problem is open.
 func (m *Manager) systemPrompt(scope *studydb.Scope, p catalog.Problem) string {
 	var b strings.Builder
+	l := m.language(scope, p.Slug)
 
-	b.WriteString("You are tutoring one NeetCode 150 problem. Follow the protocol below exactly.\n")
+	fmt.Fprintf(&b, "You are tutoring one NeetCode 150 problem. The person is solving it in %s. Follow the protocol below exactly.\n", l.Label)
 	b.WriteString("It is the whole of your instructions: you have no access to this repository, " +
 		"no tools, and no way to read or run anything. Everything you are given arrives in these messages.\n\n")
 
 	b.WriteString("=== TUTORING PROTOCOL ===\n")
 	b.WriteString(readCapped(filepath.Join(m.root, "tutor", "TUTOR.md"), maxProtocol))
 	b.WriteString("\n\n=== REFERENCES CITED BY THE PROTOCOL ===\n")
-	refs, _ := filepath.Glob(filepath.Join(m.root, "tutor", "references", "*.md"))
+	refs := referencesFor(m.root, l)
 	for _, ref := range refs {
 		b.WriteString("\n--- " + filepath.Base(ref) + " ---\n")
 		b.WriteString(readCapped(ref, maxProtocol/len(max1(refs))))
@@ -62,7 +64,7 @@ func (m *Manager) systemPrompt(scope *studydb.Scope, p catalog.Problem) string {
 
 	b.WriteString("\n\n=== HOW TO ANSWER ===\n")
 	b.WriteString("The person is in a browser workspace with an editor and a Run-tests button, " +
-		"so never tell them to run `nc start` or `go test` — the page does both and logs the time and the rating.\n" +
+		"so never tell them to run `nc start` or the test command — the page does both and logs the time and the rating.\n" +
 		"Your replies render as Markdown in a narrow side panel. Keep them short: a few sentences, or a short list. " +
 		"Ask one question at a time and wait for the answer. Reply in the person's language. " +
 		"Be warm and supportive: acknowledge a specific sound idea, effort, or self-correction before the next question. " +
@@ -83,25 +85,41 @@ func (m *Manager) turnContext(scope *studydb.Scope, p catalog.Problem) string {
 		return ""
 	}
 	lay := workspace.For(m.root, scope.UserID())
+	l := m.language(scope, p.Slug)
 	var b strings.Builder
-	if code := readCapped(lay.Path(p, "solution.go"), maxSource); strings.TrimSpace(code) != "" {
-		b.WriteString("\n\n=== THEIR SOLUTION AS IT STANDS ===\n```go\n" + code + "\n```")
+	if code := readCapped(lay.Path(p, l.SolutionFile), maxSource); strings.TrimSpace(code) != "" {
+		b.WriteString("\n\n=== THEIR SOLUTION AS IT STANDS ===\n```" + l.Fence + "\n" + code + "\n```")
 	}
-	tests, _ := filepath.Glob(filepath.Join(lay.Dir(p), "*_test.go"))
-	for _, path := range tests {
+	for _, path := range l.TestFiles(lay.Dir(p)) {
 		// The generated practice suite is a wall of fixtures that says nothing
 		// about how they are thinking, and it would crowd out everything else.
-		if strings.HasSuffix(path, "practice_cases_test.go") {
+		if filepath.Base(path) == l.PracticeFile {
 			continue
 		}
 		if body := readCapped(path, maxSource); strings.TrimSpace(body) != "" {
-			b.WriteString("\n\n=== THEIR TESTS (" + filepath.Base(path) + ") ===\n```go\n" + body + "\n```")
+			b.WriteString("\n\n=== THEIR TESTS (" + filepath.Base(path) + ") ===\n```" + l.Fence + "\n" + body + "\n```")
 		}
 	}
 	if b.Len() == 0 {
 		return "\n\n(They have not written any code yet.)"
 	}
 	return b.String()
+}
+
+// referencesFor is every reference file but the other language's idioms. Sending
+// both would cut the active one's share of the budget and invite advice about
+// the language the person is not writing.
+func referencesFor(root string, l lang.Lang) []string {
+	refs, _ := filepath.Glob(filepath.Join(root, "tutor", "references", "*.md"))
+	var out []string
+	for _, ref := range refs {
+		base := filepath.Base(ref)
+		if strings.HasSuffix(base, "-idioms.md") && base != l.IdiomsRef {
+			continue
+		}
+		out = append(out, ref)
+	}
+	return out
 }
 
 // readCapped reads a file, returning "" when it is not there, and keeps the

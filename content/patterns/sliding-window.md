@@ -53,6 +53,9 @@ for r := range nums {
 
 ## Go mechanics
 
+_The mechanics below are Go. The same structures in Python are in
+`tutor/references/python-idioms.md`; a Python section for each pattern is still to come._
+
 - Delete keys that hit zero, or `len(counts)` stops meaning "distinct characters in the window".
 - `[26]int` or `[128]int` instead of a map when the alphabet is known: no allocation, much faster, and you compare whole arrays with `==`.
 - `max` and `min` are builtins since Go 1.21 — no helper needed.

@@ -94,6 +94,9 @@ solve = func(i int) int {
 
 ## Go mechanics
 
+_The mechanics below are Go. The same structures in Python are in
+`tutor/references/python-idioms.md`; a Python section for each pattern is still to come._
+
 - `make([]int, n)` zeroes the slice. That is free when 0 is your base case and a bug when it is not — fill explicitly with a sentinel otherwise.
 - Rolling two variables with `prev, curr = curr, next` is the clean Go way to drop a table to `O(1)`.
 - `max` and `min` are builtins since Go 1.21.

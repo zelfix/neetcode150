@@ -76,6 +76,9 @@ for length := 2; length <= n; length++ {
 
 ## Go mechanics
 
+_The mechanics below are Go. The same structures in Python are in
+`tutor/references/python-idioms.md`; a Python section for each pattern is still to come._
+
 - A 2-D slice needs a loop to allocate each row; `make([][]int, m)` alone gives you `m` nil slices.
   ```go
   dp := make([][]int, m+1)

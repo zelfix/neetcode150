@@ -5,9 +5,9 @@ see [Agent setup](README.md#agent-setup) for how each tool picks this up.
 
 ## What this repository is
 
-A study kit for the [NeetCode 150](https://neetcode.io/practice), solved in Go. It holds
-the 150 problem statements, 18 pattern guides, a `nc` CLI that tracks progress on a
-spaced-repetition schedule, and a local study site.
+A study kit for the [NeetCode 150](https://neetcode.io/practice), solved in Go or in
+Python. It holds the 150 problem statements, 18 pattern guides, a `nc` CLI that tracks
+progress on a spaced-repetition schedule, and a local study site.
 
 It is a **practice** repository. The user is learning, and the solutions are theirs to
 write.
@@ -60,7 +60,9 @@ Everything runs through the `nc` CLI. From the project root:
 go run ./cmd/nc next                  # what the user should work on now
 go run ./cmd/nc info <ref>            # paths and state for one problem
 go run ./cmd/nc start <ref>           # scaffold solution + example/corner-case tests
+                                      #   --lang go|python chooses for this problem
 go run ./cmd/nc tests --all           # add suites to existing workspaces; preserve personal tests
+                                      #   --lang go|python picks which workspaces (default go)
 go run ./cmd/nc status <ref> <state>  # new | attempted | solved | shaky
 go run ./cmd/nc rate <ref> <1-5>      # record how it went, reschedule the review
                                       #   --rung <0-5> notes the highest hint needed;
@@ -88,9 +90,12 @@ go run ./cmd/nc serve [--port 8150]   # the study site, incl. the browser worksp
                                       #   --tutor-budget <usd>, a per-session cap (claude only)
                                       #   --tutor-rates <file.json>, a DeepSeek price list (DEPLOY.md)
                                       #   --sandbox auto|docker|local, --max-runs <n>
+                                      #   --sandbox-image <go image>, --sandbox-image-python <py image>
 go run ./cmd/nc user list             # who can reach the site
 go run ./cmd/nc user add <name>       # invite someone; prints their join link once
                                       #   --budget <usd> sets their monthly tutor ceiling
+                                      #   --lang go|python sets the language they start in
+go run ./cmd/nc user lang <name> <go|python>  # change that default later
 go run ./cmd/nc user link <name>      # issue a new link, invalidating the old one
                                       #   --budget <usd> changes the ceiling at the same time
 go run ./cmd/nc user revoke <name>    # stop a link working, keeping their work
@@ -100,6 +105,32 @@ go run ./cmd/nc backup <file.sqlite3> # a consistent copy of the database
 go run ./cmd/nc export <name> <file.json>  # one person's data, nobody else's, no token hashes
 go run ./cmd/nc <command> --help      # that command's line and flags
 ```
+
+## Languages
+
+Every problem is worked in Go or in Python. The language is a per-person default
+(`nc user add --lang`, `nc user lang`, or the selector in the site header) with a
+per-problem override chosen at start (`nc start --lang`, or the selector beside Start).
+`internal/lang` is the one place that knows what differs: file names, the formatter, the
+fence label, the indent. `lang.Resolve` is the one rule for which language a problem is
+in — the problem's own choice, else the person's default, else Go — and the CLI and the
+site both call it rather than deciding on their own.
+
+Both languages share one directory per problem: `solution.go`, `solution_test.go` and
+`practice_cases_test.go` beside `solution.py`, `test_solution.py` and `practice_cases.py`.
+Starting a problem in Python next to a Go solution adds files and archives nothing. The
+schedule, ratings and hint ladders are per problem, not per language; an archived attempt
+records which language it was in, and `nc diff` compares same-language attempts only.
+Fixture-failure counts on the Coach page merge both languages, which is deliberate: the
+fixture is what was hard.
+
+The Python test harness is `internal/testkit/py`, a standard-library-only port of
+`internal/testkit` that reads the same fixtures and reports in the same `go test -json`
+line format, so `readTestEvents` and everything downstream of it have no second code
+path. The eleven comparison policies exist twice, so both suites run the shared table in
+`internal/testkit/testdata/policy-cases.json`, and `TestAllPracticeSuitesMatchPythonSignatures`
+validates all 150 fixtures against the Python stubs under `python3`. Keep the harness on
+the standard library; its tests are `make python-test`.
 
 The site's Coach page at `/coach/` reports what is not secure yet: the share of problems
 last solved unaided, which patterns to go back to, and which test fixtures keep breaking.
@@ -153,6 +184,14 @@ path, so the sandbox needs no proxy and a third-party import simply fails to res
 Inside the container the package always appears at `/src/solutions/<problem>`, whoever owns
 it on the host.
 
+Python runs in a second image (`sandbox/Dockerfile.python`, `nc-sandbox:py3.12`) with
+`site-packages` emptied and pip removed — the Python analogue of that `go.mod` — and
+mounts strictly less: the harness at `/opt/nc/harness` and the package, both read-only,
+nothing writable, half the memory, a `noexec` tmpfs, and `python3 -I -B` so nothing in the
+package can shadow a standard module. The Go image decides whether a container is used at
+all; a missing Python image switches Python off with the build command in the message and
+never drops to running it unisolated. `--sandbox=local` needs `python3` 3.12 or newer.
+
 `--sandbox=local` runs `go test` unisolated, which is right for one person on their own
 machine and refused outright once any guest exists — the server will not start. Do not
 soften that into a warning. Two details that cost an afternoon to find: the tmpfs must be
@@ -187,7 +226,9 @@ gofmt -l .                                  # must print nothing
 go vet ./...
 go build ./...
 go test -race ./...                         # the tooling
-go test ./solutions/<NNNN>-<slug>/          # one problem
+go test ./solutions/<NNNN>-<slug>/          # one problem, Go
+python3 -I -B internal/testkit/py/run.py --package solutions/<NNNN>-<slug>   # one problem, Python
+make python-test                            # the Python harness's own tests
 ```
 
 ## Layout
@@ -199,6 +240,7 @@ content/
   problems/<NNNN>-<slug>/
     problem.md                   the statement          (fetched; gitignored)
     signature.txt                official Go signature  (fetched; gitignored)
+    signature.py                 official Python stub   (fetched; gitignored)
 solutions/<NNNN>-<slug>/         the owner's solution and tests  (gitignored)
 _work/<userID>/solutions/...     a guest's, same shape               (gitignored)
 study.sqlite3                    all personal study data        (gitignored)
@@ -209,11 +251,13 @@ internal/fetcher/                LeetCode + neetcode-gh download, HTML → Markd
 internal/content/                Markdown rendering, content store
 internal/progress/               status, ratings, review schedule
 internal/studydb/                SQLite schema, import and storage
-internal/scaffold/               solution/test generation from a Go signature
-internal/workspace/              where one person's working Go files live
-sandbox/                         the container that runs a guest's `go test`
+internal/lang/                   what differs between Go and Python, in one place
+internal/scaffold/               solution/test generation from a Go or Python signature
+internal/workspace/              where one person's working files live
+sandbox/                         the containers that run a guest's tests, one per language
 internal/testbank/               examples and corner-case fixtures for all 150
-internal/testkit/                standard-library practice test helpers
+internal/testkit/                standard-library practice test helpers (Go)
+internal/testkit/py/             the same harness in Python, stdlib only
 internal/web/                    the study site
 tutor/                           the tutoring protocol and its references
 ```
@@ -226,9 +270,11 @@ Do not add them to version control, and do not propose committing them.
 ## Conventions
 
 - **Go 1.26.** `gofmt` is not negotiable and CI fails on an unformatted file.
+- **Python 3.12** for the harness and for Python solutions; standard library only, no
+  pip, no pytest. There is no Python formatter in the loop, by choice.
 - **Dependencies.** Tooling uses goldmark, chroma, `golang.org/x/net`, and the pure-Go
   `modernc.org/sqlite` driver. Solutions depend on nothing — if a solution needs a third-party
-  package, the solution is wrong.
+  package, the solution is wrong, in either language.
 - **Table-driven tests**, matching what `nc start` generates.
 - Match the surrounding comment density. This codebase explains *why*, not *what*; do not
   add comments that restate the code.

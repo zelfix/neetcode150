@@ -80,6 +80,9 @@ On a BST, search and insert are `O(h)`, which is the reason to use one at all.
 
 ## Go mechanics
 
+_The mechanics below are Go. The same structures in Python are in
+`tutor/references/python-idioms.md`; a Python section for each pattern is still to come._
+
 - The node type is given by the problem; do not redefine it:
   ```go
   type TreeNode struct {

@@ -77,6 +77,9 @@ for _, v := range nums {
 
 ## Go mechanics
 
+_The mechanics below are Go. The same structures in Python are in
+`tutor/references/python-idioms.md`; a Python section for each pattern is still to come._
+
 - `max` and `min` are builtins, which makes these one-liners read well.
 - Initialise from `nums[0]` rather than 0 for Kadane. Starting at 0 gives the wrong answer on an all-negative array — the classic failure.
 - Guard `len(nums) == 0` before indexing `nums[0]`.

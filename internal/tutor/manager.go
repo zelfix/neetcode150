@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"neetcode150/internal/catalog"
+	"neetcode150/internal/lang"
 	"neetcode150/internal/studydb"
 	"neetcode150/internal/workspace"
 )
@@ -67,6 +68,11 @@ type Manager struct {
 	// onSpend is told what each turn cost, as an increment. Set by the site so
 	// the per-person ceiling survives a restart.
 	onSpend spendHook
+
+	// languageOf says which language a person is working a problem in. The
+	// site sets it, since the rule lives beside the progress store; without
+	// it everything reads as Go, which is what it always was.
+	languageOf func(scope *studydb.Scope, slug string) lang.Lang
 
 	mu       sync.Mutex
 	sessions map[sessionKey]*Session
@@ -166,6 +172,18 @@ func (m *Manager) Provider() Provider { return m.provider }
 // UseStorage attaches the application's database before sessions are started.
 // OnSpend installs the hook that records what turns cost.
 func (m *Manager) OnSpend(fn func(scope *studydb.Scope, delta float64)) { m.onSpend = fn }
+
+// OnLanguage installs the rule for which language a problem is worked in.
+func (m *Manager) OnLanguage(fn func(scope *studydb.Scope, slug string) lang.Lang) {
+	m.languageOf = fn
+}
+
+func (m *Manager) language(scope *studydb.Scope, slug string) lang.Lang {
+	if m.languageOf == nil || scope == nil {
+		return lang.Of(lang.Go)
+	}
+	return m.languageOf(scope, slug)
+}
 
 // FileAccess reports whether this provider can read the machine it runs on.
 //
@@ -527,8 +545,10 @@ func (m *Manager) seed(scope *studydb.Scope, p catalog.Problem) string {
 	// the panel is the owner's until that is per-user, and the site refuses a
 	// guest rather than pointing the agent at the wrong workspace.
 	lay := workspace.Owner(m.root)
-	fmt.Fprintf(&b, "Relevant paths:\n- statement: %s/problem.md\n- the user's solution: %s\n- their tests: %s\n\n",
-		p.ContentDir(), lay.Rel(p, "solution.go"), lay.Rel(p, "solution_test.go"))
+	l := m.language(scope, p.Slug)
+	fmt.Fprintf(&b, "The user is working in %s.\n", l.Label)
+	fmt.Fprintf(&b, "Relevant paths:\n- statement: %s/problem.md\n- the user's solution: %s\n- their tests: %s\n- language reference: tutor/references/%s\n\n",
+		p.ContentDir(), lay.Rel(p, l.SolutionFile), lay.Rel(p, l.TestFile), l.IdiomsRef)
 	b.WriteString("Personal notes, recorded hints and session logs are in study.sqlite3, not the old Markdown files. The application supplies historical learning evidence; never edit legacy personal files.\n")
 	if scope != nil {
 		if hints, err := scope.Document(p.Slug, "hints"); err == nil && hints != "" {
@@ -542,7 +562,7 @@ func (m *Manager) seed(scope *studydb.Scope, p catalog.Problem) string {
 		"and the rule that you climb one rung per request are the parts that matter.\n\n")
 	b.WriteString("The person is working in this project's browser workspace, not a terminal. " +
 		"They have an editor and a Run-tests button on the same page, so do not tell them to " +
-		"run `nc start` or `go test` — they can already do both, and the page logs the time " +
+		"run `nc start` or the test command — they can already do both, and the page logs the time " +
 		"and the rating for them.\n\n")
 	b.WriteString("Your replies render as Markdown in a narrow side panel. Keep them short: " +
 		"a few sentences, or a short list. Ask one question at a time and wait for the answer. " +

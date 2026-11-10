@@ -74,6 +74,9 @@ Exponential by nature: `O(n · 2^n)` for subsets, `O(n · n!)` for permutations,
 
 ## Go mechanics
 
+_The mechanics below are Go. The same structures in Python are in
+`tutor/references/python-idioms.md`; a Python section for each pattern is still to come._
+
 - **`append` may reuse the backing array, so append the result without copying and every stored path can change under you.** Use `slices.Clone(path)`, or `append([]int{}, path...)`. This is the number-one bug in Go backtracking.
 - `path = path[:len(path)-1]` is the undo. It keeps capacity, so the next append reuses the same memory — which is exactly why the clone above is required.
 - Passing `append(path, v)` directly as an argument works for the take/leave shape but is risky for the loop shape: two siblings can share a backing array. Prefer explicit choose/un-choose.

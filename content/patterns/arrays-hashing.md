@@ -49,6 +49,9 @@ One pass with constant-time lookups: `O(n)` time, `O(n)` space. The trade is alw
 
 ## Go mechanics
 
+_The mechanics below are Go. The same structures in Python are in
+`tutor/references/python-idioms.md`; a Python section for each pattern is still to come._
+
 - `map[T]struct{}` is a set with no per-entry value; `map[T]bool` is more readable and the difference rarely matters.
 - Reading a missing key returns the zero value, so `count[k]++` works without initialising.
 - **Arrays are comparable, slices are not.** `[26]int` can be a map key; `[]int` cannot. This is the clean way to key by character frequency.

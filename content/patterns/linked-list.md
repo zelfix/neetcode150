@@ -69,6 +69,9 @@ for fast != nil && fast.Next != nil {
 
 ## Go mechanics
 
+_The mechanics below are Go. The same structures in Python are in
+`tutor/references/python-idioms.md`; a Python section for each pattern is still to come._
+
 - `*ListNode` is a pointer; the zero value is `nil`. Dereferencing nil panics, so guard every `.Next`.
 - `fast != nil && fast.Next != nil` — the order matters. Go short-circuits `&&`, which is what keeps the second check safe.
 - Go has no `delete`; dropping a node means pointing the previous node past it and letting the garbage collector do the rest.

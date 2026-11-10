@@ -23,4 +23,5 @@ Supporting references, cited from the protocol as you need them:
 
 - `tutor/references/complexity.md` — reading the target complexity off the constraints
 - `tutor/references/go-idioms.md` — the Go mechanics these problems need
+- `tutor/references/python-idioms.md` — the same for Python
 - `tutor/references/invariants.md` — loop invariants

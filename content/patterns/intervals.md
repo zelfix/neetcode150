@@ -82,6 +82,9 @@ return h.Len()
 
 ## Go mechanics
 
+_The mechanics below are Go. The same structures in Python are in
+`tutor/references/python-idioms.md`; a Python section for each pattern is still to come._
+
 - Intervals are usually `[][]int`. `slices.SortFunc` with `a[0] - b[0]` is the concise comparator; use `cmp.Compare(a[0], b[0])` if the values could be large enough to overflow a subtraction.
 - `out[len(out)-1]` returns the inner slice, which shares its backing array — so `last[1] = ...` really does mutate the element already in `out`. Convenient here, and worth knowing before it surprises you elsewhere.
 - Decide what touching means. `[1,2]` and `[2,3]` overlap for merging (`in[0] <= last[1]`) but do not conflict for scheduling (`in[0] >= lastEnd`). The problem statement always says which; read it twice.

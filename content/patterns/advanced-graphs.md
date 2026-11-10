@@ -106,6 +106,9 @@ Dijkstra with a binary heap is `O((V + E) log V)`. Bellman-Ford is `O(V · E)`, 
 
 ## Go mechanics
 
+_The mechanics below are Go. The same structures in Python are in
+`tutor/references/python-idioms.md`; a Python section for each pattern is still to come._
+
 - `math.MaxInt` as infinity. Guard before adding to it or you wrap around to a negative — the commonest Bellman-Ford bug.
 - Go's `container/heap` has no decrease-key, so Dijkstra pushes duplicates and skips stale pops with the `cur.cost > dist[node]` check. That is the standard Go idiom, not a workaround.
 - Bellman-Ford must relax against the **previous** round's distances when hops are capped. Writing into the same slice lets one round use two edges.

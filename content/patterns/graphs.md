@@ -111,6 +111,9 @@ DFS and BFS are `O(V + E)` — for a grid, `O(rows × cols)`. Topological sort i
 
 ## Go mechanics
 
+_The mechanics below are Go. The same structures in Python are in
+`tutor/references/python-idioms.md`; a Python section for each pattern is still to come._
+
 - Package-level `dirs` as `[4][2]int` avoids rebuilding the neighbour list on every call.
 - Mark visited **when you enqueue**, not when you dequeue. Marking on dequeue lets a node enter the queue many times and can make BFS quadratic.
 - Mutating the input grid as the visited set is `O(1)` space and idiomatic — just be sure the caller tolerates it, and restore it if not.

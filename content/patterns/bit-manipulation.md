@@ -90,6 +90,9 @@ for mask := range 1 << len(nums) {
 
 ## Go mechanics
 
+_The mechanics below are Go. The same structures in Python are in
+`tutor/references/python-idioms.md`; a Python section for each pattern is still to come._
+
 - The operators: `&` and, `|` or, `^` xor, `&^` **and-not** (clear bits — a Go-specific operator worth knowing), `<<` and `>>` shifts.
 - `^x` with one operand is bitwise **NOT**. Go has no `~`.
 - **Right shift on a signed int is arithmetic**: it copies the sign bit, so `-8 >> 1` is `-4` and a loop on a negative number never terminates. Convert to `uint32`/`uint` for bit-pattern work. This is the single biggest trap here.

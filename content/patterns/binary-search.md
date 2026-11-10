@@ -63,6 +63,9 @@ if nums[lo] <= nums[mid] { // left half is sorted
 
 ## Go mechanics
 
+_The mechanics below are Go. The same structures in Python are in
+`tutor/references/python-idioms.md`; a Python section for each pattern is still to come._
+
 - `mid := lo + (hi-lo)/2` rather than `(lo+hi)/2`. Go's `int` is 64-bit on these platforms so overflow is unlikely, but the habit is free and the intent is clearer.
 - `sort.SearchInts(nums, x)` and `slices.BinarySearch(nums, x)` exist and return the insertion point. Use them when you just need a lookup; write the loop when you need a custom predicate.
 - `sort.Search(n, f)` is the standard library's version of exactly the boundary shape above.

@@ -89,6 +89,7 @@ func New(root string, cat *catalog.Catalog, store *content.Store, prog *progress
 	}
 	s.background, s.stop = context.WithCancel(context.Background())
 	s.tutor.OnSpend(s.recordTutorSpend)
+	s.tutor.OnLanguage(s.languageOf)
 	users, err := s.db.Users()
 	if err != nil {
 		return nil, err
@@ -133,7 +134,18 @@ func (s *Server) UseTutor(m *tutor.Manager) {
 		s.tutor.Close()
 	}
 	m.OnSpend(s.recordTutorSpend)
+	m.OnLanguage(s.languageOf)
 	s.tutor = m
+}
+
+// languageOf is the resolution rule for the tutor, which has a scope rather
+// than a session: the problem's own choice, else the person's default.
+func (s *Server) languageOf(scope *studydb.Scope, slug string) lang.Lang {
+	user, err := s.db.User(scope.UserID())
+	if err != nil {
+		return lang.Resolve(progress.NewScoped(scope).Get(slug).Lang, "")
+	}
+	return lang.Resolve(progress.NewScoped(scope).Get(slug).Lang, user.Language)
 }
 
 // CloseTutor ends every tutor session. The server must call this on the way

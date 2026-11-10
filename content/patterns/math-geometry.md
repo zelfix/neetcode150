@@ -112,6 +112,9 @@ Matrix passes are `O(m · n)` and often `O(1)` extra space. Digit work is `O(log
 
 ## Go mechanics
 
+_The mechanics below are Go. The same structures in Python are in
+`tutor/references/python-idioms.md`; a Python section for each pattern is still to come._
+
 - `slices.Reverse` reverses in place, which is exactly what the rotation needs.
 - `a, b = b, a` swaps without a temporary, and with two indices it reads cleanly.
 - Go's `%` keeps the sign of the dividend: `-7 % 10` is `-3`, not `7`. Take `math.Abs` or handle the sign up front.

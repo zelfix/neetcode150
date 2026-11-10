@@ -82,6 +82,9 @@ The payoff is in combined search: checking 10,000 words against a grid with a tr
 
 ## Go mechanics
 
+_The mechanics below are Go. The same structures in Python are in
+`tutor/references/python-idioms.md`; a Python section for each pattern is still to come._
+
 - `[26]*Trie` is a value array inside the struct — no allocation per node beyond the node itself, and `nil` means absent. Use `map[byte]*Trie` only if the alphabet is large or sparse.
 - `word[i] - 'a'` yields a `byte`; indexing an array with it is fine. Validate the input range if the problem does not guarantee lowercase.
 - Keep `isWord` separate from "has no children". A word can be a strict prefix of another word (`"car"` inside `"card"`), so the absence of children says nothing.

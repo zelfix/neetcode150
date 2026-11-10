@@ -59,6 +59,9 @@ for l < r && nums[l] == nums[l-1] {
 
 ## Go mechanics
 
+_The mechanics below are Go. The same structures in Python are in
+`tutor/references/python-idioms.md`; a Python section for each pattern is still to come._
+
 - `sort.Ints(nums)` sorts in place; `slices.Sort(nums)` is the modern equivalent and generic.
 - `s[i]` on a string is a **byte**, not a rune. For ASCII problems that is what you want and it is fast. For anything Unicode, convert with `[]rune(s)` first.
 - `unicode.IsLetter`, `unicode.IsDigit`, `unicode.ToLower` take runes; `byte` versions need a manual range check.
