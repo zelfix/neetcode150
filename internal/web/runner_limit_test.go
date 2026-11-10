@@ -14,12 +14,12 @@ import (
 // database, so there is nothing to warn about — only something to refuse.
 func TestServingGuestsWithoutIsolationIsRefused(t *testing.T) {
 	srv, _, _ := testSite(t)
-	if _, err := srv.UseSandbox(SandboxLocal, "", 2); err != nil {
+	if _, err := srv.UseSandbox(SandboxLocal, SandboxImages{}, 2); err != nil {
 		t.Fatalf("owner-only instance should run locally: %v", err)
 	}
 
 	guest(t, srv, "dima")
-	_, err := srv.UseSandbox(SandboxLocal, "", 2)
+	_, err := srv.UseSandbox(SandboxLocal, SandboxImages{}, 2)
 	if err == nil {
 		t.Fatal("a guest was served with no isolation")
 	}
@@ -34,7 +34,7 @@ func TestServingGuestsWithoutIsolationIsRefused(t *testing.T) {
 
 func TestSandboxDockerRefusesAMissingImage(t *testing.T) {
 	srv, _, _ := testSite(t)
-	_, err := srv.UseSandbox(SandboxDocker, "nc-sandbox:definitely-not-built", 1)
+	_, err := srv.UseSandbox(SandboxDocker, SandboxImages{Go: "nc-sandbox:definitely-not-built"}, 1)
 	if err == nil {
 		t.Fatal("docker mode accepted an image that does not exist")
 	}
@@ -48,7 +48,7 @@ func TestSandboxDockerRefusesAMissingImage(t *testing.T) {
 
 func TestAnUnknownSandboxModeIsRejected(t *testing.T) {
 	srv, _, _ := testSite(t)
-	if _, err := srv.UseSandbox(Sandbox("sorta"), "", 1); err == nil {
+	if _, err := srv.UseSandbox(Sandbox("sorta"), SandboxImages{}, 1); err == nil {
 		t.Fatal("an unknown mode was accepted")
 	}
 }

@@ -22,6 +22,7 @@ import (
 
 	"neetcode150/internal/catalog"
 	"neetcode150/internal/content"
+	"neetcode150/internal/lang"
 	"neetcode150/internal/progress"
 	"neetcode150/internal/studydb"
 	"neetcode150/internal/tutor"
@@ -54,6 +55,9 @@ type Server struct {
 	// runTests is injected the same way now is, so handler tests do not shell
 	// out to a real `go test` and inherit its speed and flakiness.
 	runTests testRunner
+	// unavailable says, per language, why tests cannot run on this server;
+	// absent means they can. UseSandbox decides it once.
+	unavailable map[lang.ID]string
 
 	// tutor owns the claude child processes. It is never nil: a Manager with no
 	// binary to run reports why through Available, and the rest of the site

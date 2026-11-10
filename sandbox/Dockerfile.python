@@ -1,0 +1,22 @@
+# The sandbox that runs one person's Python practice tests.
+#
+# Built from the repository root:
+#   docker build -t nc-sandbox:py3.12 -f sandbox/Dockerfile.python .
+#
+# The Go image keeps a solution from depending on anything by carrying a go.mod
+# that declares only the module path. The Python analogue is an interpreter
+# with nothing but its standard library: site-packages is emptied and pip
+# removed, so `import numpy` fails in the sandbox the same way it would fail
+# the repository's own rule, with a comprehensible error. There is no network
+# either (--network none at run time), so nothing can be fetched to fill it.
+#
+# Nothing of the harness is copied in. internal/testkit/py is mounted read-only
+# at run time, like internal/testkit is for Go, so there is one copy of it and
+# editing it needs no rebuild. Nothing compiles, so there is no warm stage.
+FROM python:3.12-slim
+RUN rm -rf /usr/local/lib/python3.12/site-packages/* \
+           /usr/local/lib/python3.12/ensurepip \
+ && rm -f /usr/local/bin/pip /usr/local/bin/pip3 /usr/local/bin/pip3.12 \
+ && python3 -I -c "import json, heapq, collections, functools, bisect, math, itertools, unittest" \
+ && ! python3 -I -c "import pip" 2>/dev/null
+WORKDIR /src

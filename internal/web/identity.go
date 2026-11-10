@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"neetcode150/internal/catalog"
+	"neetcode150/internal/lang"
 	"neetcode150/internal/progress"
 	"neetcode150/internal/studydb"
 	"neetcode150/internal/workspace"
@@ -196,7 +197,14 @@ func (s *session) runRequest(p catalog.Problem) runRequest {
 		PkgDir:   s.work().PkgDir(p),
 		UserID:   s.user.ID,
 		CacheDir: s.cacheDir(),
+		Lang:     s.language(p).ID,
 	}
+}
+
+// language is the site's one call to the resolution rule: the problem's own
+// choice, else this person's default.
+func (s *session) language(p catalog.Problem) lang.Lang {
+	return lang.Resolve(s.progress.Get(p.Slug).Lang, s.user.Language)
 }
 
 // work is this person's workspace. The owner keeps solutions/; everybody else

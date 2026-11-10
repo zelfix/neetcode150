@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"neetcode150/internal/catalog"
+	"neetcode150/internal/lang"
 )
 
 // ---------- the invocation ----------
@@ -17,7 +18,7 @@ import (
 // The mount set is the whole security model, so it is asserted without needing
 // a daemon: this test runs everywhere, including in CI where there is none.
 func TestSandboxNeverMountsTheRepository(t *testing.T) {
-	d := newDockerRunner("")
+	d := newDockerRunner(SandboxImages{})
 	req := runRequest{
 		Root:     "/home/me/neetcode150",
 		PkgDir:   filepath.Join("_work", "7", "solutions", "0001-two-sum"),
@@ -93,7 +94,7 @@ func TestSandboxNeverMountsTheRepository(t *testing.T) {
 }
 
 func TestEachPersonGetsTheirOwnBuildCache(t *testing.T) {
-	d := newDockerRunner("")
+	d := newDockerRunner(SandboxImages{})
 	seen := map[string]bool{}
 	for _, id := range []int64{1, 7} {
 		req := runRequest{
@@ -163,7 +164,7 @@ func runInSandbox(t *testing.T, req runRequest, wait time.Duration) (testRun, er
 	t.Helper()
 	ctx, stop := context.WithTimeout(context.Background(), wait)
 	defer stop()
-	return newDockerRunner("").RunTests(ctx, req)
+	return newDockerRunner(SandboxImages{}).RunTests(ctx, req)
 }
 
 // The reason the sandbox exists. A guest writes their own Go, and under the
@@ -336,5 +337,131 @@ func TestKitIsReachable(t *testing.T) {
 	}
 	if strings.Contains(run.Output, "cannot find package") || strings.Contains(run.Output, "is not in std") {
 		t.Fatalf("testkit is not importable from a guest package:\n%s", run.Output)
+	}
+}
+
+// The Python run mounts strictly less than the Go one: the harness and the
+// package, both read-only, and nothing writable at all.
+func TestPythonSandboxMountsOnlyTheHarnessAndThePackage(t *testing.T) {
+	d := newDockerRunner(SandboxImages{Python: "nc-sandbox:py-custom"})
+	req := runRequest{
+		Root:     "/home/me/neetcode150",
+		PkgDir:   filepath.Join("_work", "7", "solutions", "0001-two-sum"),
+		UserID:   7,
+		CacheDir: "/home/me/neetcode150/.nc-cache/users/7",
+		Lang:     lang.Python,
+	}
+	args := d.args(req, "nc-test-abc")
+	var volumes []string
+	for i, a := range args {
+		if a == "-v" && i+1 < len(args) {
+			volumes = append(volumes, args[i+1])
+		}
+	}
+	if len(volumes) != 2 {
+		t.Fatalf("want exactly two mounts, got %v", volumes)
+	}
+	for _, v := range volumes {
+		host := strings.SplitN(v, ":", 2)[0]
+		if host == req.Root || strings.Contains(v, "studydb") || strings.Contains(v, "testbank") {
+			t.Errorf("mount reaches too far: %q", v)
+		}
+		if !strings.HasSuffix(v, ":ro") {
+			t.Errorf("a Python mount is writable: %q", v)
+		}
+	}
+	joined := strings.Join(args, " ")
+	for _, want := range []string{
+		"--network none",
+		"--cap-drop ALL",
+		"--security-opt no-new-privileges",
+		"--memory 512m",
+		"--pids-limit 256",
+		"--pull never",
+		"/tmp:rw,nosuid,nodev,noexec",
+		"nc-sandbox:py-custom python3 -I -B /opt/nc/harness/run.py --package /src/solutions/0001-two-sum",
+	} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("invocation is missing %q in\n%s", want, joined)
+		}
+	}
+	for _, never := range []string{"GOCACHE", "/gocache", ",exec,"} {
+		if strings.Contains(joined, never) {
+			t.Errorf("a Go-only detail leaked into the Python invocation: %q", never)
+		}
+	}
+}
+
+// requirePythonImage skips when the Python sandbox image is not built, which
+// is CI's case too.
+func requirePythonImage(t *testing.T) {
+	t.Helper()
+	requireDocker(t)
+	if err := pythonImageAvailable(SandboxImages{}); err != nil {
+		t.Skipf("no Python sandbox: %v", err)
+	}
+}
+
+func pythonPackage(t *testing.T, name string, files map[string]string) runRequest {
+	t.Helper()
+	req := sandboxPackage(t, name, files)
+	req.Lang = lang.Python
+	return req
+}
+
+const twoSumSpec = `SPEC = r'''{"slug":"two-sum","entry":"twoSum","mode":"function","policy":"unordered",
+"cases":[{"name":"example 1","kind":"example","args":[[2,7,11,15],9],"want":[0,1]},
+{"name":"no answer","kind":"edge","args":[[1],5],"want":[]}]}'''
+ENTRY = {"cls": "Solution", "methods": ["twoSum"], "args": ["", ""]}
+`
+
+func TestAPythonSolutionRunsInTheSandbox(t *testing.T) {
+	requirePythonImage(t)
+	req := pythonPackage(t, "pyfine", map[string]string{
+		"solution.py": "class Solution:\n    def twoSum(self, nums, target):\n" +
+			"        seen = {}\n        for i, n in enumerate(nums):\n" +
+			"            if target - n in seen:\n                return [seen[target - n], i]\n" +
+			"            seen[n] = i\n        return []\n",
+		"practice_cases.py": twoSumSpec,
+	})
+	run, err := runInSandbox(t, req, 2*time.Minute)
+	if err != nil {
+		t.Fatalf("run: %v\n%s", err, run.Output)
+	}
+	if !run.OK || run.Passed != 2 {
+		t.Fatalf("ok=%v passed=%d\n%s", run.OK, run.Passed, run.Output)
+	}
+}
+
+// The image carries nothing but the standard library, and the mounts give a
+// solution nothing else to import.
+func TestAPythonSolutionCannotImportBeyondTheStandardLibrary(t *testing.T) {
+	requirePythonImage(t)
+	req := pythonPackage(t, "pyimport", map[string]string{
+		"solution.py":       "import pip\nclass Solution:\n    def twoSum(self, nums, target):\n        return [0, 1]\n",
+		"practice_cases.py": twoSumSpec,
+	})
+	run, err := runInSandbox(t, req, 2*time.Minute)
+	if err != nil {
+		t.Fatalf("run: %v\n%s", err, run.Output)
+	}
+	if run.Ran || !strings.Contains(run.Output, "ModuleNotFoundError") {
+		t.Fatalf("pip was importable inside the Python sandbox:\n%s", run.Output)
+	}
+}
+
+func TestAPythonEndlessLoopIsCutOffPerCase(t *testing.T) {
+	requirePythonImage(t)
+	req := pythonPackage(t, "pyspin", map[string]string{
+		"solution.py": "class Solution:\n    def twoSum(self, nums, target):\n" +
+			"        if target == 9:\n            while True:\n                pass\n        return []\n",
+		"practice_cases.py": twoSumSpec,
+	})
+	run, err := runInSandbox(t, req, 2*time.Minute)
+	if err != nil {
+		t.Fatalf("run: %v\n%s", err, run.Output)
+	}
+	if run.Failed != 1 || run.Passed != 1 || !strings.Contains(run.Output, "timed out") {
+		t.Fatalf("failed=%d passed=%d\n%s", run.Failed, run.Passed, run.Output)
 	}
 }

@@ -972,7 +972,14 @@ func (s *session) handleRunTests(w http.ResponseWriter, r *http.Request) {
 	// that did not resolve above cannot reach this line, so there is no way to
 	// aim `go test` at an arbitrary directory.
 	start := time.Now()
-	run, runErr := s.runTests.RunTests(ctx, s.runRequest(p))
+	runReq := s.runRequest(p)
+	var run testRun
+	var runErr error
+	if why := s.RunUnavailable(runReq.Lang); why != "" {
+		runErr = fmt.Errorf("%s", why)
+	} else {
+		run, runErr = s.runTests.RunTests(ctx, runReq)
+	}
 	out.Output, out.Passed = run.Output, run.OK
 	out.Millis = time.Since(start).Milliseconds()
 	s.recordRun(p.Slug, run, runErr)

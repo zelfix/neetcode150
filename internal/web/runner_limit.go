@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"runtime"
 	"sync"
+	"time"
 
+	"neetcode150/internal/lang"
 	"neetcode150/internal/studydb"
 )
 
@@ -105,7 +107,12 @@ func (s Sandbox) Valid() bool {
 // Resolved once, at startup, and never re-decided: falling back mid-session
 // because a daemon died would silently drop isolation for whoever ran next,
 // which is the one failure nobody would notice.
-func (s *Server) UseSandbox(mode Sandbox, image string, maxRuns int) (string, error) {
+//
+// The Go image decides whether tests run in a container at all; it is the
+// one that must exist. The Python image only decides whether Python is
+// offered: a missing one disables Python with the build command in the
+// message, and never drops to running Python unisolated on a shared box.
+func (s *Server) UseSandbox(mode Sandbox, images SandboxImages, maxRuns int) (string, error) {
 	if !mode.Valid() {
 		return "", fmt.Errorf("--sandbox must be auto, docker or local, got %q", mode)
 	}
@@ -117,7 +124,7 @@ func (s *Server) UseSandbox(mode Sandbox, image string, maxRuns int) (string, er
 		maxRuns = defaultMaxRuns()
 	}
 
-	dockerErr := dockerAvailable(imageOr(image))
+	dockerErr := dockerAvailable(images.For(lang.Go))
 	useDocker := false
 	switch mode {
 	case SandboxDocker:
@@ -139,23 +146,39 @@ func (s *Server) UseSandbox(mode Sandbox, image string, maxRuns int) (string, er
 			why = fmt.Sprintf("no container available (%v)", dockerErr)
 		}
 		return "", fmt.Errorf("refusing to serve guests without isolation: %s.\n"+
-			"Build the sandbox image with `docker build -t %s -f sandbox/Dockerfile .`, "+
-			"or remove the guests with `nc user rm <name> --yes` to run single-user", why, imageOr(image))
+			"Build the sandbox image with `%s`, "+
+			"or remove the guests with `nc user rm <name> --yes` to run single-user", why, images.BuildHint(lang.Go))
 	}
 
+	s.unavailable = map[lang.ID]string{}
 	if useDocker {
-		s.runTests = newLimitedRunner(newDockerRunner(image), maxRuns)
-		return fmt.Sprintf("sandbox: %s, %d at a time", imageOr(image), maxRuns), nil
+		s.runTests = newLimitedRunner(newDockerRunner(images), maxRuns)
+		python := "python: " + images.For(lang.Python)
+		if err := pythonImageAvailable(images); err != nil {
+			s.unavailable[lang.Python] = err.Error()
+			python = "python: off — " + err.Error()
+		}
+		return fmt.Sprintf("sandbox: %s, %d at a time; %s", images.For(lang.Go), maxRuns, python), nil
 	}
 	s.runTests = newLimitedRunner(localRunner{}, maxRuns)
-	return fmt.Sprintf("sandbox: none — tests run unisolated on this machine, %d at a time", maxRuns), nil
+	python := "python: python3 on this machine"
+	if err := pythonAvailable(); err != nil {
+		s.unavailable[lang.Python] = err.Error() + ", so Python problems cannot be tested here"
+		python = "python: off — " + err.Error()
+	}
+	return fmt.Sprintf("sandbox: none — tests run unisolated on this machine, %d at a time; %s", maxRuns, python), nil
 }
 
-func imageOr(image string) string {
-	if image == "" {
-		return sandboxImage
-	}
-	return image
+// RunUnavailable says why tests cannot run in a language on this server, or
+// "" when they can. Decided once at startup with the rest of UseSandbox.
+func (s *Server) RunUnavailable(id lang.ID) string {
+	return s.unavailable[id]
+}
+
+func pythonImageAvailable(images SandboxImages) error {
+	ctx, stop := context.WithTimeout(context.Background(), 5*time.Second)
+	defer stop()
+	return imagePresent(ctx, images.For(lang.Python), images.BuildHint(lang.Python))
 }
 
 // hasGuests reports whether anybody other than the owner can sign in.

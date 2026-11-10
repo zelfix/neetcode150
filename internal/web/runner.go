@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"neetcode150/internal/lang"
 	"neetcode150/internal/studydb"
 )
 
@@ -57,7 +58,8 @@ type runRequest struct {
 	Root     string // absolute project root
 	PkgDir   string // repo-relative, e.g. "_work/7/solutions/0001-two-sum"
 	UserID   int64
-	CacheDir string // absolute and writable: holds go-build and tmp
+	CacheDir string // absolute and writable: holds go-build and tmp; Go only
+	Lang     lang.ID
 }
 
 // testRunner is how the site runs somebody's tests. Two implementations, picked
@@ -75,16 +77,91 @@ func (f runnerFunc) RunTests(ctx context.Context, req runRequest) (testRun, erro
 	return f(ctx, req)
 }
 
+// pyCaseTimeout bounds one fixture case inside the harness and pyDeadline the
+// whole run, the same split as goTestTimeout under runTimeout: the inner one
+// names the case that hung, the outer one is the backstop.
+const (
+	pyCaseTimeout = 5 * time.Second
+	pyDeadline    = 25 * time.Second
+)
+
+// pyHarness is where the Python harness lives, relative to the project root.
+const pyHarness = "internal/testkit/py/run.py"
+
+// pythonArgs is the harness invocation both runners use. -I isolates the
+// interpreter (no site-packages, no PYTHON* variables, and the script's own
+// directory off sys.path) and -B keeps it from writing bytecode into a
+// directory that is mounted read-only in the container.
+func pythonArgs(harness, pkg string) []string {
+	return []string{"-I", "-B", harness, "--package", pkg,
+		"--case-timeout", pyCaseTimeout.String(), "--deadline", pyDeadline.String()}
+}
+
 // localRunner runs `go test` directly, with no isolation whatsoever.
 //
 // That is fine for one person on their own machine and unacceptable on a shared
 // one: a guest's test file may import neetcode150/internal/studydb and read
 // every other person's notes, progress and archived code. Nothing here can stop
 // that, so the server refuses to start in this mode once a guest exists.
-type localRunner struct{}
+type localRunner struct {
+	// harness overrides where the Python harness is found; empty means under
+	// req.Root. Tests set it because their root is a temporary directory.
+	harness string
+}
 
-func (localRunner) RunTests(ctx context.Context, req runRequest) (testRun, error) {
+func (l localRunner) RunTests(ctx context.Context, req runRequest) (testRun, error) {
+	if req.Lang == lang.Python {
+		return runPythonTest(ctx, req, l.harness)
+	}
 	return runGoTest(ctx, req)
+}
+
+// runPythonTest runs the Python harness over one solution directory. The
+// same -I -B as in the container: a json.py beside a solution must not be
+// what `import json` finds, on the owner's machine either.
+func runPythonTest(ctx context.Context, req runRequest, harness string) (testRun, error) {
+	if harness == "" {
+		harness = filepath.Join(req.Root, filepath.FromSlash(pyHarness))
+	}
+	pkg := filepath.Join(req.Root, req.PkgDir)
+	if _, err := os.Stat(pkg); err != nil {
+		return testRun{}, fmt.Errorf("there is nothing to test yet: %w", err)
+	}
+	cmd := exec.CommandContext(ctx, "python3", pythonArgs(harness, pkg)...)
+	cmd.Dir = req.Root
+	raw, runErr := cmd.CombinedOutput()
+	run := readTestEvents(raw)
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return run, fmt.Errorf("the run was cut off after %s — an endless loop in the solution would do that: %w",
+			runTimeout, ctxErr)
+	}
+	var exit *exec.ExitError
+	if errors.As(runErr, &exit) {
+		return run, nil // the harness had its say, pass or fail
+	}
+	if runErr != nil {
+		return run, fmt.Errorf("could not run python3: %w", runErr)
+	}
+	if !run.Ran {
+		return run, fmt.Errorf("no tests ran: tests are missing or all were skipped; add test cases before submitting")
+	}
+	run.OK = run.Failed == 0
+	return run, nil
+}
+
+// pythonAvailable is the local-mode check: the interpreter on PATH has to be
+// at least the version the sandbox image ships, or the harness's behaviour
+// differs between the two.
+func pythonAvailable() error {
+	python, err := exec.LookPath("python3")
+	if err != nil {
+		return fmt.Errorf("python3 is not on PATH")
+	}
+	out, err := exec.Command(python, "-I", "-c", "import sys; print(sys.version_info >= (3, 12))").Output()
+	if err != nil || strings.TrimSpace(string(out)) != "True" {
+		return fmt.Errorf("python3 is older than 3.12")
+	}
+	return nil
 }
 
 // runGoTest runs the tests for one solution package.

@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"neetcode150/internal/lang"
 )
 
 // Where the module is assembled inside the container. The image warms its build
@@ -19,8 +21,43 @@ import (
 // different working directory would throw the warm entries away.
 const containerSrc = "/src"
 
-// sandboxImage is the default image tag. Built from sandbox/Dockerfile.
-const sandboxImage = "nc-sandbox:go1.26"
+// sandboxImage is the default Go image tag, built from sandbox/Dockerfile;
+// pySandboxImage the Python one, from sandbox/Dockerfile.python.
+const (
+	sandboxImage   = "nc-sandbox:go1.26"
+	pySandboxImage = "nc-sandbox:py3.12"
+)
+
+// containerHarness is where the Python harness is mounted. Outside /src on
+// purpose: the harness is not the user's package and must not be importable
+// as one.
+const containerHarness = "/opt/nc/harness"
+
+// SandboxImages names the image for each language; empty means the default.
+type SandboxImages struct {
+	Go, Python string
+}
+
+func (i SandboxImages) For(id lang.ID) string {
+	if id == lang.Python {
+		if i.Python == "" {
+			return pySandboxImage
+		}
+		return i.Python
+	}
+	if i.Go == "" {
+		return sandboxImage
+	}
+	return i.Go
+}
+
+// BuildHint is the command that builds the image for a language.
+func (i SandboxImages) BuildHint(id lang.ID) string {
+	if id == lang.Python {
+		return fmt.Sprintf("docker build -t %s -f sandbox/Dockerfile.python .", i.For(id))
+	}
+	return fmt.Sprintf("docker build -t %s -f sandbox/Dockerfile .", i.For(id))
+}
 
 // dockerRunner runs one person's tests in a one-shot container.
 //
@@ -33,15 +70,12 @@ const sandboxImage = "nc-sandbox:go1.26"
 // simply fails to resolve — which also enforces the repository's own rule that
 // solutions depend on nothing, and says so in a comprehensible error.
 type dockerRunner struct {
-	cli   string // docker binary
-	image string
+	cli    string // docker binary
+	images SandboxImages
 }
 
-func newDockerRunner(image string) dockerRunner {
-	if image == "" {
-		image = sandboxImage
-	}
-	return dockerRunner{cli: "docker", image: image}
+func newDockerRunner(images SandboxImages) dockerRunner {
+	return dockerRunner{cli: "docker", images: images}
 }
 
 // containerPkg is where the package under test appears inside the container:
@@ -63,6 +97,16 @@ func containerPkg(pkgDir string) string {
 // read-only.
 func (d dockerRunner) mounts(req runRequest) []string {
 	ro := func(host, inside string) string { return host + ":" + inside + ":ro" }
+	if req.Lang == lang.Python {
+		// Two mounts and nothing writable: the harness and the package. The
+		// fixtures travel inside practice_cases.py, so internal/testbank is
+		// not needed, and nothing compiles, so there is no cache. A strictly
+		// smaller surface than the Go run.
+		return []string{
+			ro(filepath.Join(req.Root, "internal", "testkit", "py"), containerHarness),
+			ro(filepath.Join(req.Root, req.PkgDir), path.Join(containerSrc, containerPkg(req.PkgDir))),
+		}
+	}
 	return []string{
 		// go.mod is NOT mounted. The image carries one declaring the module path
 		// and nothing else, so the sandbox never needs a module proxy — and a
@@ -88,25 +132,46 @@ func (d dockerRunner) args(req runRequest, name string) []string {
 		"--network", "none",
 		"--cap-drop", "ALL",
 		"--security-opt", "no-new-privileges",
+	}
+	if req.Lang == lang.Python {
+		// Half the memory and a noexec scratch space: the gigabyte and the
+		// executable tmpfs below exist for the Go compiler and its test
+		// binary, and CPython needs neither.
+		a = append(a, "--memory", "512m", "--memory-swap", "512m")
+	} else {
 		// Memory below a gigabyte makes a cold compile of the test binary get
 		// OOM-killed, which surfaces as "signal: killed" and explains nothing.
-		"--memory", "1g", "--memory-swap", "1g",
+		a = append(a, "--memory", "1g", "--memory-swap", "1g")
+	}
+	a = append(a,
 		"--cpus", "1.0",
 		"--pids-limit", "256",
 		"--ulimit", "nofile=1024:1024",
+	)
+	if req.Lang == lang.Python {
+		a = append(a, "--tmpfs", "/tmp:rw,nosuid,nodev,noexec,size=64m")
+	} else {
 		// exec is required, not an oversight: docker mounts a tmpfs noexec by
 		// default, and `go test` builds the test binary into GOTMPDIR and runs
 		// it from there, so without this every run dies with "permission
 		// denied" after a successful compile. nosuid and nodev stay.
-		"--tmpfs", "/tmp:rw,nosuid,nodev,exec,size=512m",
+		a = append(a, "--tmpfs", "/tmp:rw,nosuid,nodev,exec,size=512m")
+	}
+	a = append(a,
 		// A missing image must be a clear error, not a surprise pull attempt
 		// against a daemon we have just told to have no network.
 		"--pull", "never",
 		"-w", containerSrc,
-	}
+	)
 	a = append(a, "--user", strconv.Itoa(os.Getuid())+":"+strconv.Itoa(os.Getgid()))
 	for _, m := range d.mounts(req) {
 		a = append(a, "-v", m)
+	}
+	if req.Lang == lang.Python {
+		// No -e PYTHON* variables: -I makes the interpreter ignore them, so
+		// the flags on the command line are the whole configuration.
+		a = append(a, "-e", "HOME=/tmp", d.images.For(lang.Python), "python3")
+		return append(a, pythonArgs(containerHarness+"/run.py", path.Join(containerSrc, containerPkg(req.PkgDir)))...)
 	}
 	// Passed explicitly rather than relied on from the image, so the invocation
 	// describes its own behaviour and the test can assert it.
@@ -125,7 +190,7 @@ func (d dockerRunner) args(req runRequest, name string) []string {
 	} {
 		a = append(a, "-e", e)
 	}
-	a = append(a, d.image,
+	a = append(a, d.images.For(lang.Go),
 		"go", "test", "-json", "-count=1", "-run=.", "-skip=^$",
 		"-timeout", goTestTimeout.String(),
 		"./"+containerPkg(req.PkgDir)+"/")
@@ -133,8 +198,10 @@ func (d dockerRunner) args(req runRequest, name string) []string {
 }
 
 func (d dockerRunner) RunTests(ctx context.Context, req runRequest) (testRun, error) {
-	if err := os.MkdirAll(filepath.Join(req.CacheDir, "go-build"), 0o700); err != nil {
-		return testRun{}, fmt.Errorf("could not prepare the build cache: %w", err)
+	if req.Lang != lang.Python {
+		if err := os.MkdirAll(filepath.Join(req.CacheDir, "go-build"), 0o700); err != nil {
+			return testRun{}, fmt.Errorf("could not prepare the build cache: %w", err)
+		}
 	}
 	if _, err := os.Stat(filepath.Join(req.Root, req.PkgDir)); err != nil {
 		return testRun{}, fmt.Errorf("there is nothing to test yet: %w", err)
@@ -178,7 +245,11 @@ func (d dockerRunner) RunTests(ctx context.Context, req runRequest) (testRun, er
 		}
 		switch exit.ExitCode() {
 		case 137:
-			return run, fmt.Errorf("the run was killed for using more than 1 GiB of memory — an unbounded allocation would do that")
+			limit := "1 GiB"
+			if req.Lang == lang.Python {
+				limit = "512 MiB"
+			}
+			return run, fmt.Errorf("the run was killed for using more than %s of memory — an unbounded allocation would do that", limit)
 		case 143:
 			return run, fmt.Errorf("the run was stopped after %s", runTimeout)
 		}
@@ -268,9 +339,14 @@ func dockerAvailable(image string) error {
 	if out, err := exec.CommandContext(ctx, "docker", "info", "--format", "{{.ServerVersion}}").CombinedOutput(); err != nil {
 		return fmt.Errorf("no docker daemon: %s", lastLine(out))
 	}
+	return imagePresent(ctx, image, fmt.Sprintf("docker build -t %s -f sandbox/Dockerfile .", image))
+}
+
+// imagePresent reports whether one image is built, naming the command that
+// builds it when not.
+func imagePresent(ctx context.Context, image, hint string) error {
 	if out, err := exec.CommandContext(ctx, "docker", "image", "inspect", image).CombinedOutput(); err != nil {
-		return fmt.Errorf("the sandbox image %s is missing — build it with `docker build -t %s -f sandbox/Dockerfile .`: %s",
-			image, image, lastLine(out))
+		return fmt.Errorf("the sandbox image %s is missing — build it with `%s`: %s", image, hint, lastLine(out))
 	}
 	return nil
 }

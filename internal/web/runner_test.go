@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"neetcode150/internal/lang"
 	"os"
 	"path/filepath"
 	"strings"
@@ -239,5 +240,46 @@ func TestNamedCaseRecoversTheFixtureNameAndKind(t *testing.T) {
 		if got := namedCase(test); got != want {
 			t.Errorf("namedCase(%q) = %+v, want %+v", test, got, want)
 		}
+	}
+}
+
+// The local Python run goes through the same harness the container mounts,
+// and reports in the same shape as a Go run.
+func TestRunPythonTestLocally(t *testing.T) {
+	if err := pythonAvailable(); err != nil {
+		t.Skip(err)
+	}
+	harness, err := filepath.Abs(filepath.Join("..", "..", "internal", "testkit", "py", "run.py"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	pkg := filepath.Join("solutions", "0001-two-sum")
+	if err := os.MkdirAll(filepath.Join(root, pkg), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	write := func(name, body string) {
+		if err := os.WriteFile(filepath.Join(root, pkg, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("practice_cases.py", twoSumSpec)
+	write("solution.py", "class Solution:\n    def twoSum(self, nums, target):\n        return [0, 1] if target == 9 else []\n")
+	req := runRequest{Root: root, PkgDir: pkg, UserID: 1, Lang: lang.Python}
+	run, err := localRunner{harness: harness}.RunTests(context.Background(), req)
+	if err != nil {
+		t.Fatalf("run: %v\n%s", err, run.Output)
+	}
+	if !run.OK || run.Passed != 2 || !strings.HasPrefix(run.Output, "Tests: 2 passed, 0 failed") {
+		t.Fatalf("ok=%v passed=%d\n%s", run.OK, run.Passed, run.Output)
+	}
+
+	write("solution.py", "class Solution:\n    def twoSum(self, nums, target):\n        return [1, 1]\n")
+	run, err = localRunner{harness: harness}.RunTests(context.Background(), req)
+	if err != nil || run.OK || run.Failed != 2 {
+		t.Fatalf("wrong answer: ok=%v failed=%d err=%v\n%s", run.OK, run.Failed, err, run.Output)
+	}
+	if len(run.Cases) != 2 || run.Cases[0].Kind != "edge" || run.Cases[0].Name != "no answer" {
+		t.Errorf("failed cases were not recovered from the event names: %+v", run.Cases)
 	}
 }

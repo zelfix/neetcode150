@@ -51,6 +51,7 @@ Usage:
                                --tutor-mode full|tutor, --tutor-model <name>
                                --tutor-rates <file.json> replaces the DeepSeek price list
                                --sandbox auto|docker|local, --max-runs <n>
+                               --sandbox-image <go image>, --sandbox-image-python <py image>
   nc next                      what to work on now
   nc start <problem>           scaffold the solution and notes, mark it in progress
                                --lang go|python chooses the language for this problem
@@ -412,7 +413,8 @@ func cmdServe(root string, args []string) error {
 	model := fs.String("tutor-model", "", "model for an API provider, e.g. deepseek-pro")
 	ratesPath := fs.String("tutor-rates", "", "JSON price list for the deepseek provider, see DEPLOY.md")
 	sandbox := fs.String("sandbox", string(web.SandboxAuto), "test isolation: auto, docker or local")
-	image := fs.String("sandbox-image", "", "container image for test runs")
+	image := fs.String("sandbox-image", "", "container image for Go test runs")
+	pyImage := fs.String("sandbox-image-python", "", "container image for Python test runs")
 	maxRuns := fs.Int("max-runs", 0, "concurrent test runs, 0 to size from the CPU count")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -446,7 +448,7 @@ func cmdServe(root string, args []string) error {
 	}
 	// Resolved before the listener opens: a server that cannot isolate guest
 	// code must fail to start rather than start and quietly run it unisolated.
-	chosen, err := srv.UseSandbox(web.Sandbox(*sandbox), *image, *maxRuns)
+	chosen, err := srv.UseSandbox(web.Sandbox(*sandbox), web.SandboxImages{Go: *image, Python: *pyImage}, *maxRuns)
 	if err != nil {
 		return err
 	}
