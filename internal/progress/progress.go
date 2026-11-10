@@ -435,16 +435,16 @@ func applyRating(e *Entry, confidence, rung int, slug string, now time.Time) {
 	touched := now
 	e.LastTouched = &touched
 	earned := e.ReviewStage
-	switch {
-	case confidence == 1:
+	switch confidence {
+	case 1:
 		// Lost it entirely: back to the start of the ladder.
 		e.Status = Shaky
 		e.ReviewStage = 1
-	case confidence == 2:
+	case 2:
 		// Got there, but on a strong hint. A partial fall, not a reset.
 		e.Status = Shaky
 		lapse(e)
-	case confidence == 3:
+	case 3:
 		if e.ReviewStage < 1 {
 			e.ReviewStage = 1
 		}

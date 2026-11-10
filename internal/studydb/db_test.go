@@ -80,7 +80,9 @@ func TestImportPreservesLegacyDataAndRunsOnlyOnce(t *testing.T) {
 		t.Fatal("legacy files reimported")
 	}
 	var count int
-	db.SQL.QueryRow("SELECT count(*) FROM attempts").Scan(&count)
+	if err := db.SQL.QueryRow("SELECT count(*) FROM attempts").Scan(&count); err != nil {
+		t.Fatal(err)
+	}
 	if count != 12 {
 		t.Fatal("duplicate import")
 	}
@@ -172,7 +174,9 @@ PRAGMA user_version=1;`); err != nil {
 		t.Fatalf("upgrade v1: %v", err)
 	}
 	var version int
-	db.SQL.QueryRow("PRAGMA user_version").Scan(&version)
+	if err := db.SQL.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
+		t.Fatal(err)
+	}
 	if version != schemaVersion {
 		t.Fatalf("version=%d, want %d", version, schemaVersion)
 	}
@@ -210,7 +214,9 @@ PRAGMA user_version=1;`); err != nil {
 	}
 	defer db.Close()
 	var count int
-	db.SQL.QueryRow("SELECT count(*) FROM attempts").Scan(&count)
+	if err := db.SQL.QueryRow("SELECT count(*) FROM attempts").Scan(&count); err != nil {
+		t.Fatal(err)
+	}
 	if count != 2 {
 		t.Fatalf("got %d attempts, want 2", count)
 	}
@@ -232,7 +238,9 @@ func TestVersionOneWithSubmissionKeyAlsoUpgrades(t *testing.T) {
 	}
 	defer db.Close()
 	var version int
-	db.SQL.QueryRow("PRAGMA user_version").Scan(&version)
+	if err := db.SQL.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
+		t.Fatal(err)
+	}
 	if version != schemaVersion {
 		t.Fatalf("version=%d, want %d", version, schemaVersion)
 	}

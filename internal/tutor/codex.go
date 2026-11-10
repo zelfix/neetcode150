@@ -123,7 +123,7 @@ func (m *Manager) startCodex(scope *studydb.Scope, s *Session) error {
 	}
 	if result.Thread.ID == "" {
 		s.closeSession()
-		return fmt.Errorf("Codex app-server started a thread without an ID")
+		return fmt.Errorf("the Codex app-server started a thread without an ID")
 	}
 	c.mu.Lock()
 	c.threadID = result.Thread.ID
@@ -181,7 +181,7 @@ func (c *codexClient) call(method string, params any, out any) error {
 		}
 		return nil
 	case <-c.session.done:
-		return fmt.Errorf("Codex app-server exited during %s", method)
+		return fmt.Errorf("the Codex app-server exited during %s", method)
 	case <-timer.C:
 		c.mu.Lock()
 		delete(c.pending, id)
@@ -339,10 +339,6 @@ func (c *codexClient) translate(msg codexMessage) {
 	}
 }
 
-func (c *codexClient) send(text string) error {
-	return c.sendAs(text, text)
-}
-
 func (c *codexClient) sendAs(text, display string) error {
 	c.sendMu.Lock()
 	defer c.sendMu.Unlock()
@@ -353,7 +349,7 @@ func (c *codexClient) sendAs(text, display string) error {
 	first := c.first
 	c.mu.Unlock()
 	if active {
-		return fmt.Errorf("Codex is still responding to the previous question")
+		return fmt.Errorf("the tutor is still responding to the previous question")
 	}
 
 	c.session.publish(Event{Kind: KindUser, Text: display})

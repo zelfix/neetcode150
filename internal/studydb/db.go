@@ -70,7 +70,9 @@ func (d *DB) Write(fn func(*sql.Tx) error) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	// Rollback after a Commit is a no-op that reports ErrTxDone; there is
+	// nothing to do with that.
+	defer func() { _ = tx.Rollback() }()
 	if err = fn(tx); err != nil {
 		return err
 	}

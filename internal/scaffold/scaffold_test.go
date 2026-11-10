@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"go/parser"
 	"go/token"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -11,6 +12,7 @@ import (
 
 	"neetcode150/internal/catalog"
 	"neetcode150/internal/studydb"
+	"neetcode150/internal/workspace"
 )
 
 func TestPackageName(t *testing.T) {
@@ -252,4 +254,131 @@ func ownerScope(t *testing.T, root string) *studydb.Scope {
 	}
 	t.Cleanup(func() { db.Close() })
 	return db.Owner()
+}
+
+// fakeProblem is a synthetic catalog entry whose slug has no testbank suite,
+// so Generate falls back to the standard table template. That keeps these tests
+// independent of the curated fixtures and avoids testkit imports in the
+// generated test file.
+var fakeProblem = catalog.Problem{
+	ID: 9999, Slug: "fake-add", Title: "Fake Add", Difficulty: "Easy",
+	Pattern: "Arrays & Hashing", Dir: "9999-fake-add",
+	LeetCodeURL: "https://leetcode.com/problems/fake-add/",
+}
+
+const fakeSignature = "func fakeAdd(a, b int) int {\n    \n}"
+
+func TestCreateWritesFilesAndDoesNotOverwriteExisting(t *testing.T) {
+	root := t.TempDir()
+	lay := workspace.Owner(root)
+
+	written, f, err := Create(ownerScope(t, root), lay, fakeProblem, fakeSignature, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Both solution.go and solution_test.go must be on disk after the first Create.
+	var hasSol, hasTest bool
+	for _, w := range written {
+		base := filepath.Base(w)
+		if base == "solution.go" {
+			hasSol = true
+		}
+		if strings.HasSuffix(base, "_test.go") {
+			hasTest = true
+		}
+	}
+	if !hasSol {
+		t.Errorf("solution.go was not created; written = %v", written)
+	}
+	if !hasTest {
+		t.Errorf("no test file was created; written = %v", written)
+	}
+	// Both generated files must parse without errors.
+	compiles(t, "solution.go", f.Solution)
+	compiles(t, "solution_test.go", f.Test)
+
+	// Overwrite solution.go to simulate work in progress.
+	solPath := lay.Path(fakeProblem, "solution.go")
+	personal := "package fakeadd\n\n// personal work\nfunc fakeAdd(a, b int) int { return a + b }\n"
+	if err := os.WriteFile(solPath, []byte(personal), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	// A second Create must not touch the modified solution.go.
+	written2, _, err := Create(ownerScope(t, root), lay, fakeProblem, fakeSignature, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, w := range written2 {
+		if filepath.Base(w) == "solution.go" {
+			t.Errorf("second Create wrote solution.go: %s", w)
+		}
+	}
+	got, err := os.ReadFile(solPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != personal {
+		t.Errorf("second Create changed solution.go:\ngot  %q\nwant %q", got, personal)
+	}
+}
+
+func TestResetArchivesCurrentSolutionAndWritesFreshScaffold(t *testing.T) {
+	root := t.TempDir()
+	lay := workspace.Owner(root)
+	now := time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC)
+
+	// Create an initial workspace so solution.go exists on disk.
+	if _, _, err := Create(ownerScope(t, root), lay, fakeProblem, fakeSignature, ""); err != nil {
+		t.Fatal(err)
+	}
+
+	// Replace the stub with a recognisable first attempt.
+	solPath := lay.Path(fakeProblem, "solution.go")
+	firstAttempt := "package fakeadd\n\n// first attempt\nfunc fakeAdd(a, b int) int { return a + b }\n"
+	if err := os.WriteFile(solPath, []byte(firstAttempt), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	archive, _, err := Reset(ownerScope(t, root), lay, fakeProblem, fakeSignature, "", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The archive reference must be retrievable and contain the exact code that
+	// was on disk before the reset.
+	refs, err := Attempts(ownerScope(t, root), fakeProblem)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(refs) != 1 {
+		t.Fatalf("expected 1 archived attempt, got %d", len(refs))
+	}
+	if refs[0] != archive {
+		t.Errorf("archive ref mismatch: Attempts returned %q, Reset returned %q", refs[0], archive)
+	}
+	attempt, err := ReadAttempt(ownerScope(t, root), archive)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if attempt.Code != firstAttempt {
+		t.Errorf("archived code:\ngot  %q\nwant %q", attempt.Code, firstAttempt)
+	}
+
+	// solution.go must now contain a fresh scaffold, not the old attempt.
+	fresh, err := os.ReadFile(solPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(fresh) == firstAttempt {
+		t.Error("Reset did not overwrite solution.go")
+	}
+	compiles(t, "solution.go (after reset)", string(fresh))
+
+	// Resetting a workspace that has no solution.go must fail.
+	emptyRoot := t.TempDir()
+	if _, _, err := Reset(ownerScope(t, emptyRoot), workspace.Owner(emptyRoot), fakeProblem, fakeSignature, "", now); err == nil {
+		t.Error("Reset with no solution.go returned nil error")
+	}
 }

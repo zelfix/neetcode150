@@ -1,0 +1,31 @@
+# The set is deliberately small: what go vet misses and a reviewer would still
+# flag. Style linters are left out; gofmt is enforced separately and is enough.
+version: "2"
+
+linters:
+  default: none
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+  settings:
+    errcheck:
+      exclude-functions:
+        # goldmark's writer never returns a useful error, and the renderer
+        # writes dozens of fragments in a row.
+        - (github.com/yuin/goldmark/util.BufWriter).WriteString
+  exclusions:
+    presets:
+      # Close, Flush, Remove and the print family: the usual unchecked calls
+      # whose failure nothing here could act on.
+      - std-error-handling
+    paths:
+      # Practice code is the user's own and is not part of the tooling.
+      - ^solutions/
+      - ^_work/
+
+formatters:
+  enable:
+    - gofmt

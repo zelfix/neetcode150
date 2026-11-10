@@ -19,13 +19,18 @@ import (
 	"neetcode150/internal/catalog"
 )
 
-const (
+// catalogURL and graphQLURL are vars so tests can redirect them to a local
+// httptest server without any network traffic.
+var (
 	// catalogURL serves .problemSiteData.json from the MIT-licensed NeetCode
 	// solutions repo. The GitHub contents API is used rather than
 	// raw.githubusercontent.com, which is not reachable from every network.
 	catalogURL = "https://api.github.com/repos/neetcode-gh/leetcode/contents/.problemSiteData.json"
 	graphQLURL = "https://leetcode.com/graphql"
-	userAgent  = "neetcode150-local-study-kit"
+)
+
+const (
+	userAgent = "neetcode150-local-study-kit"
 
 	// politeDelay separates LeetCode requests. The statements are fetched once
 	// and cached on disk, so there is no reason to go faster.
@@ -37,6 +42,10 @@ const (
 type Client struct {
 	HTTP  *http.Client
 	Delay time.Duration
+	// retryBackoff, when non-nil, overrides the default exponential back-off
+	// inside Statement. Tests set this to a zero-delay function so retries
+	// complete instantly without a six-second wait.
+	retryBackoff func(attempt int) time.Duration
 }
 
 // NewClient returns a Client with sensible timeouts.
@@ -207,7 +216,12 @@ func (c *Client) Statement(ctx context.Context, slug string) (*Statement, error)
 	var lastErr error
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		if attempt > 1 {
-			backoff := time.Duration(1<<uint(attempt-1)) * time.Second
+			var backoff time.Duration
+			if c.retryBackoff != nil {
+				backoff = c.retryBackoff(attempt)
+			} else {
+				backoff = time.Duration(1<<uint(attempt-1)) * time.Second
+			}
 			select {
 			case <-ctx.Done():
 				return nil, ctx.Err()

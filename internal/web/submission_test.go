@@ -238,8 +238,12 @@ func TestCompletedReviewIsAtomicAndIdempotent(t *testing.T) {
 		t.Fatal("transaction should fail")
 	}
 	var attempts, pendingCount int
-	prog.DB().SQL.QueryRow("SELECT count(*) FROM attempts").Scan(&attempts)
-	prog.DB().SQL.QueryRow("SELECT count(*) FROM pending_submissions").Scan(&pendingCount)
+	if err := prog.DB().SQL.QueryRow("SELECT count(*) FROM attempts").Scan(&attempts); err != nil {
+		t.Fatal(err)
+	}
+	if err := prog.DB().SQL.QueryRow("SELECT count(*) FROM pending_submissions").Scan(&pendingCount); err != nil {
+		t.Fatal(err)
+	}
 	if attempts != 0 || pendingCount != 1 || len(prog.Get(p.Slug).History) != 0 {
 		t.Fatal("partial review escaped transaction rollback")
 	}
@@ -260,7 +264,9 @@ func TestCompletedReviewIsAtomicAndIdempotent(t *testing.T) {
 	if entry := prog.Get(p.Slug); len(entry.History) != 1 || entry.MinutesSpent != 3 {
 		t.Fatalf("duplicate rating/time: %+v", entry)
 	}
-	prog.DB().SQL.QueryRow("SELECT count(*) FROM pending_submissions").Scan(&pendingCount)
+	if err := prog.DB().SQL.QueryRow("SELECT count(*) FROM pending_submissions").Scan(&pendingCount); err != nil {
+		t.Fatal(err)
+	}
 	if pendingCount != 0 {
 		t.Fatal("completed submission still pending")
 	}

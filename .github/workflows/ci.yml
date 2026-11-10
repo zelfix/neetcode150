@@ -47,12 +47,27 @@ jobs:
             exit 1
           fi
 
+      # A stray import or a missing indirect requirement shows up here rather
+      # than on the next person's `go build`.
+      - name: go mod tidy
+        run: |
+          go mod tidy
+          git diff --exit-code -- go.mod go.sum
+
       - name: go vet
         run: go vet ./...
 
       - name: go build
         run: go build ./...
 
+      # The set is in .golangci.yml. Pinned to the latest release because an
+      # older binary cannot type-check a newer Go.
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: latest
+
       # solutions/ is gitignored, so this runs the CLI and server tests only.
+      # -count=1 keeps a flaky test from hiding behind the test cache.
       - name: go test
-        run: go test -race ./...
+        run: go test -race -count=1 ./...
