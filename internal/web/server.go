@@ -62,6 +62,12 @@ type Server struct {
 
 	submissionMu       sync.Mutex
 	pendingSubmissions map[submissionKey]pendingSubmission
+
+	// background is the parent of work that outlives the request that started
+	// it, such as a submission review, so that stopping the server stops it
+	// too instead of leaving it to talk to a closed database.
+	background context.Context
+	stop       context.CancelFunc
 }
 
 // New builds a Server over the project at root.
@@ -77,6 +83,7 @@ func New(root string, cat *catalog.Catalog, store *content.Store, prog *progress
 		tutor:              tutor.New(root, tutor.ModeTutor, 0),
 		pendingSubmissions: make(map[submissionKey]pendingSubmission),
 	}
+	s.background, s.stop = context.WithCancel(context.Background())
 	s.tutor.OnSpend(s.recordTutorSpend)
 	users, err := s.db.Users()
 	if err != nil {
@@ -128,6 +135,7 @@ func (s *Server) UseTutor(m *tutor.Manager) {
 // CloseTutor ends every tutor session. The server must call this on the way
 // down or the claude child processes outlive it.
 func (s *Server) CloseTutor() {
+	s.stop()
 	if s.tutor != nil {
 		s.tutor.Close()
 	}
@@ -144,10 +152,20 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServerFS(static)))
 	mux.HandleFunc("GET /highlight.css", s.handleHighlightCSS)
 
+	// A probe for the reverse proxy or a monitor. It answers without a cookie
+	// and says nothing about who exists or what is stored.
+	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		fmt.Fprintln(w, "ok")
+	})
+
 	// Trading a link for a cookie is the only route that runs without an
-	// identity, and leaving is the only one that deliberately drops it.
+	// identity, and leaving is the only one that deliberately drops it. Leaving
+	// is a POST behind guard: a Lax cookie still rides along on a top-level GET,
+	// so a GET that signed you out could be triggered by a link on any site.
 	mux.HandleFunc("GET /join/{token}", s.handleJoin)
-	mux.HandleFunc("GET /leave", s.handleLeave)
+	mux.HandleFunc("GET /leave", s.handleLeavePage)
+	mux.HandleFunc("POST /leave", guard(s.handleLeave))
 
 	// Everything below is somebody's own work, so it all goes through with(),
 	// which refuses a request that names nobody.
@@ -184,17 +202,7 @@ func (s *Server) Handler() http.Handler {
 			http.Redirect(w, r, target, http.StatusMovedPermanently)
 		})
 	}
-	return logRequests(mux)
-}
-
-func logRequests(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		start := time.Now()
-		next.ServeHTTP(w, r)
-		if !strings.HasPrefix(r.URL.Path, "/static/") {
-			log.Printf("%s %s %s", r.Method, r.URL.Path, time.Since(start).Round(time.Millisecond))
-		}
-	})
+	return instrument(mux)
 }
 
 func (s *Server) handleHighlightCSS(w http.ResponseWriter, r *http.Request) {
@@ -516,6 +524,9 @@ func (s *session) handleSetStatus(w http.ResponseWriter, r *http.Request) {
 		s.notFound(w, r, "No problem with that slug.")
 		return
 	}
+	if !limitForm(w, r) {
+		return
+	}
 	status := progress.Status(r.FormValue("status"))
 	if !status.Valid() {
 		http.Error(w, fmt.Sprintf("unknown status %q", r.FormValue("status")), http.StatusBadRequest)
@@ -532,6 +543,9 @@ func (s *session) handleRate(w http.ResponseWriter, r *http.Request) {
 	p, ok := s.cat.BySlug(r.PathValue("slug"))
 	if !ok {
 		s.notFound(w, r, "No problem with that slug.")
+		return
+	}
+	if !limitForm(w, r) {
 		return
 	}
 	n, err := strconv.Atoi(r.FormValue("confidence"))
@@ -579,9 +593,12 @@ func (s *Server) notFound(w http.ResponseWriter, r *http.Request, msg string) {
 	fmt.Fprintf(w, "404 — %s\n", msg)
 }
 
+// fail logs the cause and tells the browser only that there was one. On a
+// shared instance the detail is a file path or a SQL error, which is the
+// operator's to read, not a guest's.
 func (s *Server) fail(w http.ResponseWriter, err error) {
 	log.Printf("error: %v", err)
-	http.Error(w, "internal error: "+err.Error(), http.StatusInternalServerError)
+	http.Error(w, "internal error", http.StatusInternalServerError)
 }
 
 // ---------- template helpers ----------
@@ -686,6 +703,13 @@ func Listen(ctx context.Context, addr string, h http.Handler) error {
 		Addr:              addr,
 		Handler:           h,
 		ReadHeaderTimeout: 10 * time.Second,
+		// Bodies are small (maxBody) but a client may send one slowly, and an
+		// idle keep-alive connection otherwise costs a goroutine for ever. There
+		// is no WriteTimeout: the tutor's event stream is meant to stay open,
+		// and a server-wide write deadline would cut it at the limit. The
+		// stream handler also clears the read deadline for the same reason.
+		ReadTimeout: 30 * time.Second,
+		IdleTimeout: 2 * time.Minute,
 	}
 	go func() {
 		<-ctx.Done()

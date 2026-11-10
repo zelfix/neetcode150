@@ -900,8 +900,8 @@ func TestResolveRefusesWorkInProgress(t *testing.T) {
 	if string(after) != string(before) {
 		t.Error("a refused re-solve still changed the file")
 	}
-	if n := ownerSession(t, srv).countArchived(catalog.Problem{Dir: "0001-two-sum"}); n != 0 {
-		t.Errorf("a refused re-solve archived %d files", n)
+	if n, err := ownerSession(t, srv).countArchived(catalog.Problem{Dir: "0001-two-sum"}); err != nil || n != 0 {
+		t.Errorf("a refused re-solve archived %d files (err %v)", n, err)
 	}
 }
 

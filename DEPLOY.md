@@ -202,6 +202,9 @@ server {
 From your own machine, not the server:
 
 ```sh
+# The process is up. This is the one page that answers without a cookie and
+# says nothing, so point a monitor at it.
+curl -s https://study.example.com/health                                     # ok
 # No cookie: every personal page is refused, and says what to do about it.
 curl -s -o /dev/null -w '%{http_code}\n' https://study.example.com/          # 403
 # Stylesheets still load, or the refusal page renders unstyled.

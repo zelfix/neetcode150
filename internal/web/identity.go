@@ -74,19 +74,6 @@ func (s *Server) with(h func(*session, http.ResponseWriter, *http.Request)) http
 	}
 }
 
-// ownerOnly fences off what is not per-user yet. The tutor keeps one live
-// process and one transcript per problem rather than per person, so handing it
-// to a guest would put two people in one conversation.
-func (s *Server) ownerOnly(h func(*session, http.ResponseWriter, *http.Request)) http.HandlerFunc {
-	return s.with(func(v *session, w http.ResponseWriter, r *http.Request) {
-		if v.user.ID != studydb.OwnerID {
-			http.Error(w, "the tutor is not available on shared instances yet", http.StatusForbidden)
-			return
-		}
-		h(v, w, r)
-	})
-}
-
 func secure(r *http.Request) bool {
 	if r.TLS != nil {
 		return true
@@ -130,11 +117,33 @@ func clearCookie(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// handleLeavePage is what typing /leave into the address bar gets: a button,
+// not the sign-out itself. Only the POST it makes drops the cookie.
+func (s *Server) handleLeavePage(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_ = leavePage.Execute(w, nil)
+}
+
 // handleLeave drops the cookie, which is how a shared browser is handed back.
 func (s *Server) handleLeave(w http.ResponseWriter, r *http.Request) {
 	clearCookie(w, r)
 	s.askForALink(w, r)
 }
+
+var leavePage = template.Must(template.New("leave").Parse(`<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>neetcode150</title>
+<link rel="stylesheet" href="/static/app.css">
+</head><body class="join-page">
+<main>
+  <h1>Hand this browser back?</h1>
+  <p>Leaving forgets your link here. Your progress stays; open the link again
+  to pick up where you were.</p>
+  <form method="post" action="/leave"><button type="submit">Leave</button></form>
+</main>
+</body></html>
+`))
 
 var joinPage = template.Must(template.New("join").Parse(`<!doctype html>
 <html lang="en"><head><meta charset="utf-8">

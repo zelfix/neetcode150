@@ -59,6 +59,11 @@ func (s *session) handleTutorEvents(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Connection", "keep-alive")
 	// Harmless here, and correct the moment anyone puts a proxy in front.
 	w.Header().Set("X-Accel-Buffering", "no")
+	// The server's ReadTimeout would otherwise cancel this request's context
+	// once it expires, and with it the stream, even though nothing is being read.
+	rc := http.NewResponseController(w)
+	_ = rc.SetReadDeadline(time.Time{})
+	_ = rc.SetWriteDeadline(time.Time{})
 	w.WriteHeader(http.StatusOK)
 
 	replay, ch, cancel := sess.Subscribe()

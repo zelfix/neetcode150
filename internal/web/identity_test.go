@@ -243,15 +243,55 @@ func TestTheTutorIsNotHandedToGuests(t *testing.T) {
 	}
 }
 
-// Leaving is how a shared browser is handed back.
+// Leaving is how a shared browser is handed back. It takes a POST from this
+// site's own page: a Lax cookie still travels on a top-level GET, so a GET that
+// signed you out could be fired by a link anywhere.
 func TestLeavingDropsTheCookie(t *testing.T) {
 	srv, _, _ := testSite(t)
-	rec := getAs(t, srv.Handler(), "/leave", testToken)
+	h := srv.Handler()
+
+	rec := getAs(t, h, "/leave", testToken)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /leave = %d, want a page with the button", rec.Code)
+	}
 	for _, c := range rec.Result().Cookies() {
-		if c.Name == cookieName && c.MaxAge >= 0 {
-			t.Errorf("leave did not expire the cookie: %+v", c)
+		if c.Name == cookieName {
+			t.Errorf("a GET touched the cookie: %+v", c)
 		}
 	}
+
+	rec = postFormAs(t, h, "/leave", "", testToken, "")
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("a cross-site POST /leave = %d, want 403", rec.Code)
+	}
+
+	rec = postFormAs(t, h, "/leave", "", testToken, "same-origin")
+	expired := false
+	for _, c := range rec.Result().Cookies() {
+		if c.Name == cookieName && c.MaxAge < 0 {
+			expired = true
+		}
+	}
+	if !expired {
+		t.Errorf("leave did not expire the cookie: %+v", rec.Result().Cookies())
+	}
+}
+
+// postFormAs submits a form the way a browser does, with site set as
+// Sec-Fetch-Site ("" leaves the header out, which guard refuses).
+func postFormAs(t *testing.T, h http.Handler, path, body, token, site string) *httptest.ResponseRecorder {
+	t.Helper()
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	if site != "" {
+		req.Header.Set("Sec-Fetch-Site", site)
+	}
+	if token != "" {
+		req.AddCookie(&http.Cookie{Name: cookieName, Value: token})
+	}
+	h.ServeHTTP(rec, req)
+	return rec
 }
 
 // Two people on the same problem must not write over each other's Go. The
