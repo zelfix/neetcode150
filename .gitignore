@@ -27,21 +27,29 @@ content/problems/*/hints.md
 # ---------------------------------------------------------------------------
 content/problems/*/problem.md
 content/problems/*/signature.txt
+content/problems/*/signature.py
 
 !content/problems/0252-meeting-rooms/problem.md
 !content/problems/0252-meeting-rooms/signature.txt
+!content/problems/0252-meeting-rooms/signature.py
 !content/problems/0253-meeting-rooms-ii/problem.md
 !content/problems/0253-meeting-rooms-ii/signature.txt
+!content/problems/0253-meeting-rooms-ii/signature.py
 !content/problems/0261-graph-valid-tree/problem.md
 !content/problems/0261-graph-valid-tree/signature.txt
+!content/problems/0261-graph-valid-tree/signature.py
 !content/problems/0269-alien-dictionary/problem.md
 !content/problems/0269-alien-dictionary/signature.txt
+!content/problems/0269-alien-dictionary/signature.py
 !content/problems/0271-encode-and-decode-strings/problem.md
 !content/problems/0271-encode-and-decode-strings/signature.txt
+!content/problems/0271-encode-and-decode-strings/signature.py
 !content/problems/0286-walls-and-gates/problem.md
 !content/problems/0286-walls-and-gates/signature.txt
+!content/problems/0286-walls-and-gates/signature.py
 !content/problems/0323-number-of-connected-components-in-an-undirected-graph/problem.md
 !content/problems/0323-number-of-connected-components-in-an-undirected-graph/signature.txt
+!content/problems/0323-number-of-connected-components-in-an-undirected-graph/signature.py
 
 # ---------------------------------------------------------------------------
 # Build output, editors, OS cruft

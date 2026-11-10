@@ -30,6 +30,7 @@ type Files struct {
 	FuncName      string // the entry point, when the problem has a single one
 	TableDriven   bool   // whether the test came out as a filled-in table
 	PracticeCases int    // curated examples and corner cases included in the test
+	Practice      string // practice_cases.py; Python only, Go embeds the suite in Test
 }
 
 // PackageName turns a problem slug into a legal Go package name. Slugs such as

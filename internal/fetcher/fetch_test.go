@@ -440,6 +440,7 @@ func goodGraphQLHandler(t *testing.T) http.Handler {
 		Content:            "<p>Find two numbers.</p>",
 		Topics:             []string{"Array"},
 		GoCode:             "func twoSum(nums []int, target int) []int {}",
+		OtherLangCode:      "class Solution:\n    def twoSum(self, nums: List[int], target: int) -> List[int]:\n        ",
 	})
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -489,6 +490,10 @@ func TestBuild(t *testing.T) {
 		sigPath := filepath.Join(root, "content", "problems", "0001-two-sum", "signature.txt")
 		if _, err := os.Stat(sigPath); err != nil {
 			t.Errorf("signature.txt not written: %v", err)
+		}
+		pyPath := filepath.Join(root, "content", "problems", "0001-two-sum", "signature.py")
+		if b, err := os.ReadFile(pyPath); err != nil || !strings.HasPrefix(string(b), "class Solution:") {
+			t.Errorf("signature.py not written: %v %q", err, b)
 		}
 	})
 

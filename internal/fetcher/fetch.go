@@ -175,6 +175,7 @@ type Statement struct {
 	ContentMD  string
 	Topics     []string
 	GoStub     string // the official Go function signature, empty if none
+	PyStub     string // the official Python 3 class stub, empty if none
 }
 
 type graphQLResponse struct {
@@ -287,9 +288,11 @@ func (c *Client) statementOnce(ctx context.Context, slug string, payload []byte)
 		st.Topics = append(st.Topics, t.Name)
 	}
 	for _, sn := range q.CodeSnippets {
-		if sn.LangSlug == "golang" {
+		switch sn.LangSlug {
+		case "golang":
 			st.GoStub = sn.Code
-			break
+		case "python3":
+			st.PyStub = sn.Code
 		}
 	}
 	if strings.TrimSpace(q.Content) == "" {
@@ -317,9 +320,10 @@ type BuildOptions struct {
 	Log   func(format string, a ...any)
 }
 
-// Build writes content/problems/<dir>/problem.md and signature.txt for every
-// problem. Existing files are left alone unless Force is set, so a re-run is
-// cheap and never clobbers a hand-written statement.
+// Build writes content/problems/<dir>/problem.md, signature.txt (Go) and
+// signature.py (Python) for every problem. Existing files are left alone
+// unless Force is set, so a re-run is cheap and never clobbers a hand-written
+// statement.
 func (c *Client) Build(ctx context.Context, cat *catalog.Catalog, opts BuildOptions) ([]Result, error) {
 	logf := opts.Log
 	if logf == nil {
@@ -335,10 +339,12 @@ func (c *Client) Build(ctx context.Context, cat *catalog.Catalog, opts BuildOpti
 		}
 		statementPath := filepath.Join(dir, "problem.md")
 		signaturePath := filepath.Join(dir, "signature.txt")
+		pySignaturePath := filepath.Join(dir, "signature.py")
 
 		needStatement := opts.Force || !hasContent(statementPath)
 		needSignature := opts.Force || !hasContent(signaturePath)
-		if !needStatement && !needSignature {
+		needPySignature := opts.Force || !hasContent(pySignaturePath)
+		if !needStatement && !needSignature && !needPySignature {
 			results = append(results, Result{Problem: p, Action: "skipped"})
 			continue
 		}
@@ -379,6 +385,11 @@ func (c *Client) Build(ctx context.Context, cat *catalog.Catalog, opts BuildOpti
 		}
 		if needSignature && strings.TrimSpace(st.GoStub) != "" {
 			if err := os.WriteFile(signaturePath, []byte(strings.TrimRight(st.GoStub, "\n")+"\n"), 0o644); err != nil {
+				return results, err
+			}
+		}
+		if needPySignature && strings.TrimSpace(st.PyStub) != "" {
+			if err := os.WriteFile(pySignaturePath, []byte(strings.TrimRight(st.PyStub, "\n")+"\n"), 0o644); err != nil {
 				return results, err
 			}
 		}
