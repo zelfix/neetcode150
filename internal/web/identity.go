@@ -88,6 +88,10 @@ func secure(r *http.Request) bool {
 // the address bar, in history, or in a screenshot of the page.
 func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
 	token := r.PathValue("token")
+	// This URL holds the token, so it must not travel on as a Referer. The
+	// redirect below gets it out of the address bar; this covers the response
+	// that performs it.
+	noReferrer(w)
 	user, err := s.db.UserByToken(token)
 	if err != nil {
 		s.askForALink(w, r)

@@ -498,6 +498,13 @@ a:focus-visible, button:focus-visible, input:focus-visible, summary:focus-visibl
 }
 .rate-row button:hover { background: var(--accent-q); border-color: var(--accent); color: var(--text); }
 .rate-ends { display: flex; justify-content: space-between; color: var(--dimmer); font-size: 0.7rem; }
+.people-table .is-you { color: var(--text); }
+.people-table .is-you td { font-weight: 600; }
+.rename { display: flex; flex-direction: column; gap: 0.4rem; padding: 0.9rem 1rem; }
+.rename label { color: var(--dim); font-size: var(--t-xs); }
+.rename-row { display: flex; gap: 0.5rem; max-width: 28rem; }
+.rename-row input { flex: 1; min-width: 0; }
+
 .drill-controls { align-items: end; display: flex; flex-wrap: wrap; gap: 0.75rem; padding: 0.9rem 1rem; }
 .drill-controls label { color: var(--dim); display: flex; flex-direction: column; font-size: var(--t-xs); gap: 0.3rem; }
 .drill-check { align-items: center; flex-direction: row !important; }

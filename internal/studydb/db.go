@@ -18,7 +18,7 @@ import (
 
 const Filename = "study.sqlite3"
 
-const schemaVersion = 5
+const schemaVersion = 6
 
 // OwnerID is the first user. The CLI is the owner's own tool and always acts as
 // this id; the legacy import and every pre-multi-user row belong to it.
@@ -176,8 +176,46 @@ PRAGMA user_version=3;`)
 			}
 			version = 5
 		}
+		if version == 5 {
+			if err := migrateV6(tx); err != nil {
+				return err
+			}
+			if _, err := tx.Exec("PRAGMA user_version=6"); err != nil {
+				return err
+			}
+			version = 6
+		}
 		return nil
 	})
+}
+
+// migrateV6 adds invites: the authority to create an identity, delegated once
+// and bounded.
+//
+// Until now nothing but the CLI could make a person, which is why the site has
+// no admin page. An invite narrows that rule rather than dropping it — the web
+// may create an identity only by spending a use of a row recorded here, before
+// its deadline, with the ceiling written on it. Everything that bounds the
+// damage is a column, so there is no code path where a forgotten default means
+// unlimited.
+//
+// Only the hash of the token is stored, the same rule as a person's own, so
+// there is one answer to "what is in the database" rather than two.
+func migrateV6(tx *sql.Tx) error {
+	_, err := tx.Exec(`
+CREATE TABLE IF NOT EXISTS invites (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  token_hash TEXT NOT NULL UNIQUE,
+  created_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  uses_left  INTEGER NOT NULL,
+  budget_usd REAL NOT NULL,
+  note       TEXT NOT NULL DEFAULT ''
+);`)
+	if err != nil {
+		return fmt.Errorf("schema v6: %w", err)
+	}
+	return nil
 }
 
 // migrateV5 adds the language dimension: a person's default and the language

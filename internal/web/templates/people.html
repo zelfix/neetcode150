@@ -1,0 +1,50 @@
+{{define "content"}}
+<div class="lede">
+  <h1>People</h1>
+  <p>Who is keeping at it. This ranks effort &mdash; problems finished, days worked, time spent &mdash; and nothing else.</p>
+</div>
+
+<section class="block">
+  <div class="block-head"><h2>Keeping at it</h2></div>
+  {{if .Rows}}
+  <table class="record-table people-table">
+    <thead>
+      <tr><th>#</th><th>Name</th><th>Solved</th><th>Days</th><th>Time</th></tr>
+    </thead>
+    <tbody>
+      {{range $i, $r := .Rows}}
+      <tr{{if $r.You}} class="is-you"{{end}}>
+        <td>{{add1 $i}}</td>
+        <td>{{$r.Name}}{{if $r.You}} <span class="row-sub">&mdash; you</span>{{end}}</td>
+        <td>{{$r.Solved}}<span class="record-of">/{{$.Summary.Total}}</span></td>
+        <td>{{$r.Days}}</td>
+        <td>{{if $r.Minutes}}{{$r.Minutes}}<span class="record-of"> min</span>{{else}}<span class="record-of">&mdash;</span>{{end}}</td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+  {{else}}
+  <p class="empty">Nobody here yet. <code>nc invite new --count 5 --expires 48h</code> makes a link to share.</p>
+  {{end}}
+
+  {{/* Said plainly on the page, not only in the code: somebody who sees a
+       table of solved counts will reasonably wonder where the ratings are. */}}
+  <p class="panel-note">Ratings and hint rungs are deliberately not here. They are what the
+  review schedule reads, and they only work while they are honest &mdash; a table that
+  rewarded a high rating would put a price on admitting you needed a hint. Yours are on
+  <a href="/coach/">Coach</a>, for you alone.</p>
+</section>
+
+<section class="block">
+  <div class="block-head"><h2>Your name</h2></div>
+  <form class="rename" method="post" action="/me/name">
+    <label for="your-name">This is what others see here. It is a label, not an account &mdash; changing it moves none of your work.</label>
+    <span class="rename-row">
+      <input id="your-name" name="name" maxlength="32" required value="{{.Name}}" aria-label="Your name">
+      <button>Save</button>
+    </span>
+    {{if .Err}}<p class="panel-note">{{.Err}}</p>{{end}}
+    {{if .OK}}<p class="panel-note">Saved.</p>{{end}}
+  </form>
+</section>
+{{end}}

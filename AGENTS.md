@@ -113,6 +113,12 @@ go run ./cmd/nc user link <name>      # issue a new link, invalidating the old o
                                       #   --budget <usd> changes the ceiling at the same time
 go run ./cmd/nc user revoke <name>    # stop a link working, keeping their work
 go run ./cmd/nc user rm <name> --yes  # delete someone and everything of theirs
+go run ./cmd/nc invite new            # one link several people may join through
+                                      #   --count <n>, --expires 48h (required, max 720h)
+                                      #   --budget <usd> each joiner's ceiling, must be > 0
+                                      #   --note <text>, --base-url <addr>
+go run ./cmd/nc invite list           # what each invite still allows; never the tokens
+go run ./cmd/nc invite revoke <id>    # spend the rest of its uses
 go run ./cmd/nc migrate               # import legacy JSON/Markdown into SQLite once
 go run ./cmd/nc backup <file.sqlite3> # a consistent copy of the database
 go run ./cmd/nc export <name> <file.json>  # one person's data, nobody else's, no token hashes
@@ -201,12 +207,40 @@ runs the clock itself, and a box for adding minutes beside a live timer invites 
 counting.
 
 The site serves nobody without a cookie. `/join/<token>` trades a link for one, and
-`nc user` mints them — there is no admin page, so the web surface cannot create an
-identity. Only a token's hash is stored, which is why a link can be reissued but never
-shown again. There is no exception for loopback or for a missing cookie: behind a reverse
+`nc user` mints them — there is no admin page. Only a token's hash is stored, which is why
+a link can be reissued but never shown again.
+
+The web surface cannot *invent* an identity, which is a narrower rule than it used to be
+and the narrowing is deliberate. It can create one only by spending a use of an invite
+(`nc invite new`, `migrateV6`): before that row's deadline, within its count, with the
+ceiling written on it. Everything that bounds the damage is a column rather than a
+convention, so there is no path where a forgotten default means unlimited — `CreateInvite`
+refuses a ceiling of zero outright, because zero means *no* ceiling in `tutorBudgetLeft`
+and an invite is the last place that should hand one out. Whoever comes in that way gets
+their own 128-bit token immediately, so they are revocable one at a time like anybody
+else. The alternative that was weighed and rejected was a standing shared password: it
+cannot be revoked per person, it mints rows without limit (each with its own monthly
+allowance), and it would need rate limiting that has to key on a forwarded header this
+file already says not to trust. There is no exception for loopback or for a missing cookie: behind a reverse
 proxy every request looks local, so an exception would make a guest who clears their
-cookie into the owner. Each person's progress, notes, attempts and test runs are their
+cookie into the owner. Each person's notes, attempts, ratings and test runs are their
 own, and so is the tutor: sessions are keyed by person as well as problem.
+
+`/people/` is the one page that crosses that boundary, and what it may show is a
+deliberately short list: a name, problems finished, days worked, minutes spent. **Ratings
+and hint rungs must never appear there.** Those are what the review schedule reads, and
+they work only while they are honest — a table that rewarded a high rating would put a
+price on admitting a hint was needed, which is the same failure this file describes for a
+tutor that hands over the answer: what breaks is not politeness, it is the signal. Effort
+is safe to rank because gaming it means practising more. The page builds its rows by
+calling `progress.Summarize` once per person through `db.For(id)`, rather than growing a
+second definition of what "solved" means.
+
+Because that page shows names to everybody on the instance, a newcomer redeeming an
+invite is offered a generated pseudonym (`internal/web/names.go`) rather than an empty
+field: nobody should have to decide on the spot, with a form in front of them, how much of
+their real name to give a study group. Anyone can change theirs on `/people/`; a name is a
+label, and progress is keyed by id, so a rename moves no work.
 
 The panel is offered to guests only on a provider that cannot read the server. The CLI
 providers (`claude`, `codex`) run an agent with the repository as its working directory,

@@ -18,6 +18,7 @@
     <a href="/review/" {{if eq .Nav "review"}}class="on"{{end}}>Review{{if .Due}} <span class="count">{{.Due}}</span>{{end}}</a>
     <a href="/coach/" {{if eq .Nav "coach"}}class="on"{{end}}>Coach</a>
     <a href="/drill/" {{if eq .Nav "drill"}}class="on"{{end}}>Drill</a>
+    <a href="/people/" {{if eq .Nav "people"}}class="on"{{end}}>People</a>
   </nav>
   <span class="tally">{{.Summary.Done}}<span class="tally-sep">/</span>{{.Summary.Total}}</span>
 </header>

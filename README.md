@@ -127,6 +127,13 @@ along with the rating, amend a rating you got wrong or undo it outright, and log
 clock missed. **Drill** draws a problem at random and does not tell you which pattern it
 is; naming it yourself is the exercise.
 
+**People** is the one page that looks across everybody sharing the instance: who has
+finished how many problems, on how many days, for how long. It ranks effort and nothing
+else — ratings and hint rungs are not there and will not be, because those are what the
+review schedule reads and they only work while they are honest. A table that rewarded a
+high rating would put a price on admitting you needed a hint. You can change the name
+others see on that page; it is a label, and renaming moves none of your work.
+
 This is the one part of the site that writes files and runs code, so those endpoints are
 guarded. A request has to prove it came from one of this site's own pages (`Sec-Fetch-Site`,
 or `Origin` for older clients) and carry a JSON body. Binding to localhost is not that
@@ -264,6 +271,8 @@ does, kept for scripting and for when the site is not running.
 | `nc serve --tutor-mode full\|tutor [--tutor-budget usd]` | What the agent may touch, and a per-session cap on Claude |
 | `nc serve --sandbox auto\|docker\|local` | Whether test runs are isolated in a container |
 | `nc user list\|add\|link\|revoke\|rm` | Who can reach the site, and their join links |
+| `nc invite new --count 5 --expires 48h` | One link several people may join through, bounded by both |
+| `nc invite list\|revoke <id>` | What each invite still allows; stop one being used |
 | `nc user add\|link <name> --budget <usd>` | Set, or later change, someone's monthly tutor ceiling |
 | `nc next` | What to work on now |
 | `nc start <problem> [--lang go\|python]` | Scaffold the solution, test and notes |

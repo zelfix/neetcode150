@@ -33,7 +33,7 @@ import (
 var assets embed.FS
 
 // pageNames are the templates that each compose with the layout.
-var pageNames = []string{"dashboard", "problems", "problem", "patterns", "pattern", "review", "coach", "drill", "solve"}
+var pageNames = []string{"dashboard", "problems", "problem", "patterns", "pattern", "review", "coach", "drill", "people", "solve"}
 
 // Server serves the site.
 // submissionKey identifies one person's unfinished submission. Keyed by slug
@@ -193,6 +193,10 @@ func (s *Server) Handler() http.Handler {
 	// is a POST behind guard: a Lax cookie still rides along on a top-level GET,
 	// so a GET that signed you out could be triggered by a link on any site.
 	mux.HandleFunc("GET /join/{token}", s.handleJoin)
+	// The two routes a person without a cookie may reach. Redeeming writes, so
+	// it is behind guard — same-origin, but deliberately not signed-in.
+	mux.HandleFunc("GET /invite/{token}", s.handleInvite)
+	mux.HandleFunc("POST /invite", guard(s.handleInviteRedeem))
 	mux.HandleFunc("GET /leave", s.handleLeavePage)
 	mux.HandleFunc("POST /leave", guard(s.handleLeave))
 
@@ -207,6 +211,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /review/{$}", s.with((*session).handleReview))
 	mux.HandleFunc("GET /coach/{$}", s.with((*session).handleCoach))
 	mux.HandleFunc("GET /drill/{$}", s.with((*session).handleDrill))
+	mux.HandleFunc("GET /people/{$}", s.with((*session).handlePeople))
+	mux.HandleFunc("POST /me/name", guard(s.with((*session).handleSetName)))
 	// A person's own default language: it changes one row, their own, and
 	// mints nothing, so it is not an admin surface.
 	mux.HandleFunc("POST /problems/{slug}/status", guard(s.with((*session).handleSetStatus)))
@@ -230,7 +236,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /problems/{slug}/tutor/interrupt", guardJSON(s.tutorGate((*session).handleTutorInterrupt)))
 
 	// Accept the paths without the trailing slash too.
-	for _, p := range []string{"/problems", "/patterns", "/review", "/coach", "/drill"} {
+	for _, p := range []string{"/problems", "/patterns", "/review", "/coach", "/drill", "/people"} {
 		target := p + "/"
 		mux.HandleFunc("GET "+p, func(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, target, http.StatusMovedPermanently)
@@ -757,6 +763,7 @@ func (s *Server) funcs() template.FuncMap {
 			}
 			return fmt.Sprintf("%d %s", n, many)
 		},
+		"add1":      func(i int) int { return i + 1 },
 		"diffClass": diffClassOf,
 		"diffSign":  diffSignOf,
 		// dict builds a map so a partial can be given more than one value.

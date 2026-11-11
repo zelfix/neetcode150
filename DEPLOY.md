@@ -7,6 +7,53 @@ Nothing here is about the owner's own machine: keep using `nc serve` locally as 
 The server gets its **own database**, so the schema migration never runs against your
 real study data and a bug on the server cannot reach it.
 
+## The short way
+
+```sh
+git clone https://github.com/zelfix/neetcode150.git /srv/neetcode150
+cd /srv/neetcode150
+sudo deploy/install.sh --domain study.example.com
+```
+
+That is steps 1 to 8 below: it checks the box, makes the service user, builds the binary
+and both sandbox images, fetches the statements, writes the unit, starts it, proves the
+site answers *and* proves it refuses a request with no cookie, then prints your join link.
+
+**The same command is the update path.** Every step looks at what is already true first,
+so a second run rebuilds, backs the database up and restarts without touching the API key,
+the join links or anybody's work. It will not reissue a link that exists — that would lock
+out whoever is holding it.
+
+Two things it leaves to you on purpose: installing Go and Docker (a script that
+apt-installs a container runtime is a script deciding your box's security posture), and
+the proxy, whose two load-bearing settings are in section 7.
+
+Read on if you want to know what it did, or if something failed — each section below is
+one of its steps.
+
+## Why not Docker Compose
+
+It is the obvious suggestion and it costs more than it looks.
+
+The server is a Docker *client*: it starts one sandbox per test run and mounts host paths
+into it by absolute path (`internal/web/runner_docker.go`). Put the server in a container
+and two things break at once. The mounts resolve on the **host**, so a server that thinks
+the repository is at `/app` asks the daemon for `/app/internal/testkit`, which is not
+there — docker hands it an empty directory and the failure is silent. And to start sibling
+containers at all it needs `/var/run/docker.sock`, which is root on the host: anything that
+can reach that socket can start a privileged container and own the machine.
+
+That matters here specifically. The sandbox is what contains other people's code —
+`--network none`, `--cap-drop ALL`, `no-new-privileges`, `--pull never`, and a mount set
+that is the security model. Handing the web server the daemon makes that sandbox the only
+thing between a guest and host root, instead of one layer of several.
+
+Docker-in-Docker avoids the host daemon but wants `--privileged`, rebuilds a 1.3 GB image
+inside itself, and makes cold runs slower.
+
+So the server stays on the host under systemd, and "one command" is `deploy/install.sh`
+instead. Compose would not have made the hard part simpler, only harder to see.
+
 ---
 
 ## 1. What the box needs
@@ -20,6 +67,14 @@ real study data and a bug on the server cannot reach it.
   one CPU, four may run at once by default, and the tutor's live sessions are a separate
   pool — see step 6 if the box is smaller.
 - **Disk:** the sandbox image is ~1.3 GB, plus ~60 MB of build cache per person.
+- **`ruff`, only if you want it** (`apt install ruff`, or a release binary). The
+  workspace's format key is `gofmt` for Go, which is compiled into the binary, and `ruff`
+  for Python when the machine has it; without it the key says what is missing instead of
+  doing nothing. Nothing depends on it: test runs and submissions never reformat Python,
+  so a missing formatter cannot change whether anybody's solution passes. Note what
+  installing it does mean — it is handed a guest's source on stdin, so it is one more
+  program that sees their code. It never gets a path into a workspace, and it does not run
+  it.
 
 ```sh
 adduser --system --group --home /srv/neetcode150 nc
@@ -47,8 +102,9 @@ docker build -t nc-sandbox:py3.12 -f sandbox/Dockerfile.python .
 ```
 
 The second one is for people solving in Python. It is optional: without it the server
-starts, says so, and offers Python nowhere. It never falls back to running Python
-unisolated.
+starts and says so, and the workspace's **Start in Python** button comes up disabled with
+the reason on it, rather than vanishing or failing on the first run. It never falls back
+to running Python unisolated.
 
 This compiles a package shaped like a generated practice test so the image carries a warm
 build cache: a cold run then takes about a second instead of four. Rebuild it when
@@ -96,6 +152,30 @@ everything of theirs.
 
 `--budget 5` is a monthly ceiling in dollars, checked before each turn and reset on the
 1st. The owner's row has no ceiling.
+
+### One link for a group
+
+Minting one link per person is fine for three friends and tedious for ten. An invite is a
+single link several people may join through, and it is bounded by three numbers you choose:
+
+```sh
+./bin/nc invite new --count 5 --expires 48h --budget 5 \
+  --note "study group" --base-url https://study.example.com
+./bin/nc invite list      # what each one still allows; never the tokens
+./bin/nc invite revoke 1  # spend the rest of its uses
+```
+
+Whoever opens it picks a name and is signed in with **their own** 128-bit token from then
+on — so they show up in `nc user list` and `nc user revoke <name>` removes one of them
+without touching the others. The invite itself dies at its deadline or when its uses run
+out, whichever comes first.
+
+There is still no password, and that is on purpose. A standing shared secret cannot be
+revoked for one person, mints accounts without limit — each with its own monthly tutor
+allowance — and would need rate limiting keyed on a forwarded header this file already
+tells you not to trust for identity. `--expires` is therefore required and capped at 30
+days, and `--budget 0` is refused: zero means *no* ceiling, and an invite is the last place
+that should hand one out.
 
 ## 6. The service
 
@@ -219,9 +299,12 @@ curl -s -o /dev/null -w '%{http_code}\n' https://study.example.com/static/app.cs
 ```
 
 Then in a browser: open your own join link, confirm it lands on the dashboard, press
-**Start** on a problem, write something wrong, **Run tests** and see it fail, fix it and
-see it pass. Ask the tutor one question. Then open a friend's link in a different browser
-profile and confirm their dashboard is empty — that is the whole point of the exercise.
+**Start in Go** on a problem, write something wrong, **Run tests** and see it fail, fix it
+and see it pass. Ask the tutor one question. If you built the Python image, start another
+problem with **Start in Python** and run it too — that is the second container, and a
+missing image shows up here rather than in a week. Then open a friend's link in a
+different browser profile and confirm their dashboard is empty: that is the whole point of
+the exercise.
 
 ## 9. Backups
 
@@ -251,6 +334,14 @@ submitted versions are archived in the database, but whatever is mid-edit is not
 include them if you care about that.
 
 ## 10. Updating
+
+```sh
+cd /srv/neetcode150 && git pull
+sudo deploy/install.sh --domain study.example.com
+```
+
+The script backs the database up, rebuilds, and restarts, and leaves the key and the links
+alone. What it does, by hand:
 
 ```sh
 sudo -u nc -H bash -c 'cd /srv/neetcode150 && ./bin/nc backup /var/backups/neetcode150/pre-update.sqlite3'

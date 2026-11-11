@@ -41,6 +41,8 @@ Usage:
   nc export <name> <file.json>  one person's progress, notes, attempts and tutor transcripts
   nc user list|add|link|revoke|rm   who can reach the site (--base-url, --budget)
                                link --budget <usd> also changes their monthly ceiling
+  nc invite new|list|revoke    one link several people may join through
+                               new --count <n> --expires 48h [--budget <usd>] [--note …]
   nc notes <problem>           read notes (--file path to replace)
   nc hints <problem>           read hint ladder (--file path to replace)
   nc log                       read the study log (--append-file path to append)
@@ -144,6 +146,8 @@ func dispatch(cmd, root string, rest []string) error {
 		return cmdExport(root, rest)
 	case "user":
 		return cmdUser(root, rest)
+	case "invite":
+		return cmdInvite(root, rest)
 	case "notes", "hints", "log":
 		return cmdDocument(root, cmd, rest)
 	case "fetch":
@@ -1303,14 +1307,133 @@ func cmdWeak(root string, args []string) error {
 	return nil
 }
 
+// ---------- invites ----------
+
+// cmdInvite mints the authority to create an identity, bounded and delegated
+// once.
+//
+// The site still has no admin surface: it cannot invent a person. What it can
+// do is spend a use of a row minted here, before that row's deadline, with the
+// ceiling written on it — so the damage a leaked invite can do is three numbers
+// the owner chose, rather than open-ended. A link that reaches the wrong chat
+// is revoked with `nc invite revoke`, and anybody who already came in through
+// it stays revocable on their own, like everybody else.
+func cmdInvite(root string, args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("expected: new, list or revoke")
+	}
+	db, err := studydb.Open(root)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+
+	sub, rest := args[0], args[1:]
+	switch sub {
+	case "new":
+		return inviteNew(db, rest)
+	case "list":
+		return inviteList(db)
+	case "revoke":
+		return inviteRevoke(db, rest)
+	default:
+		return fmt.Errorf("unknown `nc invite` command %q", sub)
+	}
+}
+
+// maxInviteLife bounds how long an invite may stand. An open-ended one is a
+// shared password with extra steps.
+const maxInviteLife = 30 * 24 * time.Hour
+
+func inviteNew(db *studydb.DB, args []string) error {
+	fs := flag.NewFlagSet("invite new", flag.ContinueOnError)
+	base := fs.String("base-url", "http://127.0.0.1:8150", "site address the invite link points at")
+	count := fs.Int("count", 1, "how many people may use it")
+	budget := fs.Float64("budget", 5, "monthly tutor ceiling in dollars for each person who joins")
+	note := fs.String("note", "", "what this invite was for, shown by `nc invite list`")
+	life := fs.Duration("expires", 0, "how long it stands, e.g. 48h (required, at most 720h)")
+	if _, err := parseWithPositional(fs, args); err != nil {
+		return err
+	}
+	if *life <= 0 {
+		return fmt.Errorf("--expires is required: an invite with no deadline is a standing password")
+	}
+	if *life > maxInviteLife {
+		return fmt.Errorf("--expires is at most %s, got %s", maxInviteLife, *life)
+	}
+	if *budget <= 0 {
+		// Zero is not "no money" anywhere else in this program; it is "no
+		// ceiling". An invite is the last place that should hand one out.
+		return fmt.Errorf("--budget must be above zero: zero means no ceiling at all")
+	}
+	if *count < 1 {
+		return fmt.Errorf("--count must be at least 1, got %d", *count)
+	}
+
+	now := time.Now()
+	token := crand.Text()
+	v, err := db.CreateInvite(studydb.HashToken(token), *count, *budget, *note, now, now.Add(*life))
+	if err != nil {
+		return err
+	}
+	fmt.Printf("Invite %d — %s, $%.2f each, good until %s\n\n",
+		v.ID, plural(v.UsesLeft, "use", "uses"), v.BudgetUSD, v.ExpiresAt.Format("2 Jan 15:04"))
+	fmt.Printf("  %s/invite/%s\n\n", strings.TrimRight(*base, "/"), token)
+	fmt.Println("Only its hash is stored, so this is the one time it can be shown.")
+	fmt.Println("Whoever opens it picks a name and gets their own link from then on.")
+	return nil
+}
+
+func inviteList(db *studydb.DB) error {
+	invites, err := db.Invites()
+	if err != nil {
+		return err
+	}
+	if len(invites) == 0 {
+		fmt.Println("No invites. `nc invite new --count 3 --expires 48h` makes one.")
+		return nil
+	}
+	now := time.Now()
+	fmt.Printf("%-4s %-6s %-9s %-20s %s\n", "id", "left", "each", "until", "note")
+	for _, v := range invites {
+		until := v.ExpiresAt.Format("2 Jan 15:04")
+		switch {
+		case v.UsesLeft < 1:
+			until = "spent"
+		case !v.ExpiresAt.After(now):
+			until = "expired"
+		}
+		fmt.Printf("%-4d %-6d $%-8.2f %-20s %s\n", v.ID, v.UsesLeft, v.BudgetUSD, until, v.Note)
+	}
+	return nil
+}
+
+func inviteRevoke(db *studydb.DB, args []string) error {
+	if len(args) != 1 {
+		return fmt.Errorf("usage: nc invite revoke <id>")
+	}
+	id, err := strconv.ParseInt(args[0], 10, 64)
+	if err != nil {
+		return fmt.Errorf("invite id must be a number, got %q", args[0])
+	}
+	if err := db.RevokeInvite(id); err != nil {
+		return err
+	}
+	fmt.Printf("Invite %d has no uses left. Anybody who already joined through it keeps their account;\n", id)
+	fmt.Println("`nc user revoke <name>` is how you remove one of them.")
+	return nil
+}
+
 // ---------- users ----------
 
 // cmdUser manages who can reach the site.
 //
-// Minting lives in the CLI and nowhere else: the site has no admin surface, so
-// an attacker who reaches it cannot create an identity. Only the hash of a
-// token is stored, which is why `link` has to issue a new one rather than print
-// the old — a link that can be reprinted is a link the database could leak.
+// The authority to mint lives in the CLI: the site has no admin surface, so an
+// attacker who reaches it cannot invent a person. It can only spend a use of an
+// invite minted here (see cmdInvite), bounded by that invite's deadline, count
+// and ceiling. Only the hash of a token is stored, which is why `link` has to
+// issue a new one rather than print the old — a link that can be reprinted is a
+// link the database could leak.
 func cmdUser(root string, args []string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("expected: list, add, link, revoke or rm")
