@@ -378,6 +378,7 @@ func (m *Manager) ensure(scope *studydb.Scope, p catalog.Problem) (*Session, err
 	s.spend = m.onSpend
 	s.done = make(chan struct{})
 	s.stderrDone = make(chan struct{})
+	s.eventsDone = make(chan struct{})
 	s.restored = false
 	m.sessions[key] = s
 	m.touch(key)

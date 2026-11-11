@@ -131,6 +131,11 @@ type Session struct {
 	writer     *bufio.Writer
 	stderr     strings.Builder
 	stderrDone chan struct{}
+	// eventsDone closes when the stdout reader has drained the pipe. Wait
+	// closes both pipes when it sees the process exit, so reaping before the
+	// readers finish truncates whatever was still in flight — see
+	// waitForProcess.
+	eventsDone chan struct{}
 	done       chan struct{}
 }
 

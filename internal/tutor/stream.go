@@ -56,6 +56,7 @@ type rawEvent struct {
 
 // readEvents consumes the process's stdout until it closes.
 func (s *Session) readEvents(r io.Reader) {
+	defer close(s.eventsDone)
 	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 0, 64*1024), maxLine)
 

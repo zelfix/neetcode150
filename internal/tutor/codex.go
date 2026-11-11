@@ -135,9 +135,20 @@ func (m *Manager) startCodex(scope *studydb.Scope, s *Session) error {
 	return nil
 }
 
+// waitForProcess reaps the agent and publishes why it went.
+//
+// Both readers are drained first, and the order is load-bearing rather than
+// tidy: Wait closes the pipes StdoutPipe and StderrPipe returned as soon as it
+// sees the process exit, and os/exec says in as many words that calling it
+// before the reads have finished is incorrect. Reaping first lost a fast
+// exit's stderr — so the panel reported "the tutor session ended: exit status
+// 3" without the line that said why — and could truncate the event stream the
+// same way. It failed about one run in three on a loaded CI machine and never
+// on a developer's.
 func (s *Session) waitForProcess(cmd *exec.Cmd) {
-	err := cmd.Wait()
 	<-s.stderrDone
+	<-s.eventsDone
+	err := cmd.Wait()
 	s.mu.Lock()
 	s.running = false
 	trailing := strings.TrimSpace(s.stderr.String())
@@ -208,6 +219,7 @@ func (c *codexClient) writeLocked(message any) error {
 }
 
 func (s *Session) readCodexEvents(r io.Reader) {
+	defer close(s.eventsDone)
 	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 0, 64*1024), maxLine)
 	for sc.Scan() {
