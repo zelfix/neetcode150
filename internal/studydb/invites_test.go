@@ -132,10 +132,11 @@ func TestRedeemInviteSpendsAUseAndTakesTheCeilingFromIt(t *testing.T) {
 // Note what this test does and does not do. It pins the invariant — exactly one
 // account comes out of a one-use invite — which is worth having. It does not
 // discriminate between implementations: a deliberately naive
-// check-then-decrement was tried here and also passed, because SQLite runs
-// write transactions one at a time and the whole body is inside one. The
-// guarantee is the transaction; do not read a green run here as evidence that
-// the single-statement decrement is what saves it.
+// check-then-decrement was tried here and also passed. It cannot fail, because
+// Open sets SetMaxOpenConns(1) — these eight goroutines queue on one
+// connection, so nothing interleaves. The guarantee is that serialisation; do
+// not read a green run here as evidence that the single-statement decrement is
+// what saves it, and do not "simplify" the decrement on the strength of it.
 func TestRedeemInviteCannotOverspendUnderRace(t *testing.T) {
 	db := inviteDB(t)
 	now := time.Now()

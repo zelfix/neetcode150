@@ -138,9 +138,10 @@ func (d *DB) RevokeInvite(id int64) error {
 // transaction.
 //
 // The transaction is what makes two people opening the same link at the same
-// moment safe: SQLite runs write transactions one at a time, so the whole
-// read-modify-write here is serialised, and a check followed by a decrement
-// would in fact be correct too — measured, not assumed.
+// moment safe, and it is belt and braces: Open sets SetMaxOpenConns(1) with
+// _txlock=immediate, so this whole read-modify-write is serialised by the
+// connection pool before SQLite is even consulted. A check followed by a
+// decrement would therefore be correct too — measured, not assumed.
 //
 // The single-statement form is kept anyway, because it does not depend on that
 // being true. `uses_left > 0` lives in the WHERE clause, so the loser changes
