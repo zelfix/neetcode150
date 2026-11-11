@@ -28,6 +28,15 @@ var twoSum = catalog.Problem{
 func fakeClaude(t *testing.T, script string) *Manager {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "fake-claude.sh")
+	// A fake that does not read stdin waits for the prompt anyway, because a
+	// shell script that runs off its last line exits — and Send writes the
+	// prompt to a process it expects to be alive. Losing that race gives
+	// "write |1: broken pipe", which is how this file failed in CI on a test
+	// whose script exits on purpose. A script that reads stdin itself already
+	// waits, and must not have its first line eaten here.
+	if !strings.Contains(script, "read ") {
+		script = "IFS= read -r _prompt\n" + script
+	}
 	if err := os.WriteFile(path, []byte("#!/bin/sh\n"+script), 0o755); err != nil {
 		t.Fatal(err)
 	}
