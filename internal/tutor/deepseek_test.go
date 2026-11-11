@@ -392,13 +392,31 @@ func TestDeepSeekReportsNoFileAccess(t *testing.T) {
 
 // A restored conversation continues rather than starting over, or the person is
 // asked again what they already answered.
+// gated holds a fake back until the test says it may answer.
+//
+// Send starts the turn in a goroutine and returns, so an in-process fake can
+// finish it before the test reaches Subscribe. The events are then in the
+// replay that Subscribe hands back, and a test waiting on the channel alone
+// waits for something that has already happened — reporting no events at all
+// after the full deadline. It passes on a developer's machine and fails on a
+// loaded CI runner, which is exactly how it did fail.
+//
+// One token per turn: release before collecting each one.
+func gated(h http.HandlerFunc) (http.HandlerFunc, func()) {
+	tokens := make(chan struct{}, 8)
+	return func(w http.ResponseWriter, r *http.Request) {
+		<-tokens
+		h(w, r)
+	}, func() { tokens <- struct{}{} }
+}
+
 func TestDeepSeekResumesAStoredConversation(t *testing.T) {
 	root := deepseekRoot(t)
 	var body deepseekRequest
-	handler := func(w http.ResponseWriter, r *http.Request) {
+	handler, release := gated(func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewDecoder(r.Body).Decode(&body)
 		sseReply(w, []string{"Carrying on."}, deepseekUsage{PromptTokens: 1, PromptCacheMiss: 1, CompletionTokens: 1})
-	}
+	})
 	db, err := studydb.Open(root)
 	if err != nil {
 		t.Fatal(err)
@@ -412,6 +430,7 @@ func TestDeepSeekResumesAStoredConversation(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, ch, stop := s.Subscribe()
+	release()
 	collect(t, ch, KindDone)
 	stop()
 	first.Close()
@@ -423,6 +442,7 @@ func TestDeepSeekResumesAStoredConversation(t *testing.T) {
 	}
 	_, ch2, stop2 := s2.Subscribe()
 	defer stop2()
+	release()
 	collect(t, ch2, KindDone)
 
 	var asked []string
