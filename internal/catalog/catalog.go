@@ -198,6 +198,26 @@ func (c *Catalog) Group(patternSlug string) (PatternGroup, bool) {
 	return PatternGroup{}, false
 }
 
+// MatchPattern keeps the problems whose pattern name or slug contains query,
+// case-insensitively. An empty query keeps everything.
+//
+// The fragment match is for the command line, where "two poin" should find Two
+// Pointers; the site only ever sends a whole slug. It lives here because it
+// reads nothing but a problem's own pattern spelling.
+func MatchPattern(problems []Problem, query string) []Problem {
+	if query == "" {
+		return problems
+	}
+	want := strings.ToLower(query)
+	var out []Problem
+	for _, p := range problems {
+		if strings.Contains(strings.ToLower(p.Pattern), want) || strings.Contains(p.PatternSlug, want) {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
 // Slugify turns a display name into a URL/file-safe slug.
 func Slugify(s string) string {
 	var b strings.Builder

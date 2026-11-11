@@ -15,12 +15,54 @@
 </a>
 {{end}}
 
+{{/* sittings is one row per rating this problem has had. Pass a recordView.
+     Shared because it belongs in three places: the record pane, the workspace
+     History tab where it stays readable mid-attempt, and the reading view. */}}
+{{define "sittings"}}
+{{if .Sittings}}
+<table class="record-table">
+  <thead>
+    <tr><th>Date</th><th>Rating</th><th>Rung</th><th>Stage</th><th>Sitting</th></tr>
+  </thead>
+  <tbody>
+    {{range .Sittings}}
+    <tr>
+      <td>{{date .Date}}</td>
+      <td>{{.Confidence}}<span class="record-of">/5</span></td>
+      <td>{{if .Rung}}{{.Rung}}{{else}}<span class="record-of">—</span>{{end}}</td>
+      <td>{{.Stage}}<span class="record-of"> · {{.IntervalDays}}d</span></td>
+      <td>{{if .Minutes}}{{.Minutes}}<span class="record-of"> min</span>{{else}}<span class="record-of">—</span>{{end}}</td>
+    </tr>
+    {{if or .Slipped .Generous}}
+    <tr class="record-flag">
+      <td colspan="5">{{if .Slipped}}rating slipped{{end}}{{if and .Slipped .Generous}} · {{end}}{{if .Generous}}rating looks generous next to that rung{{end}}</td>
+    </tr>
+    {{end}}
+    {{end}}
+  </tbody>
+</table>
+{{end}}
+{{end}}
+
 {{/* rateForm offers the five confidence buttons. Pass a problemView, with
      .BackTo set on the page so the form returns where it came from. */}}
 {{define "rateForm"}}
 <form class="rate" method="post" action="/problems/{{.P.Slug}}/rate">
   <input type="hidden" name="from" value="{{.BackTo}}">
   <span class="rate-label">How did it go?</span>
+  {{/* The rung sits before the buttons because each button submits: it has to
+       be chosen first. Left alone it is unaided, which is what a bare rating
+       always meant. The rating is the felt measure, the rung the honest one. */}}
+  <label class="rate-rung">needed
+    <select name="rung">
+      <option value="0">no hint</option>
+      <option value="1">rung 1 — where to look</option>
+      <option value="2">rung 2 — the pattern</option>
+      <option value="3">rung 3 — the invariant</option>
+      <option value="4">rung 4 — the shape</option>
+      <option value="5">rung 5 — the answer</option>
+    </select>
+  </label>
   <span class="rate-row">
     <button name="confidence" value="1" title="Lost — needed the solution">1</button>
     <button name="confidence" value="2" title="Needed a strong hint">2</button>
@@ -30,4 +72,25 @@
   </span>
   <span class="rate-ends"><span>lost it</span><span>instant</span></span>
 </form>
+{{if and .Correct .P.Entry.History}}
+{{/* Offered only where there is a rating to correct, and only on the reading
+     page: the review queue puts one of these in an 18rem column per problem. */}}
+<form class="rate rate-correct" method="post" action="/problems/{{.P.Slug}}/rate">
+  <input type="hidden" name="from" value="{{.BackTo}}">
+  <span class="rate-label">Got that wrong?</span>
+  <span class="rate-row">
+    <select name="confidence" aria-label="Corrected rating">
+      <option value="1">1</option><option value="2">2</option><option value="3">3</option>
+      <option value="4">4</option><option value="5">5</option>
+    </select>
+    <select name="rung" aria-label="Corrected rung">
+      <option value="0">no hint</option><option value="1">rung 1</option><option value="2">rung 2</option>
+      <option value="3">rung 3</option><option value="4">rung 4</option><option value="5">rung 5</option>
+    </select>
+    <button name="action" value="amend">Amend</button>
+    <button name="action" value="undo" title="Drop the last rating and rebuild the schedule">Undo</button>
+  </span>
+  <span class="rate-ends"><span>the archived attempt and its tutor report stay; only the schedule is rebuilt</span></span>
+</form>
+{{end}}
 {{end}}

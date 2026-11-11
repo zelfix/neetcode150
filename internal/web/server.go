@@ -11,6 +11,7 @@ import (
 	"html/template"
 	"io/fs"
 	"log"
+	"math/rand/v2"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -32,7 +33,7 @@ import (
 var assets embed.FS
 
 // pageNames are the templates that each compose with the layout.
-var pageNames = []string{"dashboard", "problems", "problem", "patterns", "pattern", "review", "coach", "solve"}
+var pageNames = []string{"dashboard", "problems", "problem", "patterns", "pattern", "review", "coach", "drill", "solve"}
 
 // Server serves the site.
 // submissionKey identifies one person's unfinished submission. Keyed by slug
@@ -51,6 +52,9 @@ type Server struct {
 	db      *studydb.DB
 	pages   map[string]*template.Template
 	now     func() time.Time
+	// pick draws an index below n. Injected the same way now is, so a drill
+	// test gets a determined draw rather than seeding a global.
+	pick func(n int) int
 
 	// runTests is injected the same way now is, so handler tests do not shell
 	// out to a real `go test` and inherit its speed and flakiness.
@@ -58,6 +62,17 @@ type Server struct {
 	// unavailable says, per language, why tests cannot run on this server;
 	// absent means they can. UseSandbox decides it once.
 	unavailable map[lang.ID]string
+
+	// pyFormatTool is the Python formatter found on this machine, or "" when
+	// there is none. Go needs no such lookup: gofmt is go/format, compiled in.
+	//
+	// Python's is deliberately optional rather than required. The project takes
+	// no dependency to format Python, so the key reports what is missing and
+	// starts working the moment ruff is installed — nothing here breaks when it
+	// is not. Resolved once at startup; pyFormat is injected the same way
+	// runTests is, so tests need no binary.
+	pyFormatTool string
+	pyFormat     func(ctx context.Context, src string) (string, error)
 
 	// tutor owns the claude child processes. It is never nil: a Manager with no
 	// binary to run reports why through Available, and the rest of the site
@@ -83,6 +98,8 @@ func New(root string, cat *catalog.Catalog, store *content.Store, prog *progress
 		db:                 prog.DB(),
 		pages:              map[string]*template.Template{},
 		now:                time.Now,
+		pick:               rand.IntN,
+		pyFormatTool:       pyFormatterName(),
 		runTests:           localRunner{},
 		tutor:              tutor.New(root, tutor.ModeTutor, 0),
 		pendingSubmissions: make(map[submissionKey]pendingSubmission),
@@ -139,13 +156,9 @@ func (s *Server) UseTutor(m *tutor.Manager) {
 }
 
 // languageOf is the resolution rule for the tutor, which has a scope rather
-// than a session: the problem's own choice, else the person's default.
+// than a session.
 func (s *Server) languageOf(scope *studydb.Scope, slug string) lang.Lang {
-	user, err := s.db.User(scope.UserID())
-	if err != nil {
-		return lang.Resolve(progress.NewScoped(scope).Get(slug).Lang, "")
-	}
-	return lang.Resolve(progress.NewScoped(scope).Get(slug).Lang, user.Language)
+	return lang.Resolve(progress.NewScoped(scope).Get(slug).Lang)
 }
 
 // CloseTutor ends every tutor session. The server must call this on the way
@@ -193,17 +206,19 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /patterns/{slug}", s.with((*session).handlePattern))
 	mux.HandleFunc("GET /review/{$}", s.with((*session).handleReview))
 	mux.HandleFunc("GET /coach/{$}", s.with((*session).handleCoach))
+	mux.HandleFunc("GET /drill/{$}", s.with((*session).handleDrill))
 	// A person's own default language: it changes one row, their own, and
 	// mints nothing, so it is not an admin surface.
-	mux.HandleFunc("POST /me/language", guardJSON(s.with((*session).handleSetLanguage)))
 	mux.HandleFunc("POST /problems/{slug}/status", guard(s.with((*session).handleSetStatus)))
 	mux.HandleFunc("POST /problems/{slug}/rate", guard(s.with((*session).handleRate)))
+	mux.HandleFunc("POST /problems/{slug}/time", guard(s.with((*session).handleAddTime)))
 	// These write files and run code, so they carry the stricter guard.
 	mux.HandleFunc("POST /problems/{slug}/create", guardJSON(s.with((*session).handleCreateSolution)))
 	mux.HandleFunc("POST /problems/{slug}/start", guardJSON(s.with((*session).handleStartAttempt)))
 	mux.HandleFunc("POST /problems/{slug}/cancel", guardJSON(s.with((*session).handleCancelAttempt)))
 	mux.HandleFunc("POST /problems/{slug}/solution", guardJSON(s.with((*session).handleSaveSolution)))
 	mux.HandleFunc("POST /problems/{slug}/notes", guardJSON(s.with((*session).handleSaveNotes)))
+	mux.HandleFunc("POST /problems/{slug}/format", guardJSON(s.with((*session).handleFormatSolution)))
 	mux.HandleFunc("POST /problems/{slug}/test", guardJSON(s.with((*session).handleRunTests)))
 	mux.HandleFunc("POST /problems/{slug}/submit", guardJSON(s.with((*session).handleSubmit)))
 	mux.HandleFunc("POST /problems/{slug}/resolve", guardJSON(s.with((*session).handleResolve)))
@@ -215,7 +230,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /problems/{slug}/tutor/interrupt", guardJSON(s.tutorGate((*session).handleTutorInterrupt)))
 
 	// Accept the paths without the trailing slash too.
-	for _, p := range []string{"/problems", "/patterns", "/review", "/coach"} {
+	for _, p := range []string{"/problems", "/patterns", "/review", "/coach", "/drill"} {
 		target := p + "/"
 		mux.HandleFunc("GET "+p, func(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, target, http.StatusMovedPermanently)
@@ -244,16 +259,12 @@ type common struct {
 	// a button row to the bottom of their panes, which only reads as one screen
 	// if the page itself does not scroll.
 	Full bool
-	// Language is this person's default, shown and changed in the header.
-	Language  lang.Lang
-	Languages []lang.Lang
 }
 
 func (s *session) common(title, nav string) common {
 	now := s.now()
 	sum := s.progress.Summarize(s.cat.Problems, now)
-	return common{Title: title, Nav: nav, Summary: sum, Due: sum.DueNow,
-		Language: lang.Of(lang.ID(s.user.Language)), Languages: lang.Known()}
+	return common{Title: title, Nav: nav, Summary: sum, Due: sum.DueNow}
 }
 
 func (s *session) wideCommon(title, nav string) common {
@@ -416,6 +427,7 @@ type problemPage struct {
 	Statuses       []progress.Status
 	Topics         []string
 	IntervalDays   int
+	Record         recordView
 }
 
 func (s *session) handleProblem(w http.ResponseWriter, r *http.Request) {
@@ -460,6 +472,7 @@ func (s *session) handleProblem(w http.ResponseWriter, r *http.Request) {
 		Statuses:       progress.Statuses,
 		Topics:         p.Topics,
 		IntervalDays:   v.Entry.IntervalDays(),
+		Record:         s.record(p, v, now),
 	}
 	if p.Order > 0 {
 		page.Prev = &s.cat.Problems[p.Order-1]
@@ -571,36 +584,86 @@ func (s *session) handleRate(w http.ResponseWriter, r *http.Request) {
 	if !limitForm(w, r) {
 		return
 	}
+	now := s.now()
+	// The rung is optional, so a bare confidence button behaves exactly as it
+	// did before the ladder reached the form. Ranges are left to checkRating,
+	// which both RateHinted and Amend go through.
+	rung := 0
+	if raw := r.FormValue("rung"); raw != "" {
+		var err error
+		if rung, err = strconv.Atoi(raw); err != nil {
+			http.Error(w, "rung must be a number from 0 to 5", http.StatusBadRequest)
+			return
+		}
+	}
+
+	// Undo takes no rating: it drops the last one and replays the schedule.
+	if r.FormValue("action") == "undo" {
+		if _, _, _, err := s.progress.Undo(p.Slug, now); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		s.redirectBack(w, r, p)
+		return
+	}
+
 	n, err := strconv.Atoi(r.FormValue("confidence"))
 	if err != nil {
 		http.Error(w, "confidence must be a number from 1 to 5", http.StatusBadRequest)
 		return
 	}
-	if _, err := s.progress.Rate(p.Slug, n, s.now()); err != nil {
+	if r.FormValue("action") == "amend" {
+		if _, _, err := s.progress.Amend(p.Slug, n, rung, now); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		s.redirectBack(w, r, p)
+		return
+	}
+
+	// A rating ends the sitting, so the clock has to be banked before it is
+	// cleared. `nc rate` has always done this; the form used to drop it, which
+	// made a problem rated from the reading page look like it took no time.
+	elapsed, running := s.progress.Get(p.Slug).Elapsed(now)
+	if minutes, _ := progress.ClockMinutes(elapsed); running && minutes > 0 {
+		if _, err := s.progress.AddMinutes(p.Slug, minutes, now); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+	}
+	if _, err := s.progress.RateHinted(p.Slug, n, rung, now); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	s.redirectBack(w, r, p)
 }
 
-// handleSetLanguage records the language this person's problems default to.
-// Problems that chose their own keep it.
-func (s *session) handleSetLanguage(w http.ResponseWriter, r *http.Request) {
-	req, err := decodeBody[startRequest](r)
-	if err != nil {
+// maxLoggedMinutes bounds one hand-entered sitting. AddMinutes itself rejects
+// only negatives, and a mistyped 6000 lands in the median that Weakest sorts on
+// and the workspace reports — the same figure the clock cap protects.
+const maxLoggedMinutes = 24 * 60
+
+// handleAddTime records a sitting the clock missed, for a problem worked
+// through somewhere other than the workspace.
+func (s *session) handleAddTime(w http.ResponseWriter, r *http.Request) {
+	p, ok := s.cat.BySlug(r.PathValue("slug"))
+	if !ok {
+		s.notFound(w, r, "No problem with that slug.")
+		return
+	}
+	if !limitForm(w, r) {
+		return
+	}
+	n, err := strconv.Atoi(r.FormValue("minutes"))
+	if err != nil || n < 1 || n > maxLoggedMinutes {
+		http.Error(w, fmt.Sprintf("minutes must be a number from 1 to %d", maxLoggedMinutes), http.StatusBadRequest)
+		return
+	}
+	if _, err := s.progress.AddMinutes(p.Slug, n, s.now()); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	l, err := lang.Parse(req.Lang)
-	if err != nil || req.Lang == "" {
-		http.Error(w, "lang must be go or python", http.StatusBadRequest)
-		return
-	}
-	if err := s.db.SetUserLanguage(s.user.ID, string(l.ID)); err != nil {
-		s.fail(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]string{"lang": string(l.ID)})
+	s.redirectBack(w, r, p)
 }
 
 // redirectBack returns to the page the form was submitted from, so rating a
@@ -694,6 +757,8 @@ func (s *Server) funcs() template.FuncMap {
 			}
 			return fmt.Sprintf("%d %s", n, many)
 		},
+		"diffClass": diffClassOf,
+		"diffSign":  diffSignOf,
 		// dict builds a map so a partial can be given more than one value.
 		"dict": func(kv ...any) map[string]any {
 			m := make(map[string]any, len(kv)/2)

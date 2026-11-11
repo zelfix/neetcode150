@@ -74,40 +74,59 @@ func TestStartingInPythonSwitchesTheWholeWorkspace(t *testing.T) {
 	}
 }
 
-// The header selector sets a person's default; it reaches nobody else, and a
-// problem that already chose keeps its choice.
-func TestTheDefaultLanguageIsPerPersonAndSetFromTheHeader(t *testing.T) {
+// The language belongs to the problem: starting one in Python says nothing
+// about the next problem, or about anybody else.
+func TestLanguageBelongsToTheProblemNotThePerson(t *testing.T) {
 	srv, root, _ := testSite(t)
 	writePySignature(t, root)
 	h := srv.Handler()
 	guestToken, _ := guest(t, srv, "dima")
 
-	if rec := postJSON(t, h, "/me/language", map[string]string{"lang": "cobol"}); rec.Code != http.StatusBadRequest {
+	if rec := postJSON(t, h, "/problems/two-sum/start", map[string]string{"lang": "cobol"}); rec.Code != http.StatusBadRequest {
 		t.Errorf("an unknown language = %d", rec.Code)
 	}
-	if rec := postJSON(t, h, "/me/language", map[string]string{"lang": "python"}); rec.Code != http.StatusOK {
-		t.Fatalf("set language = %d: %s", rec.Code, rec.Body)
-	}
-	if !strings.Contains(get(t, h, "/").Body.String(), `<option value="python" selected>`) {
-		t.Error("the header does not show the new default")
-	}
-	if rec := postJSON(t, h, "/problems/two-sum/start", struct{}{}); rec.Code != http.StatusOK {
+	if rec := postJSON(t, h, "/problems/two-sum/start", map[string]string{"lang": "python"}); rec.Code != http.StatusOK {
 		t.Fatalf("start = %d: %s", rec.Code, rec.Body)
 	}
 	if _, err := os.Stat(filepath.Join(root, "solutions/0001-two-sum/solution.py")); err != nil {
-		t.Errorf("the owner's default did not apply: %v", err)
+		t.Errorf("the chosen language did not apply: %v", err)
 	}
 
-	// The guest is untouched: their default is still Go.
+	// The next problem is not dragged along with it.
+	if rec := postJSON(t, h, "/problems/valid-palindrome/start", map[string]string{}); rec.Code != http.StatusOK {
+		t.Fatalf("second start = %d: %s", rec.Code, rec.Body)
+	}
+	if _, err := os.Stat(filepath.Join(root, "solutions/0125-valid-palindrome/solution.go")); err != nil {
+		t.Errorf("a start with no language should be Go: %v", err)
+	}
+
+	// Neither is anybody else.
 	if rec := postJSONAs(t, h, "/problems/two-sum/start", map[string]string{}, guestToken); rec.Code != http.StatusOK {
 		t.Fatalf("guest start = %d: %s", rec.Code, rec.Body)
-	}
-	if _, err := os.Stat(filepath.Join(root, "_work")); err != nil {
-		t.Fatal(err)
 	}
 	matches, _ := filepath.Glob(filepath.Join(root, "_work", "*", "solutions", "0001-two-sum", "solution.go"))
 	if len(matches) != 1 {
 		t.Errorf("the guest's start did not produce a Go file: %v", matches)
+	}
+}
+
+// The header no longer carries a language control at all: a setting that
+// applies to every problem at once is the thing this replaced.
+func TestThereIsNoGlobalLanguageControl(t *testing.T) {
+	srv, _, _ := testSite(t)
+	h := srv.Handler()
+	if body := get(t, h, "/").Body.String(); strings.Contains(body, "data-language") {
+		t.Error("the header still has a language selector")
+	}
+	if rec := postJSON(t, h, "/me/language", map[string]string{"lang": "python"}); rec.Code != http.StatusNotFound {
+		t.Errorf("POST /me/language = %d, want 404", rec.Code)
+	}
+	// The choice moved onto the Start buttons, one per language, named.
+	body := get(t, h, "/problems/two-sum/solve").Body.String()
+	for _, want := range []string{"Start in Go", "Start in Python"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("the workspace does not offer %q", want)
+		}
 	}
 }
 

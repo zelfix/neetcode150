@@ -18,6 +18,7 @@ import (
 
 	"neetcode150/internal/catalog"
 	"neetcode150/internal/content"
+	"neetcode150/internal/lang"
 	"neetcode150/internal/progress"
 	"neetcode150/internal/scaffold"
 	"neetcode150/internal/tutor"
@@ -1446,8 +1447,9 @@ func TestWorkspaceSupportsChatAfterCompletingAnAttempt(t *testing.T) {
 				t.Errorf("idle workspace contains %s", unwanted)
 			}
 		}
-		if strings.Count(body, "data-start") != 1 || !strings.Contains(body, "data-statement-message") {
-			t.Error("idle page should have one Start action and an open statement")
+		// One Start button per language, which is how the language is chosen.
+		if strings.Count(body, "data-start") != len(lang.Known()) || !strings.Contains(body, "data-statement-message") {
+			t.Error("idle page should offer a Start per language and an open statement")
 		}
 		if strings.Index(body, "data-start") < strings.Index(body, `class="record"`) {
 			t.Error("Start should be at the top of the workspace record")

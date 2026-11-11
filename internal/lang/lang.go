@@ -87,16 +87,31 @@ func Of(id ID) Lang {
 	return l
 }
 
-// Resolve is the one rule for which language a problem is worked in: what
-// the problem's own entry says, else the person's default, else Go.
-func Resolve(entry, user string) Lang {
+// Resolve is the one rule for which language a problem is worked in: what the
+// problem's own entry says, else Go.
+//
+// There is deliberately no per-person default in between. A language that
+// applies to every problem at once has to be changed before starting one and
+// read back everywhere afterwards, which is a setting to maintain rather than a
+// choice to make; the choice belongs to the problem, where Start asks for it
+// outright. Go is the fallback only for a problem nobody has started yet, so
+// that paths and labels have something to show.
+func Resolve(entry string) Lang {
 	if l, err := Parse(entry); err == nil && entry != "" {
 		return l
 	}
-	if l, err := Parse(user); err == nil {
-		return l
-	}
 	return golang
+}
+
+// Formatter is the name of the tool Format runs, or "" when the language has
+// none here. Callers that offer formatting as an action need to say so rather
+// than appear to do nothing: Format returns Python unchanged and no error,
+// which is indistinguishable from source that was already tidy.
+func (l Lang) Formatter() string {
+	if l.ID == Go {
+		return "gofmt"
+	}
+	return ""
 }
 
 // Format tidies source the way the language's own tool would. Python has no

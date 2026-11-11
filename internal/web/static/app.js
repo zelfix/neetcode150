@@ -119,29 +119,3 @@
 
   apply();
 })();
-
-// The header's default-language selector. One request, the person's own row;
-// the next problem they start without choosing picks this up.
-(() => {
-  "use strict";
-  const pick = document.querySelector("[data-language]");
-  if (!pick) return;
-  pick.addEventListener("change", async () => {
-    const was = pick.dataset.was || pick.value;
-    pick.disabled = true;
-    try {
-      const res = await fetch("/me/language", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ lang: pick.value }),
-      });
-      if (!res.ok) throw new Error(await res.text());
-      pick.dataset.was = pick.value;
-    } catch (err) {
-      pick.value = was;
-      console.error(err);
-    } finally {
-      pick.disabled = false;
-    }
-  });
-})();

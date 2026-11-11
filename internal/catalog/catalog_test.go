@@ -23,6 +23,39 @@ func TestSlugify(t *testing.T) {
 	}
 }
 
+func TestMatchPattern(t *testing.T) {
+	problems := []Problem{
+		{Slug: "two-sum", Pattern: "Arrays & Hashing", PatternSlug: "arrays-hashing"},
+		{Slug: "valid-palindrome", Pattern: "Two Pointers", PatternSlug: "two-pointers"},
+		{Slug: "max-depth", Pattern: "Trees", PatternSlug: "trees"},
+	}
+	cases := map[string][]string{
+		"":             {"two-sum", "valid-palindrome", "max-depth"},
+		"two-pointers": {"valid-palindrome"},
+		"Two Pointers": {"valid-palindrome"},
+		"two poin":     {"valid-palindrome"}, // the fragment match the CLI relies on
+		"TREES":        {"max-depth"},
+		"arrays":       {"two-sum"},
+		// The title is not consulted: "Two Sum" stays out, because its pattern
+		// is Arrays & Hashing.
+		"two":             {"valid-palindrome"},
+		"nonexistent":     nil,
+		"hashing & stuff": nil,
+	}
+	for query, want := range cases {
+		got := MatchPattern(problems, query)
+		if len(got) != len(want) {
+			t.Errorf("MatchPattern(%q) returned %d problems, want %d", query, len(got), len(want))
+			continue
+		}
+		for i, slug := range want {
+			if got[i].Slug != slug {
+				t.Errorf("MatchPattern(%q)[%d] = %q, want %q", query, i, got[i].Slug, slug)
+			}
+		}
+	}
+}
+
 func TestPatternIndexOrdersTheRoadmap(t *testing.T) {
 	if PatternIndex("Arrays & Hashing") != 0 {
 		t.Error("Arrays & Hashing should come first")

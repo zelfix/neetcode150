@@ -17,13 +17,8 @@
     <a href="/patterns/" {{if eq .Nav "patterns"}}class="on"{{end}}>Patterns</a>
     <a href="/review/" {{if eq .Nav "review"}}class="on"{{end}}>Review{{if .Due}} <span class="count">{{.Due}}</span>{{end}}</a>
     <a href="/coach/" {{if eq .Nav "coach"}}class="on"{{end}}>Coach</a>
+    <a href="/drill/" {{if eq .Nav "drill"}}class="on"{{end}}>Drill</a>
   </nav>
-  <label class="lang-pick" title="The language new problems start in">
-    <span class="sr-only">Default language</span>
-    <select data-language>
-      {{range .Languages}}<option value="{{.ID}}"{{if eq .ID $.Language.ID}} selected{{end}}>{{.Label}}</option>{{end}}
-    </select>
-  </label>
   <span class="tally">{{.Summary.Done}}<span class="tally-sep">/</span>{{.Summary.Total}}</span>
 </header>
 

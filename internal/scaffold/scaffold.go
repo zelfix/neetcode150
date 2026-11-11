@@ -180,11 +180,38 @@ func fieldsOf(list *ast.FieldList, fallbackPrefix string, src string) []field {
 var exampleRE = regexp.MustCompile(`(?m)^\s*\*{0,2}(Input|Output)\*{0,2}:?\*{0,2}\s*(.*)$`)
 
 // Examples returns the Input/Output pairs found in a problem statement.
+// unescapeMarkdown drops the backslashes Markdown needs and source code does
+// not. A fetched statement writes `nums = \[1,2,3,1\]`, which is right in
+// Markdown and wrong in a comment that is meant to be read as the input.
+//
+// CommonMark only lets punctuation be escaped, so a backslash before anything
+// else is left alone: a statement about escape sequences keeps its `\n`.
+func unescapeMarkdown(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\\' && i+1 < len(s) && isASCIIPunct(s[i+1]) {
+			continue
+		}
+		b.WriteByte(s[i])
+	}
+	return b.String()
+}
+
+func isASCIIPunct(c byte) bool {
+	switch {
+	case c >= '!' && c <= '/', c >= ':' && c <= '@', c >= '[' && c <= '`', c >= '{' && c <= '~':
+		return true
+	}
+	return false
+}
+
 func Examples(statement string, limit int) []string {
 	var out []string
 	for _, m := range exampleRE.FindAllStringSubmatch(statement, -1) {
 		line := strings.TrimSpace(m[2])
 		line = strings.ReplaceAll(line, "`", "")
+		line = unescapeMarkdown(line)
 		if line == "" {
 			continue
 		}

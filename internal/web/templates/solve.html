@@ -38,10 +38,14 @@
         placeholder="{{if .Active}}Ask a question{{else}}Continue discussing your solution{{end}} — ⌘↵ to send"></textarea>
       <div class="tutor-actions">
         <span class="solve-state" data-tutor-state></span>
+        {{/* Clearing the conversation is the rare move and sat as an equal
+             button beside the one you press every turn. It stays reachable —
+             it is the only way to a fresh conversation that does not archive
+             your code — but quietly, leaving one button in the row. */}}
         <span class="meta" data-tutor-meta>{{.Tutor.Provider}} · {{.Tutor.Mode}} mode</span>
+        <button type="button" class="quiet" data-tutor-reset {{if .PendingSubmit}}disabled{{end}}
+          title="{{if .PendingSubmit}}The tutor is finishing this submission{{else}}Clear this conversation and begin a new one. Your code and rating are untouched.{{end}}">start over</button>
         <button type="button" data-tutor-stop hidden>Stop</button>
-        <button type="button" data-tutor-reset {{if .PendingSubmit}}disabled{{end}}
-          {{if .PendingSubmit}}title="The tutor is finishing this submission"{{end}}>Start over</button>
         <button type="submit" class="primary" data-tutor-send>Ask</button>
       </div>
     </form>
@@ -85,12 +89,14 @@
       </section>
       {{end}}
       <div class="start-gate{{if .P.IsDue}} solve-warn{{end}}">
-        <button type="button" class="primary" data-start>{{if .PreviousAvailable}}Start again{{else}}Start attempt{{end}}</button>
-        <label class="start-lang">in
-          <select data-lang-pick aria-label="Language for this attempt">
-            {{range .Langs}}<option value="{{.ID}}"{{if eq .ID $.Lang.ID}} selected{{end}}{{if .Why}} disabled title="{{.Why}}"{{end}}>{{.Label}}{{if .Why}} (unavailable){{end}}</option>{{end}}
-          </select>
-        </label>
+        {{/* One button per language rather than a button and a selector: the
+             language is part of starting, not a setting to arrange first. */}}
+        <div class="start-row">
+          {{range .Langs}}
+          <button type="button" class="primary" data-start data-lang="{{.ID}}"
+            {{if .Why}}disabled data-why="{{.Why}}" title="{{.Why}}"{{end}}>{{if $.PreviousAvailable}}Start again in {{.Label}}{{else}}Start in {{.Label}}{{end}}</button>
+          {{end}}
+        </div>
         <p>{{if .PreviousAvailable}}Begin a fresh attempt. Your previous work stays in History.{{else}}Start when you’re ready. Your timer and tutor will begin.{{end}}</p>
       </div>
       <div class="record-head">
@@ -103,29 +109,7 @@
         </p>
       </div>
 
-      {{if .Record.Sittings}}
-      <table class="record-table">
-        <thead>
-          <tr><th>Date</th><th>Rating</th><th>Rung</th><th>Stage</th><th>Sitting</th></tr>
-        </thead>
-        <tbody>
-          {{range .Record.Sittings}}
-          <tr>
-            <td>{{date .Date}}</td>
-            <td>{{.Confidence}}<span class="record-of">/5</span></td>
-            <td>{{if .Rung}}{{.Rung}}{{else}}<span class="record-of">—</span>{{end}}</td>
-            <td>{{.Stage}}<span class="record-of"> · {{.IntervalDays}}d</span></td>
-            <td>{{if .Minutes}}{{.Minutes}}<span class="record-of"> min</span>{{else}}<span class="record-of">—</span>{{end}}</td>
-          </tr>
-          {{if or .Slipped .Generous}}
-          <tr class="record-flag">
-            <td colspan="5">{{if .Slipped}}rating slipped{{end}}{{if and .Slipped .Generous}} · {{end}}{{if .Generous}}rating looks generous next to that rung{{end}}</td>
-          </tr>
-          {{end}}
-          {{end}}
-        </tbody>
-      </table>
-      {{end}}
+      {{template "sittings" .Record}}
 
       {{range .Record.Notes}}<p class="record-note">{{.}}</p>{{end}}
 
@@ -146,6 +130,10 @@
       <button type="button" class="primary" data-run {{if .PendingSubmit}}disabled{{end}}>Run tests <kbd>⌘↵</kbd></button>
       {{if .Tutor.Available}}<button type="button" class="primary" data-submit data-pending="{{.PendingSubmit}}" disabled
         title="Run tests and pass them before submitting">{{if .PendingSubmit}}Tutor follow-up in progress{{else}}Submit{{end}}</button>{{end}}
+      <span class="solve-keys">
+        {{if .Formatter}}<kbd>⌘⇧F</kbd> {{.Formatter}}{{end}}
+        <kbd>⌘S</kbd> save <kbd>⇥</kbd>/<kbd>⇧⇥</kbd> indent <kbd>esc</kbd> leave the editor
+      </span>
     </div>
     {{end}}
     </section>
@@ -162,6 +150,39 @@
     </section>
     <section class="work-panel" id="history-panel" role="tabpanel" aria-labelledby="history-tab" data-work-panel="history" hidden>
       <div class="panel-scroll">
+        {{/* The record pane holds this too, but it is swapped out by the editor
+             the moment an attempt starts — which is when you most want to see
+             whether this problem has already slipped once. */}}
+        {{if .Record.Sittings}}
+        <h2>Ratings</h2>
+        {{template "sittings" .Record}}
+        {{if .Record.NextReview}}<p class="panel-note">Next review {{date .Record.NextReview}}.</p>{{end}}
+        {{end}}
+        {{/* Replaced in place after a passing run: a comparison rendered at page
+             load is stale the moment the editor is touched. */}}
+        <div data-diff>
+        {{with .Diff}}
+        {{if .Available}}
+        {{/* Collapsed, like the archived code below it: the comparison shows the
+             earlier solution's lines, so it has to be a deliberate click rather
+             than something you meet while an attempt is in progress. */}}
+        <details class="submission">
+          <summary>Changes since {{.Against}}{{if and (not .Report.TooBig) (not .Report.Identical)}} · +{{.Report.Added}} −{{.Report.Removed}}{{end}}</summary>
+          {{if .Report.TooBig}}
+          <p class="panel-note">Those files are too large to compare.</p>
+          {{else if .Report.Identical}}
+          <p class="panel-note">Identical, line for line. Worth asking whether that is memory or understanding.</p>
+          {{else}}
+          <pre class="source-code"><code>{{range .Report.Lines}}<span class="{{diffClass .Op}}">{{diffSign .Op}}{{.Text}}</span>
+{{end}}</code></pre>
+          {{end}}
+          {{if .Skipped}}<p class="panel-note">{{plural .Skipped "attempt" "attempts"}} archived in another language, not compared.</p>{{end}}
+        </details>
+        {{else if .Skipped}}
+        <p class="panel-note">No earlier {{.Lang}} attempt to compare against; {{plural .Skipped "attempt" "attempts"}} archived in another language.</p>
+        {{end}}
+        {{end}}
+        </div>
         {{if .Archived}}<p class="panel-note">{{plural .Archived "earlier attempt" "earlier attempts"}} archived</p>{{end}}
         {{if .PreviousCode}}
         <details class="submission">
@@ -171,7 +192,7 @@
         {{end}}
         {{range .Submissions}}
         <details class="submission">
-          <summary>{{.Name}}{{if .Review}} · rating {{.Review.Confidence}}/5 · rung {{.Review.Rung}}{{if .Review.Passed}} · tests passed{{else}} · tests failed{{end}}{{end}}</summary>
+          <summary>{{.Name}}{{if .Lang}} · {{.Lang}}{{end}}{{if .Review}} · rating {{.Review.Confidence}}/5 · rung {{.Review.Rung}}{{if .Review.Passed}} · tests passed{{else}} · tests failed{{end}}{{end}}</summary>
           {{if .Review}}
           <p><strong>Tutor:</strong> {{.Review.Feedback}}</p>
           {{if .Review.Followup}}<p><strong>Explore next:</strong> {{.Review.Followup}}</p>{{end}}

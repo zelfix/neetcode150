@@ -412,6 +412,28 @@ func (e Entry) Elapsed(now time.Time) (time.Duration, bool) {
 	return d, true
 }
 
+// MaxSitting caps what one clock is allowed to contribute. A session left open
+// overnight would otherwise log eleven hours and poison the median that Weakest
+// reads. A browser tab is easier to leave open than a terminal, so the cap
+// matters more on the site than it ever did in the CLI.
+const MaxSitting = 6 * time.Hour
+
+// ClockMinutes is what a sitting of this length is worth, and whether the cap
+// threw it away. Anything under a minute is worth nothing, rather than rounding
+// up to one and making a glance at a statement look like practice.
+//
+// Every caller that turns a clock into minutes goes through here, so the rule
+// cannot drift between the CLI and the site.
+func ClockMinutes(d time.Duration) (minutes int, capped bool) {
+	if d > MaxSitting {
+		return 0, true
+	}
+	if d < time.Minute {
+		return 0, false
+	}
+	return int(d.Minutes()), false
+}
+
 // Rate records a confidence score from 1 (lost) to 5 (instant) and moves the
 // problem along the review ladder accordingly, noting no hint rung.
 func (s *Store) Rate(slug string, confidence int, now time.Time) (Entry, error) {

@@ -87,10 +87,22 @@ the site: `nc serve --tutor-provider claude` (the default) or
 tutor runs read-only by default; `--tutor-mode full` opts into unrestricted access. The
 Claude-only `--tutor-budget <usd>` sets a per-session ceiling.
 
-The editor is a plain textarea. Draft saves preserve your text, including incomplete
-syntax, without diagnostics or cursor changes. Explicit test runs and submissions use
-`gofmt`. Parse errors are shown when you run or submit, rather than while you are typing.
-No third-party editor code is served to your browser.
+The editor is a plain textarea, with the affordances written by hand rather than imported:
+Tab and Shift+Tab indent and outdent, a whole selection at a time; Enter carries the
+current indentation and opens a block; brackets and quotes close themselves, wrap a
+selection when there is one, and step aside instead of doubling when you type the closing
+half yourself. **⌘⇧F** (Ctrl+Shift+F) formats the file in place: `gofmt` for Go, which is compiled in,
+and `ruff` for Python if your machine has it (`brew install ruff`) — the key says what is
+missing rather than appearing to do nothing. Nothing *requires* a Python formatter: test
+runs and submissions never reformat Python. It is safe
+to press on code that does not compile: a parse error is reported and your text is left
+exactly as you wrote it. **Esc** releases the editor, since Tab belongs to indentation and
+a field a keyboard cannot leave is a trap.
+
+Draft saves preserve your text, including incomplete syntax, without diagnostics or cursor
+changes. Explicit test runs and submissions also format through `gofmt`. Parse errors are
+shown when you run, submit or format, rather than while you are typing. No third-party
+editor code is served to your browser.
 
 A problem that comes back for review can be re-solved from the same page: archiving puts
 the previous attempt in SQLite and hands you a blank scaffold, so the answer is not
@@ -101,6 +113,19 @@ would archive something half-written.
 
 The test pane is read-only on purpose: a test you can edit from the same window is a test
 you can make pass by editing it.
+
+The **History** tab holds the rest of what a review needs. Every rating the problem has had
+is listed there with its hint rung, the interval it earned, and a flag when a rating looks
+generous next to the rung it needed — and it stays readable once an attempt is running,
+which is when it matters. Below it sits the comparison between your current solution and
+the last attempt archived in the same language, rebuilt each time the tests pass. If the
+two are the same line for line, it says so, which is the question worth asking: was that
+memory or understanding?
+
+The problem's reading page carries the same rating history, lets you record the hint rung
+along with the rating, amend a rating you got wrong or undo it outright, and log time the
+clock missed. **Drill** draws a problem at random and does not tell you which pattern it
+is; naming it yourself is the exercise.
 
 This is the one part of the site that writes files and runs code, so those endpoints are
 guarded. A request has to prove it came from one of this site's own pages (`Sec-Fetch-Site`,
@@ -121,8 +146,9 @@ nc rate two-sum 4         # how it went; sets the next review date
 
 `nc start` writes a `solution.go` carrying the official Go signature and whatever node
 types the problem needs, plus populated table-driven tests. Prefer Python? `nc start
-two-sum --lang python` writes `solution.py` instead, and `nc user lang owner python` makes
-that the default; the site has the same choice beside its Start button and in the header.
+two-sum --lang python` writes `solution.py` instead; in the browser the workspace offers
+**Start in Go** and **Start in Python** side by side. The choice belongs to that problem
+alone — there is no default to set first and none to forget later.
 Either way the same fixtures run, and the schedule does not care which language it was. All 150 problems have worked
 examples and additional corner cases in `internal/testbank/cases/`. The standard-library
 helper in `internal/testkit/` handles lists, trees, graphs, stateful operation sequences,
@@ -140,6 +166,19 @@ the supplied cases check behavior, not asymptotic complexity.
 One instance, each person signing in with their own link, tests in a container — see
 [DEPLOY.md](DEPLOY.md). The tutor there must be the `deepseek` provider: the CLI ones run
 an agent rooted at the repository, so a guest's tutor could read everybody's work.
+
+The two shapes are meant to run side by side, and they are the same binary with different
+flags:
+
+| | Locally, for you | On a server, for friends |
+|---|---|---|
+| Tutor | `--tutor-provider claude`, paid by your subscription | `--tutor-provider deepseek`, paid per token |
+| Tests | `--sandbox local` is fine while you are the only user | `--sandbox docker`, required once a guest exists |
+| Keys | none | `DEEPSEEK_API_KEY` |
+
+Nothing needs to be shared between them: each instance keeps its own `study.sqlite3`, so
+your own progress lives on your own machine. `nc export` takes one person's data out, and
+there is no import — if you want your work in both places, pick one as its home.
 
 ## Agent setup
 
@@ -212,6 +251,11 @@ ladder in tutor/TUTOR.md — one rung only"* and it will generally get back on t
 
 ## The CLI
 
+If you work in the browser, the commands you actually need are `nc fetch` once,
+`nc user link owner` for a sign-in link, and `nc serve`. Running it for other people adds
+`nc user …`, `nc backup` and `nc export`. The rest is a second way to do what the site
+does, kept for scripting and for when the site is not running.
+
 | Command | What it does |
 |---|---|
 | `nc fetch [--force]` | Download the problem list, statements and Go signatures |
@@ -223,7 +267,6 @@ ladder in tutor/TUTOR.md — one rung only"* and it will generally get back on t
 | `nc user add\|link <name> --budget <usd>` | Set, or later change, someone's monthly tutor ceiling |
 | `nc next` | What to work on now |
 | `nc start <problem> [--lang go\|python]` | Scaffold the solution, test and notes |
-| `nc user lang <name> <go\|python>` | The language someone's problems default to |
 | `nc status <problem> <state>` | `new`, `attempted`, `solved` or `shaky` |
 | `nc rate <problem> <1-5>` | Record how it went and reschedule the review |
 | `nc rate <problem> <1-5> --rung <0-5>` | The same, noting the highest hint you needed |

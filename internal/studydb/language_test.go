@@ -5,9 +5,10 @@ import (
 	"time"
 )
 
-// Everyone who existed before languages did is a Go user, and nothing about
-// their rows changes; the column is what makes a later choice possible.
-func TestLanguageDefaultsToGoAndCanBeSet(t *testing.T) {
+// An attempt records the language it was written in, which is what makes a
+// same-language comparison possible. There is no per-person default to record:
+// the language belongs to the problem.
+func TestArchivedAttemptsRecordTheirLanguage(t *testing.T) {
 	db, err := Open(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -20,20 +21,6 @@ func TestLanguageDefaultsToGoAndCanBeSet(t *testing.T) {
 	if version != schemaVersion {
 		t.Fatalf("user_version = %d, want %d", version, schemaVersion)
 	}
-	owner, err := db.User(OwnerID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if owner.Language != "go" {
-		t.Errorf("owner language = %q, want go", owner.Language)
-	}
-	if err := db.SetUserLanguage(OwnerID, "python"); err != nil {
-		t.Fatal(err)
-	}
-	if owner, _ = db.User(OwnerID); owner.Language != "python" {
-		t.Errorf("after SetUserLanguage: %q", owner.Language)
-	}
-
 	now := time.Now()
 	for _, l := range []string{"", "python"} {
 		if _, err := db.Owner().Archive("two-sum", l, "code", now); err != nil {

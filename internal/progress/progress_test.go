@@ -287,6 +287,31 @@ func TestElapsedIgnoresAClockThatWentBackwards(t *testing.T) {
 	}
 }
 
+func TestClockMinutesCapsAForgottenSitting(t *testing.T) {
+	cases := []struct {
+		name    string
+		elapsed time.Duration
+		minutes int
+		capped  bool
+	}{
+		{"a glance is not practice", 20 * time.Second, 0, false},
+		{"the first whole minute counts", time.Minute, 1, false},
+		{"a real sitting", 25 * time.Minute, 25, false},
+		{"partial minutes round down", 25*time.Minute + 59*time.Second, 25, false},
+		{"the cap itself still counts", MaxSitting, 360, false},
+		{"a tab left open overnight is thrown away", 11 * time.Hour, 0, true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			minutes, capped := ClockMinutes(c.elapsed)
+			if minutes != c.minutes || capped != c.capped {
+				t.Errorf("ClockMinutes(%v) = %d, %v; want %d, %v",
+					c.elapsed, minutes, capped, c.minutes, c.capped)
+			}
+		})
+	}
+}
+
 func TestResetToNewLeavesTheLadder(t *testing.T) {
 	s := newStore(t)
 	now := time.Date(2026, 3, 1, 9, 0, 0, 0, time.UTC)

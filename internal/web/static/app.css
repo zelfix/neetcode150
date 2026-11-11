@@ -498,6 +498,27 @@ a:focus-visible, button:focus-visible, input:focus-visible, summary:focus-visibl
 }
 .rate-row button:hover { background: var(--accent-q); border-color: var(--accent); color: var(--text); }
 .rate-ends { display: flex; justify-content: space-between; color: var(--dimmer); font-size: 0.7rem; }
+.drill-controls { align-items: end; display: flex; flex-wrap: wrap; gap: 0.75rem; padding: 0.9rem 1rem; }
+.drill-controls label { color: var(--dim); display: flex; flex-direction: column; font-size: var(--t-xs); gap: 0.3rem; }
+.drill-check { align-items: center; flex-direction: row !important; }
+.drill-card { padding: 1.4rem 1rem; }
+.drill-n { color: var(--dimmer); font: 0.75rem var(--font-code); margin: 0; }
+.drill-card h2 { margin: 0.2rem 0 0.6rem; }
+.drill-facts { align-items: center; color: var(--dim); display: flex; font-size: var(--t-s); gap: 0.5rem; margin: 0 0 1rem; }
+.drill-warn { border-left: 2px solid var(--accent); color: var(--dim); font-size: var(--t-s); margin: 0 0 1.2rem; padding-left: 0.8rem; }
+
+.log-time { display: flex; flex-direction: column; gap: 0.35rem; margin-top: 0.9rem; }
+.log-time label { color: var(--dim); font-size: var(--t-xs); font-weight: 600; }
+.log-time-row { display: flex; gap: 0.35rem; }
+.log-time-row input { flex: 1; min-width: 0; }
+.rate-rung { color: var(--dim); display: flex; font-size: var(--t-xs); gap: 0.35rem; align-items: center; }
+.rate-rung select { flex: 1; min-width: 0; }
+/* Separated from the rating buttons above it: correcting a rating is a
+   different act from recording one, and should not be a neighbouring click. */
+.rate-correct { border-top: 1px solid var(--rule-soft); margin-top: 0.9rem; padding-top: 0.9rem; }
+.rate-correct .rate-row { align-items: center; }
+.rate-correct select { min-width: 0; }
+.rate-correct .rate-ends { display: block; }
 
 .kv { display: flex; flex-direction: column; gap: 0.3rem; color: var(--dim); }
 .kv div { display: flex; justify-content: space-between; gap: 1rem; }
@@ -714,6 +735,12 @@ body.app-full {
 .source-code { background: var(--ink-2); border: 1px solid var(--rule); border-radius: 3px; font: 0.8125rem/1.7 var(--font-code); margin: 0.75rem 0; overflow: auto; padding: 1rem; }
 .source-code code { font: inherit; }
 
+/* A diff line is coloured and keeps its +/- mark, so it still reads as added or
+   removed when the colours are not available. */
+.diff-add { color: var(--easy); }
+.diff-del { color: var(--hard); }
+.diff-eq { color: var(--dim); }
+
 .submission { border-top: 1px solid var(--rule-soft); padding: 0.6rem 0; }
 .submission > summary { color: var(--dim); cursor: pointer; font-size: var(--t-s); }
 .submission > summary:hover { color: var(--text); }
@@ -790,7 +817,13 @@ body.app-full {
 
 .record-note { color: var(--dim); font-size: var(--t-s); margin: 0 0 0.7rem; max-width: 56ch; }
 
-.solve-actions { display: flex; flex: none; gap: 0.6rem; justify-content: flex-end; }
+.solve-actions { align-items: center; display: flex; flex: none; gap: 0.6rem; justify-content: flex-end; }
+/* The keys come first in reading order and last in importance, so the row puts
+   them on the left and lets them shrink before the buttons do. */
+.solve-actions .solve-keys {
+  color: var(--dimmer); flex: 1; font-size: var(--t-xs); min-width: 0;
+  order: -1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 
 .solve-actions button, .solve-empty button, .start-gate button, .notes-actions button, .review-finish {
   align-items: center;
@@ -948,6 +981,12 @@ textarea[aria-label="Your solution"]:disabled { cursor: not-allowed; opacity: 0.
 .tutor-actions button:disabled { opacity: 0.5; cursor: default; }
 .tutor-actions button:disabled:hover { background: var(--ink-2); border-color: var(--rule); color: var(--dim); }
 .tutor-actions button.primary { color: var(--text); border-color: var(--accent-q); }
+/* A quiet control reads as a note, not as a second thing to press. */
+.tutor-actions button.quiet {
+  background: none; border: 0; color: var(--dimmer); font-size: var(--t-xs);
+  padding: 0; text-decoration: underline; text-decoration-color: var(--rule);
+}
+.tutor-actions button.quiet:hover { background: none; color: var(--dim); }
 
 
 /* ---------- narrow screens ---------- */
@@ -1071,19 +1110,10 @@ textarea[aria-label="Your solution"]:disabled { cursor: not-allowed; opacity: 0.
   color: var(--dimmer);
 }
 
-/* Language: the header default and the per-problem badge. */
-.lang-pick select {
-  background: transparent; border: 1px solid var(--dimmer); border-radius: 4px;
-  color: var(--dim); font: inherit; font-size: var(--t-s); padding: 0.1rem 0.35rem;
-}
-.lang-pick select:hover, .lang-pick select:focus { color: var(--text); border-color: var(--dim); }
+/* Language: the per-problem badge, and the row of Start buttons that chooses it. */
 .lang-badge {
   border: 1px solid var(--dimmer); border-radius: 999px; color: var(--dim);
   font-size: var(--t-s); padding: 0 0.5em; white-space: nowrap;
 }
-.start-lang { color: var(--dim); font-size: var(--t-s); margin-left: 0.5rem; }
-.start-lang select { font: inherit; margin-left: 0.25rem; }
-.sr-only {
-  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
-  overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
-}
+.start-row { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.start-row button[disabled] { cursor: not-allowed; opacity: 0.45; }

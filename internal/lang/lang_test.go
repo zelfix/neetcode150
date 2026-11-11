@@ -19,21 +19,20 @@ func TestParseAcceptsTheUsualSpellingsAndDefaultsToGo(t *testing.T) {
 }
 
 // The resolution rule is used by the CLI and the site; it is pinned here so
-// neither grows its own.
-func TestResolvePrefersTheEntryThenThePerson(t *testing.T) {
+// neither grows its own. There is no per-person default in it: the language is
+// the problem's own, and Go only answers for a problem nobody has started.
+func TestResolveTakesTheProblemsOwnLanguageElseGo(t *testing.T) {
 	for _, tc := range []struct {
-		entry, user string
-		want        ID
+		entry string
+		want  ID
 	}{
-		{"", "", Go},
-		{"", "python", Python},
-		{"go", "python", Go},
-		{"python", "", Python},
-		{"nonsense", "python", Python},
-		{"", "nonsense", Go},
+		{"", Go},
+		{"go", Go},
+		{"python", Python},
+		{"nonsense", Go},
 	} {
-		if got := Resolve(tc.entry, tc.user).ID; got != tc.want {
-			t.Errorf("Resolve(%q, %q) = %s, want %s", tc.entry, tc.user, got, tc.want)
+		if got := Resolve(tc.entry).ID; got != tc.want {
+			t.Errorf("Resolve(%q) = %s, want %s", tc.entry, got, tc.want)
 		}
 	}
 }
@@ -64,5 +63,16 @@ func TestTestFilesFollowTheLanguage(t *testing.T) {
 	}
 	if Of(Python).IsTestFile("solution.py") || !Of(Python).IsTestFile("x/test_mine.py") {
 		t.Error("IsTestFile is wrong for python")
+	}
+}
+
+// Format returns Python unchanged and no error, which a caller offering
+// formatting as an action cannot tell from source that was already tidy.
+func TestFormatterNamesTheToolOrNothing(t *testing.T) {
+	if got := Of(Go).Formatter(); got != "gofmt" {
+		t.Errorf("Go formatter = %q, want gofmt", got)
+	}
+	if got := Of(Python).Formatter(); got != "" {
+		t.Errorf("Python formatter = %q, want none", got)
 	}
 }

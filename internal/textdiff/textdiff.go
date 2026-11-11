@@ -29,6 +29,32 @@ func TooBig(old, new string) bool {
 	return len(split(old)) > maxLines || len(split(new)) > maxLines
 }
 
+// Report is a whole comparison: the lines, the counts, and the two outcomes
+// that are not a list of lines.
+type Report struct {
+	Lines     []Line
+	Added     int
+	Removed   int
+	Identical bool
+	TooBig    bool
+}
+
+// Compare diffs old against new and reports a refusal rather than an empty
+// diff.
+//
+// The order matters and is easy to get wrong: an identical pair and an
+// oversized pair both yield no lines, so a caller that asks Lines first cannot
+// tell them apart and will say "identical, line for line" about a file it
+// declined to read.
+func Compare(old, new string) Report {
+	if TooBig(old, new) {
+		return Report{TooBig: true}
+	}
+	lines := Lines(old, new)
+	added, removed := Stat(lines)
+	return Report{Lines: lines, Added: added, Removed: removed, Identical: Identical(lines)}
+}
+
 func split(s string) []string {
 	s = strings.ReplaceAll(s, "\r\n", "\n")
 	s = strings.TrimSuffix(s, "\n")

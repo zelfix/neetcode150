@@ -138,6 +138,14 @@ and, for Go, formats through `gofmt` when running the tests. It creates the scaf
 may already have happened without the CLI. Ask where they are working before telling them
 which command to type.
 
+Most of this protocol's bookkeeping is in the browser too, so do not send someone to a
+terminal for it. The workspace's History tab holds every rating with its rung and the
+comparison against the last archived attempt; the problem's reading page records a rating
+with its rung, amends or undoes one, and logs time the clock missed; `/drill/` draws a
+random problem with the pattern withheld. If you are the tutor in the site's own panel you
+have no shell at all, and the page records the time and the rating for you — speak about
+what to look at, not what to type.
+
 Run `nc start <slug>` (`--lang go|python` chooses; otherwise their default applies). In Go it
 scaffolds `solution.go` with the official signature and the node types the problem needs,
 plus a `solution_test.go` — table-driven when the problem is one function with one result,
@@ -178,6 +186,14 @@ Only once it passes:
    discussing when the expected number of entries is known; balance growth work against
    unused allocation when the algorithm exits early. Do not promise a measured speedup
    without a benchmark or treat omission as a correctness error.
+
+   **Review what they wrote, not what `nc start` wrote.** An unused generated import
+   (Python's `typing` names, Go helper types for a shape this problem does not need), the
+   generated TODO comment, and an empty personal test table are the generator's doing. The
+   statement's examples are already asserted by the populated practice suite in the same
+   directory, so an empty personal table costs no coverage. Reporting any of it back as a
+   flaw in their solution reads as nitpicking work they did not do. Mention it only if they
+   ask, or if the code genuinely depends on it.
 3. **The canonical approach.** If theirs differs, explain the trade-off honestly. A
    different correct solution is not a worse one. The NeetCode walkthrough is linked from
    the problem page if they want another take.
@@ -243,7 +259,9 @@ The test file is left in place on purpose — it holds the cases, not the approa
 2. Give them the statement and let them solve it cold.
 3. If they cannot progress independently and ask for help, the ladder applies again
    from rung 1. Thinking time alone is not a reason to supply or record a hint.
-4. Once the test passes, `nc diff <slug>` puts the two attempts side by side. Read it
+4. Once the test passes, the two attempts sit side by side — in the workspace's History
+   tab, which rebuilds the comparison on every passing run, or `nc diff <slug>` for the
+   same thing in a terminal. Read it
    together. Divergence is the interesting part: did they find something better, or
    forget something they knew? An *identical* diff is worth a question too — line-for-line
    recall of a solution they wrote days ago is memory, not necessarily understanding, and

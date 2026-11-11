@@ -201,10 +201,9 @@ func (s *session) runRequest(p catalog.Problem) runRequest {
 	}
 }
 
-// language is the site's one call to the resolution rule: the problem's own
-// choice, else this person's default.
+// language is the site's one call to the resolution rule.
 func (s *session) language(p catalog.Problem) lang.Lang {
-	return lang.Resolve(s.progress.Get(p.Slug).Lang, s.user.Language)
+	return lang.Resolve(s.progress.Get(p.Slug).Lang)
 }
 
 // work is this person's workspace. The owner keeps solutions/; everybody else

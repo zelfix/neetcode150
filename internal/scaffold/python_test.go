@@ -207,8 +207,13 @@ func TestGeneratePythonProducesValidPython(t *testing.T) {
 		}
 	}
 	design := GeneratePython(catalog.Problem{ID: 146, Slug: "lru-cache", Dir: "0146-lru-cache"}, pyDesignStub, "")
-	if !strings.Contains(design.Test, "skipTest") || !strings.Contains(design.Practice, `"cls": "LRUCache"`) {
-		t.Errorf("design files:\n%s\n%s", design.Test, design.Practice)
+	if !strings.Contains(design.Practice, `"cls": "LRUCache"`) {
+		t.Errorf("design practice suite:\n%s", design.Practice)
+	}
+	// The curated suite drives this problem, so the personal file must not run
+	// anything: a skip would report missing coverage that is not missing.
+	if strings.Contains(design.Test, "skipTest") || strings.Contains(design.Test, "\nclass ") {
+		t.Errorf("design personal test should be a commented scaffold:\n%s", design.Test)
 	}
 }
 
@@ -274,5 +279,51 @@ func TestCreateInPythonLeavesTheGoWorkspaceAlone(t *testing.T) {
 	}
 	if got, _ := os.ReadFile(lay.Path(p, "solution.py")); !strings.Contains(string(got), "raise NotImplementedError") {
 		t.Error("reset did not put a fresh Python scaffold in place")
+	}
+}
+
+// The typing import was unconditional, so 138 of the 150 problems opened with a
+// name they never used — the first thing a reader questions, and the tutor did.
+func TestPythonSolutionImportsTypingOnlyWhenItIsUsed(t *testing.T) {
+	plain := GeneratePython(
+		catalog.Problem{ID: 217, Slug: "contains-duplicate", Dir: "0217-contains-duplicate"},
+		"class Solution:\n    def containsDuplicate(self, nums: list[int]) -> bool:\n        \n", "")
+	if strings.Contains(plain.Solution, "from typing import") {
+		t.Errorf("builtin annotations need no typing import:\n%s", plain.Solution)
+	}
+
+	// cloneGraph is annotated Optional['Node'], so the import has to be there.
+	graph := GeneratePython(catalog.Problem{ID: 133, Slug: "clone-graph", Dir: "0133-clone-graph"}, pyGraphStub, "")
+	if !strings.Contains(graph.Solution, "from typing import Optional") {
+		t.Errorf("Optional is used and must be imported:\n%s", graph.Solution)
+	}
+	if strings.Contains(graph.Solution, "import List") {
+		t.Errorf("List is unused here and must not be imported:\n%s", graph.Solution)
+	}
+}
+
+// An empty personal table has only bad options, so when the curated suite
+// already covers the problem the scaffold is written out commented: it reports
+// no skip, and claims no pass it has not earned.
+func TestPythonPersonalTestDoesNotSkipWhenTheSuiteCoversIt(t *testing.T) {
+	f := GeneratePython(
+		catalog.Problem{ID: 217, Slug: "contains-duplicate", Dir: "0217-contains-duplicate"},
+		"class Solution:\n    def containsDuplicate(self, nums: list[int]) -> bool:\n        \n", "")
+	if f.Practice == "" {
+		t.Fatal("contains-duplicate has a curated suite; the fixture should have produced one")
+	}
+	if strings.Contains(f.Test, "skipTest") {
+		t.Errorf("personal test still skips although the suite covers the examples:\n%s", f.Test)
+	}
+	for _, want := range []string{"# class TestContainsDuplicate", "# practice_cases.py beside this file"} {
+		if !strings.Contains(f.Test, want) {
+			t.Errorf("personal test is missing %q:\n%s", want, f.Test)
+		}
+	}
+	// Every line is a comment or blank: nothing here runs.
+	for _, line := range strings.Split(f.Test, "\n") {
+		if line != "" && !strings.HasPrefix(line, "#") {
+			t.Errorf("personal test has a live line %q", line)
+		}
 	}
 }

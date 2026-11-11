@@ -1,6 +1,7 @@
 package web
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/json"
@@ -10,6 +11,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -22,6 +24,7 @@ import (
 	"neetcode150/internal/progress"
 	"neetcode150/internal/scaffold"
 	"neetcode150/internal/studydb"
+	"neetcode150/internal/textdiff"
 	"neetcode150/internal/tutor"
 )
 
@@ -63,11 +66,15 @@ type solvePage struct {
 	Statuses          []progress.Status
 	Tutor             tutorView
 	Submissions       []submissionView
-	Record            recordView
-	PendingSubmit     bool
-	PendingSubmitSeq  int
-	ElapsedSeconds    int64
-	ElapsedLabel      string
+	Diff              diffView
+	// Formatter names the tool the format key would run, or "" when this
+	// machine has none for the language.
+	Formatter        string
+	Record           recordView
+	PendingSubmit    bool
+	PendingSubmitSeq int
+	ElapsedSeconds   int64
+	ElapsedLabel     string
 }
 
 // recordView fills the work column before an attempt starts: why this problem
@@ -182,8 +189,11 @@ type submissionReport struct {
 }
 
 type submissionView struct {
-	Name   string
-	Code   string
+	Name string
+	Code string
+	// Lang labels the archive, so that a Python attempt sitting beside a Go one
+	// explains why the comparison passed it over.
+	Lang   string
 	Review *submissionReport
 }
 
@@ -209,6 +219,9 @@ func (s *session) handleSolve(w http.ResponseWriter, r *http.Request) {
 	l := s.language(p)
 	code, exists := s.readSolution(p)
 	testCode := s.readTests(p)
+	// What is on disk, before an inactive attempt's code is moved aside: the
+	// comparison is against the working file either way.
+	current := code
 	entry := s.progress.Get(p.Slug)
 	active := entry.Status == progress.Attempted && entry.AttemptStartedAt != nil
 	now := s.now()
@@ -221,7 +234,7 @@ func (s *session) handleSolve(w http.ResponseWriter, r *http.Request) {
 		code = ""
 	}
 	view := s.view(p, now)
-	submissions, err := s.submissions(p)
+	submissions, attempts, err := s.submissions(p)
 	if err != nil {
 		s.fail(w, err)
 		return
@@ -264,6 +277,8 @@ func (s *session) handleSolve(w http.ResponseWriter, r *http.Request) {
 		Tutor:             coach,
 		Record:            s.record(p, view, now),
 		Submissions:       submissions,
+		Diff:              s.diffAgainstLast(attempts, current, l, active),
+		Formatter:         s.formatter(l),
 		PendingSubmit:     pendingSubmit,
 		PendingSubmitSeq:  pending.FollowupSeq,
 		ElapsedSeconds:    int64(elapsed.Seconds()),
@@ -276,25 +291,73 @@ func formatElapsed(elapsed time.Duration) string {
 	return fmt.Sprintf("%02d:%02d:%02d", seconds/3600, (seconds/60)%60, seconds%60)
 }
 
-func (s *session) submissions(p catalog.Problem) ([]submissionView, error) {
+// submissions lists the archived attempts newest first, and hands back the rows
+// it read so a caller needing them again does not repeat the query.
+func (s *session) submissions(p catalog.Problem) ([]submissionView, []studydb.Attempt, error) {
 	attempts, err := s.progress.Scope().Attempts(p.Slug)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	var out []submissionView
 	for i := len(attempts) - 1; i >= 0; i-- {
 		a := attempts[i]
-		v := submissionView{Name: a.Ref(), Code: a.Code}
+		v := submissionView{Name: a.Ref(), Code: a.Code, Lang: lang.Of(lang.ID(a.Language)).Label}
 		if len(a.Review) > 0 {
 			var report submissionReport
 			if err := json.Unmarshal(a.Review, &report); err != nil {
-				return nil, fmt.Errorf("attempt %s: malformed review: %w", a.Ref(), err)
+				return nil, nil, fmt.Errorf("attempt %s: malformed review: %w", a.Ref(), err)
 			}
 			v.Review = &report
 		}
 		out = append(out, v)
 	}
-	return out, nil
+	return out, attempts, nil
+}
+
+// maxDiffLines is tighter than textdiff's own cap on purpose. textdiff is sized
+// for a single-user CLI, where two four-thousand-line inputs building a
+// sixteen-million-cell table is merely slow; here the comparison runs on a page
+// load that any guest can trigger with code they chose. No solution is eight
+// hundred lines.
+const maxDiffLines = 800
+
+// diffView is the archived attempt set against the current solution — the
+// comparison the review flow asks for once the tests pass.
+type diffView struct {
+	Available bool
+	Report    textdiff.Report
+	Against   string // the archived attempt's ref, as `nc diff` names it too
+	Skipped   int    // archived in another language, left out
+	Lang      string // label, for saying which language has no archive yet
+}
+
+// diffAgainstLast compares the newest archived attempt in this language with
+// what is in the working file now. It is handed the rows submissions already
+// read, so it costs no second query.
+//
+// Only while an attempt is running. Submitting archives the code and leaves it
+// in place, so afterwards the newest archive *is* the working file, and the
+// comparison would answer "identical, line for line" as a tautology — the one
+// reading that must never be guessed at, since it is the page's way of asking
+// whether a re-solve was memory rather than understanding.
+func (s *session) diffAgainstLast(attempts []studydb.Attempt, current string, l lang.Lang, active bool) diffView {
+	v := diffView{Lang: l.Label}
+	if !active {
+		return v
+	}
+	archived := progress.LastArchivedIn(attempts, l.ID)
+	v.Skipped = archived.Skipped
+	if !archived.Found || strings.TrimSpace(current) == "" {
+		return v
+	}
+	v.Available = true
+	v.Against = archived.Attempt.Ref()
+	if strings.Count(archived.Attempt.Code, "\n") > maxDiffLines || strings.Count(current, "\n") > maxDiffLines {
+		v.Report = textdiff.Report{TooBig: true}
+		return v
+	}
+	v.Report = textdiff.Compare(archived.Attempt.Code, current)
+	return v
 }
 
 func (s *session) tutorView(slug string) tutorView {
@@ -372,6 +435,61 @@ type testResponse struct {
 	Passed bool   `json:"passed"`
 	Millis int64  `json:"millis"`
 	RunErr string `json:"runError,omitempty"`
+	// Diff is sent only on a passing run, which is the moment the review flow
+	// asks for the comparison.
+	Diff *diffPayload `json:"diff,omitempty"`
+}
+
+// diffPayload is diffView as the page needs it. The gutter mark travels with
+// each line so the script does not have to know what an op means.
+type diffPayload struct {
+	Against   string     `json:"against"`
+	Added     int        `json:"added"`
+	Removed   int        `json:"removed"`
+	Identical bool       `json:"identical"`
+	TooBig    bool       `json:"tooBig"`
+	Skipped   int        `json:"skipped"`
+	Lines     []diffLine `json:"lines,omitempty"`
+}
+
+type diffLine struct {
+	Class string `json:"class"`
+	Sign  string `json:"sign"`
+	Text  string `json:"text"`
+}
+
+// A diff line keeps its gutter mark as well as its colour, so that it still
+// reads as added or removed when copied out of the page as plain text.
+func diffClassOf(op textdiff.Op) string {
+	switch op {
+	case textdiff.Insert:
+		return "diff-add"
+	case textdiff.Delete:
+		return "diff-del"
+	}
+	return "diff-eq"
+}
+
+func diffSignOf(op textdiff.Op) string {
+	switch op {
+	case textdiff.Insert:
+		return "+ "
+	case textdiff.Delete:
+		return "- "
+	}
+	return "  "
+}
+
+func (v diffView) payload() *diffPayload {
+	if !v.Available {
+		return nil
+	}
+	out := &diffPayload{Against: v.Against, Added: v.Report.Added, Removed: v.Report.Removed,
+		Identical: v.Report.Identical, TooBig: v.Report.TooBig, Skipped: v.Skipped}
+	for _, l := range v.Report.Lines {
+		out.Lines = append(out.Lines, diffLine{Class: diffClassOf(l.Op), Sign: diffSignOf(l.Op), Text: l.Text})
+	}
+	return out
 }
 
 type submitResponse struct {
@@ -386,8 +504,14 @@ type submitResponse struct {
 }
 
 type pendingSubmission struct {
-	Token       string
-	Code        string
+	Token string
+	Code  string
+	// Lang is recorded when the submission is taken, not when it is archived:
+	// the archive is what `nc diff` compares, and an attempt filed under the
+	// wrong language makes the same-language rule silently wrong. A pending row
+	// written before this field existed reads back empty, which InsertAttempt
+	// still treats as Go — the behaviour it always had.
+	Lang        string
 	Output      string
 	Passed      bool
 	Millis      int64
@@ -443,15 +567,9 @@ func (s *session) handleSubmit(w http.ResponseWriter, r *http.Request) {
 	}
 	started := s.now()
 	entry := s.progress.Get(p.Slug)
-	var elapsed time.Duration
-	if entry.AttemptStartedAt != nil {
-		elapsed = started.Sub(*entry.AttemptStartedAt)
-		if elapsed < 0 {
-			elapsed = 0
-		}
-	}
-	if elapsed > 6*time.Hour {
-		elapsed = 0 // Ignore an overnight idle timer, as `nc rate` does.
+	elapsed, _ := entry.Elapsed(started)
+	if _, capped := progress.ClockMinutes(elapsed); capped {
+		elapsed = 0 // An overnight idle timer is a forgotten tab, not a sitting.
 	}
 	saved, err := s.save(p, req.Code)
 	if err != nil {
@@ -487,7 +605,8 @@ func (s *session) handleSubmit(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	s.submissionMu.Lock()
-	pending := pendingSubmission{Token: rand.Text(), Code: saved.Code, Output: run.Output, Passed: passed,
+	pending := pendingSubmission{Token: rand.Text(), Code: saved.Code, Lang: string(s.language(p).ID),
+		Output: run.Output, Passed: passed,
 		Millis: out.Millis, Elapsed: elapsed, Entry: entry, FollowupSeq: seq, Checking: true}
 	err = s.persistPendingLocked(p.Slug, pending)
 	s.submissionMu.Unlock()
@@ -661,10 +780,7 @@ func (s *session) recordSubmission(p catalog.Problem, pending pendingSubmission,
 	if err != nil {
 		return "", err
 	}
-	minutes := 0
-	if pending.Elapsed >= time.Minute {
-		minutes = int(pending.Elapsed.Minutes())
-	}
+	minutes, _ := progress.ClockMinutes(pending.Elapsed)
 	var archive string
 	err = s.progress.DB().Write(func(tx *sql.Tx) error {
 		var err error
@@ -679,7 +795,7 @@ func (s *session) recordSubmission(p catalog.Problem, pending pendingSubmission,
 				return err
 			}
 		}
-		archive, err = studydb.InsertAttempt(tx, s.progress.UserID(), p.Slug, string(lang.Go), pending.Code, data, now, pending.Token)
+		archive, err = studydb.InsertAttempt(tx, s.progress.UserID(), p.Slug, pending.Lang, pending.Code, data, now, pending.Token)
 		if err != nil {
 			return err
 		}
@@ -919,8 +1035,8 @@ func (s *session) handleCancelAttempt(w http.ResponseWriter, r *http.Request) {
 	}
 	now := s.now()
 	elapsed, running := entry.Elapsed(now)
-	if running && elapsed >= time.Minute {
-		if _, err := s.progress.AddMinutes(p.Slug, int(elapsed.Minutes()), now); err != nil {
+	if minutes, _ := progress.ClockMinutes(elapsed); running && minutes > 0 {
+		if _, err := s.progress.AddMinutes(p.Slug, minutes, now); err != nil {
 			s.fail(w, err)
 			return
 		}
@@ -981,6 +1097,104 @@ func (s *session) handleCreateSolution(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleSaveSolution stores the editor's contents.
+// formatTimeout bounds the Python formatter. It reads one file from stdin, so
+// anything slower than this is a tool that is not going to answer.
+const formatTimeout = 10 * time.Second
+
+// pyFormatterName is the Python formatter on this machine, or "" for none.
+func pyFormatterName() string {
+	if _, err := exec.LookPath("ruff"); err == nil {
+		return "ruff"
+	}
+	return ""
+}
+
+// runRuff formats one file through `ruff format -`. It is given the source on
+// stdin and never a path, so the formatter is handed the text in the editor
+// rather than reaching into the workspace.
+func runRuff(ctx context.Context, src string) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, formatTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "ruff", "format", "-")
+	cmd.Stdin = strings.NewReader(src)
+	var out, errs bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &out, &errs
+	if err := cmd.Run(); err != nil {
+		if msg := strings.TrimSpace(errs.String()); msg != "" {
+			return "", fmt.Errorf("%s", msg)
+		}
+		return "", err
+	}
+	return out.String(), nil
+}
+
+// formatter names the tool that would format this language here, or "" when
+// there is none to offer.
+func (s *session) formatter(l lang.Lang) string {
+	if name := l.Formatter(); name != "" {
+		return name
+	}
+	if l.ID == lang.Python {
+		return s.pyFormatTool
+	}
+	return ""
+}
+
+// formatResponse answers the editor's format key. Tidied source comes back for
+// the page to put in the editor; it is not written to disk, because the editor
+// then holds unsaved text like any other edit and the usual autosave persists
+// it. Why says the language has no formatter here, which is not the same as
+// source that needed no change.
+type formatResponse struct {
+	Code  string `json:"code"`
+	Tool  string `json:"tool,omitempty"`
+	Why   string `json:"why,omitempty"`
+	Error string `json:"error,omitempty"`
+}
+
+// handleFormatSolution formats what is in the editor without saving or running
+// it, so the keystroke is safe to press on code that does not compile yet: a
+// parse error comes back as a message and the editor keeps what the person
+// wrote.
+func (s *session) handleFormatSolution(w http.ResponseWriter, r *http.Request) {
+	p, ok := s.cat.BySlug(r.PathValue("slug"))
+	if !ok {
+		s.notFound(w, r, "No problem with that slug.")
+		return
+	}
+	req, decodeErr := decodeBody[saveRequest](r)
+	if decodeErr != nil {
+		http.Error(w, decodeErr.Error(), http.StatusBadRequest)
+		return
+	}
+	l := s.language(p)
+	out := formatResponse{Code: req.Code, Tool: s.formatter(l)}
+	if out.Tool == "" {
+		out.Why = "no " + l.Label + " formatter on this machine — `brew install ruff` adds one"
+		writeJSON(w, http.StatusOK, out)
+		return
+	}
+
+	var formatted string
+	var err error
+	if l.ID == lang.Go {
+		formatted, err = l.Format(req.Code)
+	} else {
+		format := s.pyFormat
+		if format == nil {
+			format = runRuff
+		}
+		formatted, err = format(r.Context(), req.Code)
+	}
+	if err != nil {
+		out.Error = err.Error()
+		writeJSON(w, http.StatusOK, out)
+		return
+	}
+	out.Code = formatted
+	writeJSON(w, http.StatusOK, out)
+}
+
 func (s *session) handleSaveSolution(w http.ResponseWriter, r *http.Request) {
 	p, ok := s.cat.BySlug(r.PathValue("slug"))
 	if !ok {
@@ -1055,6 +1269,15 @@ func (s *session) handleRunTests(w http.ResponseWriter, r *http.Request) {
 	s.recordRun(p.Slug, run, runErr)
 	if runErr != nil {
 		out.RunErr = runErr.Error()
+	}
+	// Only on a pass, and only against what was just saved: this is the step the
+	// review flow asks for, and the extra read is not worth paying on a failure.
+	if out.Passed && runErr == nil {
+		entry := s.progress.Get(p.Slug)
+		active := entry.Status == progress.Attempted && entry.AttemptStartedAt != nil
+		if attempts, err := s.progress.Scope().Attempts(p.Slug); err == nil {
+			out.Diff = s.diffAgainstLast(attempts, saved.Code, s.language(p), active).payload()
+		}
 	}
 	writeJSON(w, http.StatusOK, out)
 }

@@ -196,21 +196,20 @@ func TestStartInPythonRecordsTheChoiceAndWritesPythonFiles(t *testing.T) {
 		t.Errorf("entry = lang %q status %s", e.Lang, e.Status)
 	}
 
-	// The owner's default applies to a problem with no choice of its own.
-	if err := cmdUser(root, []string{"lang", "owner", "python"}); err != nil {
-		t.Fatal(err)
-	}
+	// Starting without naming a language is Go, and records no choice of its
+	// own: there is no per-person default for it to have come from.
 	if err := cmdStart(root, []string{"valid-anagram"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join(root, "solutions/0242-valid-anagram/solution.py")); err != nil {
-		t.Errorf("the default language was not applied: %v", err)
+	if _, err := os.Stat(filepath.Join(root, "solutions/0242-valid-anagram/solution.go")); err != nil {
+		t.Errorf("a start with no language did not fall back to Go: %v", err)
 	}
 	if e := entry(t, root, "valid-anagram"); e.Lang != "" {
 		t.Errorf("a default start recorded a per-problem language %q", e.Lang)
 	}
-	if err := cmdUser(root, []string{"lang", "owner", "cobol"}); err == nil {
-		t.Error("an unknown language was accepted")
+	// One problem's choice does not leak into another's.
+	if e := entry(t, root, "two-sum"); e.Lang != "python" {
+		t.Errorf("two-sum lost its own language: %q", e.Lang)
 	}
 	// Info names the language, and a Python resolve archives a Python attempt.
 	out := capture(t, func() {

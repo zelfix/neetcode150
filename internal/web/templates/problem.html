@@ -68,7 +68,7 @@
     </section>
 
     <section>
-      {{template "rateForm" dict "P" .P "BackTo" (printf "/problems/%s" .P.Slug)}}
+      {{template "rateForm" dict "P" .P "BackTo" (printf "/problems/%s" .P.Slug) "Correct" true}}
     </section>
 
     <section>
@@ -80,6 +80,17 @@
         {{if .IntervalDays}}<div><span>Interval</span><span>{{plural .IntervalDays "day" "days"}}</span></div>{{end}}
         {{if .P.Entry.FirstSolved}}<div><span>First solved</span><span>{{date .P.Entry.FirstSolved}}</span></div>{{end}}
       </div>
+      {{/* Here and not in the workspace: that page runs the clock itself, and a
+           box for adding minutes beside a live timer invites double counting. */}}
+      <form class="log-time" method="post" action="/problems/{{.P.Slug}}/time">
+        <input type="hidden" name="from" value="/problems/{{.P.Slug}}">
+        <label for="log-minutes">Log time the clock missed</label>
+        <span class="log-time-row">
+          <input id="log-minutes" type="number" name="minutes" min="1" max="1440" step="1" placeholder="minutes" required>
+          <button>Add</button>
+        </span>
+      </form>
+      {{template "sittings" .Record}}
     </section>
 
     <section>

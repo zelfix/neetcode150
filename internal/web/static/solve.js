@@ -23,7 +23,8 @@
   let awaitingSubmitRating = submitBtn?.dataset.pending === "true";
   let testsPassedForCurrent = false;
   let reviewCompleted = root.dataset.active === "false";
-  const startBtn = root.querySelector("[data-start]");
+  // One Start button per language, each carrying its own.
+  const startBtns = Array.from(root.querySelectorAll("[data-start]"));
 
   // The guard on the server refuses anything that is not JSON from this origin,
   // so every call goes through here.
@@ -156,18 +157,21 @@
 
   // ---- create ----
 
-  if (startBtn) {
-    startBtn.addEventListener("click", async () => {
-      startBtn.disabled = true;
+  for (const btn of startBtns) {
+    btn.addEventListener("click", async () => {
+      // Disable every one of them: two attempts started at once would archive
+      // the first before it had a chance to exist.
+      for (const other of startBtns) other.disabled = true;
       say("starting a new attempt…");
       try {
         if (notesInput) notesInput.readOnly = true;
         await saveNotes();
-        const pick = root.querySelector("[data-lang-pick]");
-        await post("start", pick ? { lang: pick.value } : {});
+        await post("start", { lang: btn.dataset.lang || "" });
         await reloadWorkspace();
       } catch (err) {
-        startBtn.disabled = false;
+        // Back to how they started: a language whose tests cannot run here
+        // stays disabled, the rest become clickable again.
+        for (const other of startBtns) other.disabled = !!other.dataset.why;
         if (notesInput) notesInput.readOnly = false;
         say(err.message, "bad");
       }
@@ -641,6 +645,50 @@
     if (dirty() && !awaitingSubmitRating && !reviewCompleted) scheduleAutosave();
   }
 
+  // Rebuilt from the run response rather than left as the page rendered it: a
+  // comparison computed at page load is stale the moment the editor is touched.
+  // Elements and text nodes only, like the tutor log — the lines are the
+  // reader's own code, and they go in as text either way.
+  function renderDiff(d) {
+    const box = root.querySelector("[data-diff]");
+    if (!box) return;
+    box.replaceChildren();
+    if (!d) return;
+    const details = document.createElement("details");
+    details.className = "submission";
+    const summary = document.createElement("summary");
+    summary.textContent = d.tooBig || d.identical
+      ? `Changes since ${d.against}`
+      : `Changes since ${d.against} · +${d.added} −${d.removed}`;
+    details.appendChild(summary);
+    const note = (text) => {
+      const p = document.createElement("p");
+      p.className = "panel-note";
+      p.textContent = text;
+      details.appendChild(p);
+    };
+    if (d.tooBig) {
+      note("Those files are too large to compare.");
+    } else if (d.identical) {
+      note("Identical, line for line. Worth asking whether that is memory or understanding.");
+    } else {
+      const pre = document.createElement("pre");
+      pre.className = "source-code";
+      const code = document.createElement("code");
+      for (const line of d.lines || []) {
+        const span = document.createElement("span");
+        span.className = line.class;
+        span.textContent = line.sign + line.text;
+        code.appendChild(span);
+        code.appendChild(document.createTextNode("\n"));
+      }
+      pre.appendChild(code);
+      details.appendChild(pre);
+    }
+    if (d.skipped) note(`${d.skipped} archived in another language, not compared.`);
+    box.appendChild(details);
+  }
+
   function show(res) {
     if (!output) return;
     output.hidden = false;
@@ -666,9 +714,11 @@
       show(res);
       testsPassedForCurrent = res.passed && !res.runError;
       if (submitBtn) submitBtn.disabled = !testsPassedForCurrent;
+      if (testsPassedForCurrent) renderDiff(res.diff);
       if (res.runError) say(res.runError, "bad");
       else if (res.formatError) say(`does not parse: ${res.formatError}`, "warn");
-      else say(res.passed ? `passed in ${res.millis} ms` : "failed", res.passed ? "ok" : "bad");
+      else if (!res.passed) say("failed", "bad");
+      else say(res.diff ? `passed in ${res.millis} ms · comparison in History` : `passed in ${res.millis} ms`, "ok");
     } finally {
       if (runBtn) runBtn.disabled = false;
       if (cancelBtn) cancelBtn.disabled = false;
@@ -696,10 +746,96 @@
     editor.dispatchEvent(new Event("input"));
   }
 
+  // One indent unit is the language's: a tab for Go, four spaces for Python.
+  const indentUnit = () => editor.dataset.indent || "\t";
+
+  // The span of whole lines the selection touches, which is what Tab and
+  // Shift+Tab act on when more than one line is involved.
+  function selectedLines() {
+    const from = editor.value.lastIndexOf("\n", editor.selectionStart - 1) + 1;
+    let to = editor.value.indexOf("\n", editor.selectionEnd);
+    if (to === -1) to = editor.value.length;
+    return { from, to, text: editor.value.slice(from, to) };
+  }
+
+  function shiftLines(by) {
+    const unit = indentUnit();
+    const { from, to, text } = selectedLines();
+    const lines = text.split("\n");
+    let firstDelta = 0;
+    let total = 0;
+    const out = lines.map((line, i) => {
+      if (by > 0) {
+        if (i === 0) firstDelta = unit.length;
+        total += unit.length;
+        return unit + line;
+      }
+      // Outdent takes one unit, or whatever part of it is actually there, so a
+      // line indented with a stray pair of spaces still moves left.
+      let cut = 0;
+      if (line.startsWith(unit)) {
+        cut = unit.length;
+      } else {
+        while (cut < unit.length && cut < line.length && (line[cut] === " " || line[cut] === "\t")) cut++;
+      }
+      if (i === 0) firstDelta = -cut;
+      total -= cut;
+      return line.slice(cut);
+    });
+    const start = editor.selectionStart;
+    const end = editor.selectionEnd;
+    editor.setRangeText(out.join("\n"), from, to, "preserve");
+    editor.selectionStart = Math.max(from, start + firstDelta);
+    editor.selectionEnd = Math.max(from, end + total);
+    editor.dispatchEvent(new Event("input"));
+  }
+
+  const pairs = { "(": ")", "[": "]", "{": "}", '"': '"', "'": "'", "`": "`" };
+  const closers = new Set(Object.values(pairs));
+
+  // Whether the caret sits between the two halves of a pair. Both characters
+  // have to exist: past either end of the text they read as undefined, and
+  // pairs[undefined] === undefined would call that a match.
+  function insidePair(at) {
+    if (at <= 0 || at >= editor.value.length) return false;
+    const open = editor.value[at - 1];
+    return pairs[open] !== undefined && pairs[open] === editor.value[at];
+  }
+
+  async function formatNow() {
+    if (editor.readOnly || !editor.value.trim()) return;
+    const res = await post("format", { code: editor.value });
+    if (res.why) {
+      say(res.why, "warn");
+      return;
+    }
+    if (res.error) {
+      say(`does not parse: ${res.error}`, "warn");
+      return;
+    }
+    if (res.code === editor.value) {
+      say(`${res.tool}: already tidy`);
+      return;
+    }
+    // Keep the caret where it was in the text, measured from the end so that
+    // re-indentation above it does not drag it off the line it was on.
+    const tail = editor.value.length - editor.selectionStart;
+    editor.value = res.code;
+    const at = Math.max(0, res.code.length - tail);
+    editor.selectionStart = editor.selectionEnd = at;
+    editor.dispatchEvent(new Event("input"));
+    say(`${res.tool} applied`, "ok");
+  }
+
   editor.addEventListener("keydown", (e) => {
     const mod = e.metaKey || e.ctrlKey;
     if (editor.readOnly) return;
 
+    if (mod && e.shiftKey && (e.key === "f" || e.key === "F")) {
+      e.preventDefault();
+      guarded(formatNow)();
+      return;
+    }
     if (mod && e.key === "s") {
       e.preventDefault();
       guarded(save)();
@@ -712,29 +848,85 @@
     }
     if (mod) return;
 
-    // One indent unit is the language's: a tab for Go, four spaces for Python.
-    const unit = editor.dataset.indent || "\t";
+    const unit = indentUnit();
+    const at = editor.selectionStart;
+    const selected = editor.value.slice(at, editor.selectionEnd);
+
+    // Tab is trapped for indentation, which would otherwise make this the only
+    // field a keyboard user cannot leave. Escape is the way out: it releases
+    // focus, and Tab moves on from wherever focus lands.
+    if (e.key === "Escape") {
+      editor.blur();
+      return;
+    }
 
     if (e.key === "Tab") {
-      // Trapping Tab costs keyboard users the ability to leave the field, so
-      // Escape-then-Tab is the way out and Shift+Tab still moves backwards.
-      if (e.shiftKey) return;
       e.preventDefault();
-      replaceSelection(unit);
+      if (selected.includes("\n")) {
+        shiftLines(e.shiftKey ? -1 : 1);
+      } else if (e.shiftKey) {
+        shiftLines(-1);
+      } else {
+        replaceSelection(unit);
+      }
+      return;
+    }
+
+    // Typing an opening bracket or quote closes it. With text selected it wraps
+    // the selection instead, which is the other thing people reach for.
+    if (pairs[e.key] !== undefined) {
+      // A quote is also an apostrophe, and `don't` should not grow a second
+      // one. Only pair a quote when what follows cannot continue a word.
+      const quote = e.key === pairs[e.key];
+      const next = editor.value[editor.selectionEnd] || "";
+      if (quote && !selected && /[\w"'`]/.test(next)) return;
+      e.preventDefault();
+      if (selected) {
+        editor.setRangeText(e.key + selected + pairs[e.key], at, editor.selectionEnd, "preserve");
+        editor.selectionStart = at + 1;
+        editor.selectionEnd = at + 1 + selected.length;
+        editor.dispatchEvent(new Event("input"));
+        return;
+      }
+      editor.setRangeText(e.key + pairs[e.key], at, at, "preserve");
+      editor.selectionStart = editor.selectionEnd = at + 1;
+      editor.dispatchEvent(new Event("input"));
+      return;
+    }
+
+    // Typing the closing half of a pair the editor just added steps over it
+    // rather than doubling it.
+    if (closers.has(e.key) && !selected && editor.value[at] === e.key) {
+      e.preventDefault();
+      editor.selectionStart = editor.selectionEnd = at + 1;
+      return;
+    }
+
+    // Backspace inside an empty pair takes both halves.
+    if (e.key === "Backspace" && !selected && insidePair(at)) {
+      e.preventDefault();
+      editor.setRangeText("", at - 1, at + 1, "end");
+      editor.dispatchEvent(new Event("input"));
       return;
     }
 
     if (e.key === "Enter") {
       // Carry the current line's indentation onto the next one, and add a level
-      // after an opening bracket or a block-opening colon. Explicit test runs
-      // format the rest, where the language has a formatter.
-      const at = editor.selectionStart;
+      // after an opening bracket or a block-opening colon. Between the halves
+      // of a pair, the closing half goes to a line of its own.
       const lineStart = editor.value.lastIndexOf("\n", at - 1) + 1;
       const line = editor.value.slice(lineStart, at);
       const indent = (line.match(/^[\t ]*/) || [""])[0];
-      const deeper = /[{(\[:]\s*$/.test(line) ? unit : "";
+      const opened = /[{(\[:]\s*$/.test(line);
+      const inPair = insidePair(at);
       e.preventDefault();
-      replaceSelection("\n" + indent + deeper);
+      if (inPair) {
+        editor.setRangeText("\n" + indent + unit + "\n" + indent, at, at, "preserve");
+        editor.selectionStart = editor.selectionEnd = at + 1 + indent.length + unit.length;
+        editor.dispatchEvent(new Event("input"));
+        return;
+      }
+      replaceSelection("\n" + indent + (opened ? unit : ""));
     }
   });
 

@@ -267,27 +267,49 @@ func pyWithTODO(code string) string {
 
 // GeneratePython builds solution.py, test_solution.py and practice_cases.py
 // for a problem, the Python counterpart of Generate.
+// typingNames is which typing names the generated body refers to, in import
+// order. Only the subscripted forms count: `Optional` inside a comment or a
+// word like "Optionally" is not a use.
+func typingNames(body string) []string {
+	var out []string
+	for _, name := range []string{"List", "Optional"} {
+		if strings.Contains(body, name+"[") {
+			out = append(out, name)
+		}
+	}
+	return out
+}
+
 func GeneratePython(p catalog.Problem, signature, statement string) Files {
 	f := Files{Package: PackageName(p.Slug)}
 	_, code := pySplitSignature(signature)
 	helpers := PyHelperTypes(signature)
 
+	// The body is built first so the import line can be decided by what the body
+	// actually says. Modern stubs annotate with the builtins — `list[int]`,
+	// `TreeNode | None` — so for all but a dozen problems the typing names are
+	// dead on arrival, and a dead import is the first thing a reader questions.
+	var body strings.Builder
+	if helpers != "" {
+		body.WriteString(helpers)
+		body.WriteString("\n\n\n")
+	}
+	if strings.TrimSpace(code) == "" {
+		body.WriteString("# No signature on file for this problem. Write the entry point yourself.\n")
+		body.WriteString("class Solution:\n    pass\n")
+	} else {
+		body.WriteString(pyWithTODO(code))
+		body.WriteString("\n")
+	}
+
 	var sol strings.Builder
 	fmt.Fprintf(&sol, "# %d. %s — %s, %s\n", p.ID, p.Title, p.Difficulty, p.Pattern)
 	fmt.Fprintf(&sol, "# %s\n", p.LeetCodeURL)
 	fmt.Fprintf(&sol, "#\n# Statement: %s/problem.md\n\n", p.ContentDir())
-	sol.WriteString("from typing import List, Optional\n\n\n")
-	if helpers != "" {
-		sol.WriteString(helpers)
-		sol.WriteString("\n\n\n")
+	if names := typingNames(body.String()); len(names) > 0 {
+		fmt.Fprintf(&sol, "from typing import %s\n\n\n", strings.Join(names, ", "))
 	}
-	if strings.TrimSpace(code) == "" {
-		sol.WriteString("# No signature on file for this problem. Write the entry point yourself.\n")
-		sol.WriteString("class Solution:\n    pass\n")
-	} else {
-		sol.WriteString(pyWithTODO(code))
-		sol.WriteString("\n")
-	}
+	sol.WriteString(body.String())
 	f.Solution = sol.String()
 
 	class, methods := pyAnalyze(code)
@@ -319,9 +341,9 @@ func GeneratePython(p catalog.Problem, signature, statement string) Files {
 		if f.FuncName == "" {
 			f.FuncName = single
 		}
-		f.Test = pyTableTest(single, statement)
+		f.Test = pyTableTest(single, statement, f.Practice != "")
 	} else {
-		f.Test = pyGenericTest(statement)
+		f.Test = pyGenericTest(statement, f.Practice != "")
 	}
 	return f
 }
@@ -339,9 +361,36 @@ func pyExampleComment(statement string) string {
 	return b.String()
 }
 
-func pyTableTest(method, statement string) string {
+// pyTableTest writes the personal test file.
+//
+// When covered is true the populated suite in practice_cases.py already asserts
+// the statement's examples and the corner cases, so a second table here starts
+// empty — and an empty table has only bad options: skipping reports a skip on
+// every run for coverage that is not actually missing, and looping over nothing
+// reports a pass without having tested anything. So the scaffold is written out
+// commented instead: nothing to run, nothing to claim, and the shape is there to
+// uncomment when a case of your own is worth keeping. The Go scaffold reaches
+// the same place by a different road — it embeds the suite in the one test file
+// and never writes a second.
+func pyTableTest(method, statement string, covered bool) string {
 	var b strings.Builder
 	b.WriteString(pyExampleComment(statement))
+	if covered {
+		b.WriteString("#\n# practice_cases.py beside this file already asserts those examples and the\n")
+		b.WriteString("# corner cases, so nothing is missing here. This file is for cases of your\n")
+		b.WriteString("# own — uncomment and add to it.\n#\n")
+		b.WriteString("# import unittest\n#\n# from solution import Solution\n#\n#\n")
+		fmt.Fprintf(&b, "# class Test%s(unittest.TestCase):\n", exportedName(method))
+		b.WriteString("#     cases = [\n#         # (\"name\", (arguments...), expected)\n#     ]\n#\n")
+		b.WriteString("#     def test_cases(self):\n")
+		b.WriteString("#         for name, args, want in self.cases:\n")
+		b.WriteString("#             with self.subTest(name):\n")
+		fmt.Fprintf(&b, "#                 self.assertEqual(Solution().%s(*args), want)\n", method)
+		return b.String()
+	}
+	// No curated suite for this problem, so this file is the only thing that
+	// tests anything: it stays runnable, and skipping is the honest report
+	// until there are cases.
 	b.WriteString("import unittest\n\nfrom solution import Solution\n\n\n")
 	fmt.Fprintf(&b, "class Test%s(unittest.TestCase):\n", exportedName(method))
 	b.WriteString("    # TODO: one case per example in problem.md, then the edge cases:\n")
@@ -356,12 +405,20 @@ func pyTableTest(method, statement string) string {
 	return b.String()
 }
 
-func pyGenericTest(statement string) string {
+func pyGenericTest(statement string, covered bool) string {
 	var b strings.Builder
 	b.WriteString(pyExampleComment(statement))
-	b.WriteString("import unittest\n\nimport solution  # noqa: F401\n\n\n")
 	b.WriteString("# This problem does not reduce to one function of one return value,\n")
 	b.WriteString("# so drive it the way the statement describes: build it, call it, check it.\n")
+	if covered {
+		b.WriteString("#\n# practice_cases.py beside this file already drives it that way, so nothing\n")
+		b.WriteString("# is missing here. This file is for cases of your own — uncomment and add.\n#\n")
+		b.WriteString("# import unittest\n#\n# import solution\n#\n#\n")
+		b.WriteString("# class TestSolution(unittest.TestCase):\n")
+		b.WriteString("#     def test_solution(self):\n#         pass\n")
+		return b.String()
+	}
+	b.WriteString("import unittest\n\nimport solution  # noqa: F401\n\n\n")
 	b.WriteString("class TestSolution(unittest.TestCase):\n")
 	b.WriteString("    def test_solution(self):\n")
 	b.WriteString("        self.skipTest(\"write the cases from problem.md\")\n")

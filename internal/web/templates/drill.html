@@ -1,0 +1,44 @@
+{{define "content"}}
+<div class="lede">
+  <h1>Drill</h1>
+  <p>The roadmap hands you the pattern before the statement, which is most of the work. This draws one problem at random and says nothing about which pattern it is.</p>
+</div>
+
+<section class="block">
+  <form class="drill-controls" method="get" action="/drill/">
+    <label>Pattern
+      <select name="pattern">
+        <option value="">any</option>
+        {{range .Groups}}<option value="{{.Slug}}"{{if eq .Slug $.Pattern}} selected{{end}}>{{.Pattern}}</option>{{end}}
+      </select>
+    </label>
+    <label class="drill-check">
+      <input type="checkbox" name="solved" value="1"{{if .Solved}} checked{{end}}>
+      from solved ones, for retrieval practice
+    </label>
+    <button class="primary">Draw another</button>
+  </form>
+</section>
+
+{{if .Drawn}}
+{{/* Deliberately not problemRow or cells: both print the pattern, which is the
+     one thing this page exists to withhold. */}}
+<section class="block">
+  <div class="drill-card">
+    <p class="drill-n">{{.Drawn.ID}}</p>
+    <h2><a href="/problems/{{.Drawn.Slug}}/solve">{{.Drawn.Title}}</a></h2>
+    <p class="drill-facts">
+      <span class="row-diff is-{{lower .Drawn.Difficulty}}">{{.Drawn.Difficulty}}</span>
+      {{if .Drawn.Blind75}}<span class="b75" title="Also in the Blind 75">75</span>{{end}}
+      <span>drawn from {{plural .Candidates "candidate" "candidates"}}</span>
+    </p>
+    <p class="drill-warn">The pattern is withheld on purpose: name it yourself before you read on. It is in the statement&rsquo;s frontmatter, so do not scroll past the title.</p>
+    <a class="primary" href="/problems/{{.Drawn.Slug}}/solve">Open the workspace</a>
+  </div>
+</section>
+{{else}}
+<section class="block">
+  <p class="empty">{{.Empty}}</p>
+</section>
+{{end}}
+{{end}}

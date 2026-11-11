@@ -39,9 +39,8 @@ Usage:
   nc migrate                   import existing personal data into SQLite once
   nc backup <file.sqlite3>      create a consistent database backup
   nc export <name> <file.json>  one person's progress, notes, attempts and tutor transcripts
-  nc user list|add|link|revoke|rm   who can reach the site (--base-url, --budget, --lang)
+  nc user list|add|link|revoke|rm   who can reach the site (--base-url, --budget)
                                link --budget <usd> also changes their monthly ceiling
-  nc user lang <name> <go|python>   the language their problems default to
   nc notes <problem>           read notes (--file path to replace)
   nc hints <problem>           read hint ladder (--file path to replace)
   nc log                       read the study log (--append-file path to append)
@@ -724,11 +723,6 @@ func takeIntFlag(args []string, name string) (rest []string, value int, found bo
 	return args, 0, false, nil
 }
 
-// maxSitting caps what the clock is allowed to contribute. A session left open
-// overnight would otherwise log eleven hours and poison the median that
-// `nc weak` reads.
-const maxSitting = 6 * time.Hour
-
 // printSchedule reports when a problem comes back, using the interval the
 // schedule is actually holding to rather than the nominal ladder rung — ease
 // and the per-problem spread both move it.
@@ -824,15 +818,17 @@ func cmdRate(root string, args []string) error {
 	prev := prog.Get(p.Slug)
 	elapsed, running := prev.Elapsed(now)
 	logged := 0
-	switch {
-	case running && elapsed > maxSitting:
-		fmt.Printf("  clock ran %.0f hours — ignoring it; `nc time %s <minutes>` if you know\n",
-			elapsed.Hours(), p.Slug)
-	case running:
-		if logged = int(elapsed.Minutes()); logged > 0 {
-			if _, err := prog.AddMinutes(p.Slug, logged, now); err != nil {
+	if running {
+		minutes, capped := progress.ClockMinutes(elapsed)
+		switch {
+		case capped:
+			fmt.Printf("  clock ran %.0f hours — ignoring it; `nc time %s <minutes>` if you know\n",
+				elapsed.Hours(), p.Slug)
+		case minutes > 0:
+			if _, err := prog.AddMinutes(p.Slug, minutes, now); err != nil {
 				return err
 			}
+			logged = minutes
 		}
 	}
 
@@ -1116,14 +1112,9 @@ func problemInputs(root string, p catalog.Problem, l lang.Lang) (signature, stat
 	return string(sig), body
 }
 
-// languageFor is the CLI's one call to the resolution rule: the problem's own
-// choice, else the owner's default. The CLI always acts as the owner.
+// languageFor is the CLI's one call to the resolution rule.
 func languageFor(prog *progress.Store, slug string) lang.Lang {
-	user, err := prog.DB().User(studydb.OwnerID)
-	if err != nil {
-		return lang.Resolve(prog.Get(slug).Lang, "")
-	}
-	return lang.Resolve(prog.Get(slug).Lang, user.Language)
+	return lang.Resolve(prog.Get(slug).Lang)
 }
 
 // ---------- re-solving ----------
@@ -1184,27 +1175,19 @@ func cmdDiff(root string, args []string) error {
 		return err
 	}
 	l := languageFor(prog, p.Slug)
-	all, err := prog.Scope().Attempts(p.Slug)
+	archived, err := prog.LastArchived(p.Slug, l.ID)
 	if err != nil {
 		return err
 	}
-	// A Go attempt against a Python solution is noise, not a diff.
-	var attempts []studydb.Attempt
-	for _, a := range all {
-		if lang.Of(lang.ID(a.Language)).ID == l.ID {
-			attempts = append(attempts, a)
-		}
-	}
-	if len(attempts) == 0 {
-		if len(all) > 0 {
+	if !archived.Found {
+		if archived.Skipped > 0 {
 			return fmt.Errorf("no archived %s attempts for %s (%s in another language) — `nc resolve %s` archives one",
-				l.Label, p.Slug, plural(len(all), "attempt", "attempts"), p.Slug)
+				l.Label, p.Slug, plural(archived.Skipped, "attempt", "attempts"), p.Slug)
 		}
 		return fmt.Errorf("no archived attempts for %s — `nc resolve %s` archives one", p.Slug, p.Slug)
 	}
-	oldAttempt := attempts[len(attempts)-1]
-	previous := oldAttempt.Ref()
-	oldSrc := []byte(oldAttempt.Code)
+	previous := archived.Attempt.Ref()
+	oldSrc := []byte(archived.Attempt.Code)
 	newSrc, err := os.ReadFile(workspace.Owner(root).Path(p, l.SolutionFile))
 	if err != nil {
 		return err
@@ -1212,23 +1195,23 @@ func cmdDiff(root string, args []string) error {
 
 	rel := previous
 	fmt.Printf("%d. %s — %s against the current solution\n", p.ID, p.Title, filepath.ToSlash(rel))
-	if len(attempts) > 1 {
-		fmt.Printf("  (%s archived in total)\n", plural(len(attempts), "attempt", "attempts"))
+	if archived.Matching > 1 {
+		fmt.Printf("  (%s archived in total)\n", plural(archived.Matching, "attempt", "attempts"))
 	}
-	if skipped := len(all) - len(attempts); skipped > 0 {
-		fmt.Printf("  (%s in another language skipped)\n", plural(skipped, "attempt", "attempts"))
+	if archived.Skipped > 0 {
+		fmt.Printf("  (%s in another language skipped)\n", plural(archived.Skipped, "attempt", "attempts"))
 	}
 	fmt.Println()
 
-	if textdiff.TooBig(string(oldSrc), string(newSrc)) {
+	report := textdiff.Compare(string(oldSrc), string(newSrc))
+	if report.TooBig {
 		return fmt.Errorf("these files are too large to diff")
 	}
-	lines := textdiff.Lines(string(oldSrc), string(newSrc))
-	if textdiff.Identical(lines) {
+	if report.Identical {
 		fmt.Println("  Identical, line for line. Worth asking whether that is memory or understanding.")
 		return nil
 	}
-	for _, l := range lines {
+	for _, l := range report.Lines {
 		switch l.Op {
 		case textdiff.Delete:
 			fmt.Printf("  - %s\n", l.Text)
@@ -1238,9 +1221,8 @@ func cmdDiff(root string, args []string) error {
 			fmt.Printf("    %s\n", l.Text)
 		}
 	}
-	added, removed := textdiff.Stat(lines)
 	fmt.Printf("\n  %s added, %s removed\n",
-		plural(added, "line", "lines"), plural(removed, "line", "lines"))
+		plural(report.Added, "line", "lines"), plural(report.Removed, "line", "lines"))
 	return nil
 }
 
@@ -1264,32 +1246,12 @@ func cmdDrill(root string, args []string) error {
 	}
 	defer prog.Close()
 
-	pool := cat.Problems
-	if *pattern != "" {
-		want := strings.ToLower(*pattern)
-		var filtered []catalog.Problem
-		for _, p := range pool {
-			if strings.Contains(strings.ToLower(p.Pattern), want) || strings.Contains(p.PatternSlug, want) {
-				filtered = append(filtered, p)
-			}
-		}
-		if len(filtered) == 0 {
-			return fmt.Errorf("no pattern matches %q — `nc stats` lists them", *pattern)
-		}
-		pool = filtered
+	pool := catalog.MatchPattern(cat.Problems, *pattern)
+	if len(pool) == 0 && *pattern != "" {
+		return fmt.Errorf("no pattern matches %q — `nc stats` lists them", *pattern)
 	}
 
-	var candidates []catalog.Problem
-	for _, p := range pool {
-		switch st := prog.Get(p.Slug).Status; {
-		case *solved && (st == progress.Solved || st == progress.Shaky):
-			candidates = append(candidates, p)
-		case !*solved && (st == progress.New || st == progress.Attempted):
-			// Started but not finished is still unsolved; leaving those out
-			// made a pool of twenty open problems report "nothing left".
-			candidates = append(candidates, p)
-		}
-	}
+	candidates := prog.DrillPool(pool, *solved)
 	if len(candidates) == 0 {
 		if *solved {
 			return fmt.Errorf("nothing solved yet to drill")
@@ -1369,8 +1331,6 @@ func cmdUser(root string, args []string) error {
 		return userLink(db, rest)
 	case "revoke":
 		return userRevoke(db, rest)
-	case "lang":
-		return userLang(db, rest)
 	case "rm":
 		return userRemove(db, rest)
 	default:
@@ -1383,7 +1343,7 @@ func userList(db *studydb.DB) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("%-4s %-16s %-6s %-9s %-9s %-8s %s\n", "id", "name", "link", "budget", "spent", "lang", "state")
+	fmt.Printf("%-4s %-16s %-6s %-9s %-9s %s\n", "id", "name", "link", "budget", "spent", "state")
 	for _, u := range users {
 		link := "no"
 		if u.HasToken {
@@ -1397,7 +1357,7 @@ func userList(db *studydb.DB) error {
 		if u.BudgetUSD > 0 {
 			budget = fmt.Sprintf("$%.2f", u.BudgetUSD)
 		}
-		fmt.Printf("%-4d %-16s %-6s %-9s $%-8.2f %-8s %s\n", u.ID, u.Name, link, budget, u.SpendUSD, lang.Of(lang.ID(u.Language)).ID, state)
+		fmt.Printf("%-4d %-16s %-6s %-9s $%-8.2f %s\n", u.ID, u.Name, link, budget, u.SpendUSD, state)
 	}
 	if len(users) == 1 {
 		fmt.Println("\nOnly the owner exists. `nc user add <name>` invites someone.")
@@ -1425,26 +1385,12 @@ func parseWithPositional(fs *flag.FlagSet, args []string) ([]string, error) {
 // userFlags parses the flags add and link share. budget is nil unless --budget
 // was given, so link can tell "leave it" from "set it to the default".
 func userFlags(name string, args []string, defaultBudget float64) (names []string, base *string, budget *float64, err error) {
-	names, base, budget, _, err = userFlagsWithLang(name, args, defaultBudget)
-	return
-}
-
-// userFlagsWithLang also parses --lang; language is nil unless it was given.
-func userFlagsWithLang(name string, args []string, defaultBudget float64) (names []string, base *string, budget *float64, language *lang.Lang, err error) {
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	base = fs.String("base-url", "http://127.0.0.1:8150", "site address the join link points at")
 	b := fs.Float64("budget", defaultBudget, "monthly tutor ceiling in dollars, 0 for none")
-	langFlag := fs.String("lang", "", "the language their problems default to: go or python")
 	names, err = parseWithPositional(fs, args)
 	if err != nil {
-		return nil, nil, nil, nil, err
-	}
-	if *langFlag != "" {
-		l, err := lang.Parse(*langFlag)
-		if err != nil {
-			return nil, nil, nil, nil, err
-		}
-		language = &l
+		return nil, nil, nil, err
 	}
 	fs.Visit(func(f *flag.Flag) {
 		if f.Name == "budget" {
@@ -1455,13 +1401,13 @@ func userFlagsWithLang(name string, args []string, defaultBudget float64) (names
 		budget = b
 	}
 	if budget != nil && (*budget < 0 || math.IsNaN(*budget) || math.IsInf(*budget, 0)) {
-		return nil, nil, nil, nil, fmt.Errorf("--budget must be a finite number greater than or equal to 0")
+		return nil, nil, nil, fmt.Errorf("--budget must be a finite number greater than or equal to 0")
 	}
-	return names, base, budget, language, nil
+	return names, base, budget, nil
 }
 
 func userAdd(db *studydb.DB, args []string) error {
-	names, base, budget, language, err := userFlagsWithLang("user add", args, 5)
+	names, base, budget, err := userFlags("user add", args, 5)
 	if err != nil {
 		return err
 	}
@@ -1473,11 +1419,6 @@ func userAdd(db *studydb.DB, args []string) error {
 	u, err := db.CreateUser(name, studydb.HashToken(token), *budget, time.Now())
 	if err != nil {
 		return err
-	}
-	if language != nil {
-		if err := db.SetUserLanguage(u.ID, string(language.ID)); err != nil {
-			return err
-		}
 	}
 	fmt.Printf("%s is user %d.\n\n", u.Name, u.ID)
 	printJoinLink(*base, token)
@@ -1519,28 +1460,6 @@ func printJoinLink(base, token string) {
 	fmt.Println("Opening it once in a browser is the whole sign-in. Only its hash is")
 	fmt.Println("stored, so this is the one time it can be shown — send it now or")
 	fmt.Println("issue another with `nc user link`.")
-}
-
-// userLang sets the language a person's problems default to. A problem that
-// was started in the other language keeps it; this is the default, not a
-// migration.
-func userLang(db *studydb.DB, args []string) error {
-	if len(args) != 2 {
-		return fmt.Errorf("usage: nc user lang <name> <go|python>")
-	}
-	u, err := findUser(db, args[0])
-	if err != nil {
-		return err
-	}
-	l, err := lang.Parse(args[1])
-	if err != nil {
-		return err
-	}
-	if err := db.SetUserLanguage(u.ID, string(l.ID)); err != nil {
-		return err
-	}
-	fmt.Printf("%s's problems now default to %s. Problems already started keep their language.\n", u.Name, l.Label)
-	return nil
 }
 
 func userRevoke(db *studydb.DB, args []string) error {

@@ -54,7 +54,22 @@ Supporting references, cited from the protocol:
 
 ## Commands
 
-Everything runs through the `nc` CLI. From the project root:
+The study itself happens in the browser. What the CLI is actually needed for is
+narrower than the list below suggests, and splits by deployment:
+
+- **A local instance, for yourself:** `nc fetch` once, `nc user link owner` to get a
+  sign-in link (there is no loopback exception — see below), then
+  `nc serve --tutor-provider claude`, which spends a Claude subscription rather than
+  tokens.
+- **A shared instance, for guests:** the above plus `nc user add/list/link/revoke/rm`,
+  `nc backup` and `nc export`, with `--tutor-provider deepseek` and `--sandbox docker`.
+  See [DEPLOY.md](DEPLOY.md).
+- **Everything else** is a second way to do what the site already does, kept as the
+  escape hatch and as the path an agent has in `--tutor-mode full`. Reach for the browser
+  first; `nc diff`, `nc history`, `nc drill`, `nc time` and `nc rate --rung` all have
+  equivalents there now.
+
+The full reference. From the project root:
 
 ```sh
 go run ./cmd/nc next                  # what the user should work on now
@@ -94,8 +109,6 @@ go run ./cmd/nc serve [--port 8150]   # the study site, incl. the browser worksp
 go run ./cmd/nc user list             # who can reach the site
 go run ./cmd/nc user add <name>       # invite someone; prints their join link once
                                       #   --budget <usd> sets their monthly tutor ceiling
-                                      #   --lang go|python sets the language they start in
-go run ./cmd/nc user lang <name> <go|python>  # change that default later
 go run ./cmd/nc user link <name>      # issue a new link, invalidating the old one
                                       #   --budget <usd> changes the ceiling at the same time
 go run ./cmd/nc user revoke <name>    # stop a link working, keeping their work
@@ -108,16 +121,37 @@ go run ./cmd/nc <command> --help      # that command's line and flags
 
 ## Languages
 
-Every problem is worked in Go or in Python. The language is a per-person default
-(`nc user add --lang`, `nc user lang`, or the selector in the site header) with a
-per-problem override chosen at start (`nc start --lang`, or the selector beside Start).
+Every problem is worked in Go or in Python, and the choice belongs to the problem alone —
+made when it is started (`nc start --lang`, or the Start-in-Go and Start-in-Python buttons
+in the workspace) and recorded on its own row. There is deliberately no per-person default
+and no global switch: a language that applies to every problem at once has to be set before
+starting one and read back everywhere afterwards, which is a setting to maintain rather
+than a choice to make — and the header control that did it never re-rendered the pages
+already on screen, so the change appeared not to take.
+
 `internal/lang` is the one place that knows what differs: file names, the formatter, the
 fence label, the indent. `lang.Resolve` is the one rule for which language a problem is
-in — the problem's own choice, else the person's default, else Go — and the CLI and the
-site both call it rather than deciding on their own.
+in — the problem's own choice, else Go — and the CLI and the site both call it rather than
+deciding on their own. Go answers only for a problem nobody has started, so that paths and
+labels have something to show.
 
 Both languages share one directory per problem: `solution.go`, `solution_test.go` and
 `practice_cases_test.go` beside `solution.py`, `test_solution.py` and `practice_cases.py`.
+
+The two languages reach the same place by different roads, and the difference is
+deliberate. Go embeds the curated suite in `solution_test.go` and writes no second test
+file, so there is never an empty table. Python keeps the suite in its own
+`practice_cases.py`, which would leave `test_solution.py` empty — and an empty table has
+only bad options: skipping reports missing coverage that is not missing, and looping over
+nothing reports a pass it has not earned. So `test_solution.py` is written out
+**commented**: nothing runs, nothing is claimed, and the shape is there to uncomment when a
+case of your own is worth keeping. Only a problem with no curated suite gets a runnable
+skipping skeleton, because there the file is the only thing that tests anything.
+
+For the same reason `solution.py` imports `typing` names only when the generated body
+subscripts one. Modern stubs annotate with the builtins (`list[int]`, `TreeNode | None`),
+so that is 12 problems out of 150; emitting the import everywhere left a dead line at the
+top of almost every solution, which is the first thing a reader — or a tutor — questions.
 Starting a problem in Python next to a Go solution adds files and archives nothing. The
 schedule, ratings and hint ladders are per problem, not per language; an archived attempt
 records which language it was in, and `nc diff` compares same-language attempts only.
@@ -136,6 +170,35 @@ The site's Coach page at `/coach/` reports what is not secure yet: the share of 
 last solved unaided, which patterns to go back to, and which test fixtures keep breaking.
 It is read-only, and reuses `progress.Patterns`, `progress.Weakest` and the run records
 that `handleRunTests` files — do not re-derive weakness anywhere else.
+
+`/drill/` draws one problem at random and withholds its pattern, which is the whole point
+of the page: do not render `.P.Pattern` on it, and do not reuse `problemRow` or `cells`
+there, because both print it. The draw is `Server.pick`, injected like `Server.now` so a
+test gets a determined problem. The pool is `progress.DrillPool` and the pattern filter is
+`catalog.MatchPattern`; the CLI's `nc drill` calls the same two, so there is one answer to
+"what may be drawn".
+
+Two rules the site and the CLI share rather than each having their own:
+
+- **`progress.ClockMinutes`** is what a sitting is worth — under a minute counts for
+  nothing, and anything past `MaxSitting` (six hours) is a forgotten tab and counts for
+  nothing either. Every path that turns a clock into minutes goes through it: `nc rate`,
+  cancelling an attempt, submitting one, and rating from the reading page.
+- **`progress.LastArchivedIn`** is which earlier attempt a comparison should use, and it
+  is where the same-language rule lives — a Go attempt against a Python solution is noise,
+  not a diff. `nc diff` and the workspace both call it. `LastArchived` is the convenience
+  wrapper for callers that do not already hold the rows; `handleSolve` does hold them, from
+  `submissions`, and passes them in rather than querying twice.
+
+The workspace's History tab holds the ratings table (so it stays readable once an attempt
+starts and the record pane is swapped out for the editor) and the comparison against the
+last archived attempt. That comparison is recomputed from the run response on a passing
+run — one rendered at page load is stale as soon as the editor is touched — and the
+rendering is `createElement` and `textContent`, never `innerHTML`. The reading page carries
+the same ratings table, a rung on the rate form, amend and undo, and a box for logging time
+the clock missed. Manual time logging is deliberately *not* in the workspace: that page
+runs the clock itself, and a box for adding minutes beside a live timer invites double
+counting.
 
 The site serves nobody without a cookie. `/join/<token>` trades a link for one, and
 `nc user` mints them — there is no admin page, so the web surface cannot create an
@@ -167,6 +230,16 @@ summing what it reports across turns overstates a five-turn session threefold.
 The site's workspace at `/problems/<slug>/solve` writes `solution.go` and runs `go test`.
 Those endpoints require a same-origin JSON request (`internal/web/guard.go`) — a plain
 `curl` is refused by design, so reach for the CLI rather than trying to work around it.
+
+The editor is a textarea whose affordances are written out in `static/solve.js` —
+indent and outdent over a selection, self-closing pairs, indentation carried across a
+newline — because no third-party editor code is served to the browser. Two consequences
+worth keeping: Tab is trapped for indentation, so **Esc must keep releasing focus** or the
+textarea becomes a keyboard trap; and the format key (`⌘⇧F`, `POST …/format`) neither saves
+nor runs, so it is safe on code that does not parse. What formats is `lang.Formatter()`,
+which names the tool or returns "" — `lang.Format` returns Python unchanged with no error,
+and a caller offering formatting as an action cannot otherwise tell that from source that
+needed no change.
 
 Deploying a shared instance is [DEPLOY.md](DEPLOY.md); two of its steps are load-bearing
 and fail in misleading ways, so do not simplify them away — a reverse proxy must pass the
@@ -271,7 +344,11 @@ Do not add them to version control, and do not propose committing them.
 
 - **Go 1.26.** `gofmt` is not negotiable and CI fails on an unformatted file.
 - **Python 3.12** for the harness and for Python solutions; standard library only, no
-  pip, no pytest. There is no Python formatter in the loop, by choice.
+  pip, no pytest. Nothing in the loop *requires* a Python formatter: test runs and
+  submissions never reformat Python, and `lang.Format` returns it unchanged. The
+  workspace's format key will use `ruff` if the machine happens to have it, and says what
+  is missing when it does not — an optional convenience, never a dependency, and never on
+  the path that decides whether a solution passes.
 - **Dependencies.** Tooling uses goldmark, chroma, `golang.org/x/net`, and the pure-Go
   `modernc.org/sqlite` driver. Solutions depend on nothing — if a solution needs a third-party
   package, the solution is wrong, in either language.

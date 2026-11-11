@@ -24,7 +24,6 @@ type User struct {
 	SpendMonth string
 	Disabled   bool
 	HasToken   bool
-	Language   string // the default for problems that do not say; "go" or "python"
 }
 
 // HashToken is the one definition of how a join token maps to what is stored.
@@ -34,12 +33,12 @@ func HashToken(token string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-const userColumns = "id,name,created_at,tutor_budget_usd,tutor_spend_usd,spend_month,disabled,token_hash IS NOT NULL,language"
+const userColumns = "id,name,created_at,tutor_budget_usd,tutor_spend_usd,spend_month,disabled,token_hash IS NOT NULL"
 
 func scanUser(row interface{ Scan(...any) error }) (User, error) {
 	var u User
 	var created string
-	if err := row.Scan(&u.ID, &u.Name, &created, &u.BudgetUSD, &u.SpendUSD, &u.SpendMonth, &u.Disabled, &u.HasToken, &u.Language); err != nil {
+	if err := row.Scan(&u.ID, &u.Name, &created, &u.BudgetUSD, &u.SpendUSD, &u.SpendMonth, &u.Disabled, &u.HasToken); err != nil {
 		return u, err
 	}
 	var err error
@@ -123,13 +122,6 @@ func (d *DB) SetUserToken(id int64, token string) error {
 // already spent this month stands; only the line it is measured against moves.
 func (d *DB) SetUserBudget(id int64, budgetUSD float64) error {
 	_, err := d.SQL.Exec("UPDATE users SET tutor_budget_usd=? WHERE id=?", budgetUSD, id)
-	return err
-}
-
-// SetUserLanguage changes the language a person's problems default to. A
-// problem that already names its own language keeps it.
-func (d *DB) SetUserLanguage(id int64, language string) error {
-	_, err := d.SQL.Exec("UPDATE users SET language=? WHERE id=?", language, id)
 	return err
 }
 

@@ -71,6 +71,26 @@ func TestExamplesStripMarkdownEmphasis(t *testing.T) {
 	}
 }
 
+// A fetched statement escapes brackets because Markdown needs it; a comment
+// meant to be read as the input does not.
+func TestExamplesUnescapeMarkdownPunctuation(t *testing.T) {
+	statement := "**Example 1:**\n\n**Input:** nums = \\[1,2,3,1\\]\n\n**Output:** true\n"
+	got := Examples(statement, 3)
+	if len(got) == 0 || got[0] != "Input: nums = [1,2,3,1]" {
+		t.Errorf("got %q, want the brackets unescaped", got)
+	}
+}
+
+// Only punctuation can be escaped in Markdown, so a statement that talks about
+// escape sequences keeps them.
+func TestExamplesKeepNonPunctuationBackslashes(t *testing.T) {
+	statement := "**Example 1:**\n\n**Input:** s = \"a\\nb\"\n\n**Output:** 2\n"
+	got := Examples(statement, 1)
+	if len(got) == 0 || got[0] != `Input: s = "a\nb"` {
+		t.Errorf("got %q, want the \\n left alone", got)
+	}
+}
+
 func TestExamplesHandleFencedFormat(t *testing.T) {
 	statement := "```\nInput: lists = [[1,4,5]]\nOutput: [1,4,5]\n```\n"
 	got := Examples(statement, 1)
