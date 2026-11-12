@@ -176,8 +176,9 @@ func (d *DB) RedeemInvite(inviteToken, name, personalTokenHash string, now time.
 			return ErrNoInvite
 		}
 
-		// Inside the transaction, where it cannot race with another redemption
-		// choosing the same name a moment later.
+		// Inside the transaction, so a redemption that cannot have its name does
+		// not spend the use. What keeps two redemptions from choosing the same
+		// name is narrower than the transaction, and claimName says what.
 		if err := claimName(tx, name, 0); err != nil {
 			return err
 		}
@@ -204,13 +205,21 @@ func (d *DB) RedeemInvite(inviteToken, name, personalTokenHash string, now time.
 	return d.User(id)
 }
 
-// claimName reports whether a name is free, inside the caller's transaction so
-// that two people choosing it at once cannot both be told yes. exceptID is the
-// row allowed to already hold it, for a rename that only changes capitalisation.
+// claimName reports whether a name is free. exceptID is the row allowed to
+// already hold it, for a rename that only changes capitalisation.
 //
 // Case-insensitive on purpose: users.name's UNIQUE is not, but findUser in the
 // CLI matches with EqualFold, so "Dima" beside "dima" would be two rows that
 // `nc user revoke Dima` could not tell apart.
+//
+// Which leaves a check followed by a write with nothing in the database behind
+// it — that UNIQUE would let both of those rows land, and unlike the decrement
+// above there is no single-statement form to fall back on. What stops them is
+// Open's SetMaxOpenConns(1): every statement in the process queues on one
+// connection, so there is no second writer to interleave with. It is the one
+// place here relying on that single lane for correctness rather than for speed,
+// and against a pool it would need a unique index on lower(name), or to take
+// the row with SELECT … FOR UPDATE.
 func claimName(tx *sql.Tx, name string, exceptID int64) error {
 	var clashes int
 	if err := tx.QueryRow(

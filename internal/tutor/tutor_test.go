@@ -49,6 +49,34 @@ func fakeClaude(t *testing.T, script string) *Manager {
 	return m
 }
 
+// startTurn subscribes before the turn begins, which is the only order in which
+// a test cannot lose the events it is waiting for.
+//
+// Manager.Send is ensure plus a turn, and the turn runs in a goroutine, so a
+// fake that answers quickly can finish it before the test reaches Subscribe.
+// The events are then in the replay Subscribe hands back rather than on the
+// channel, and a test watching only the channel waits its full deadline for
+// something that has already happened. It passes on a developer's machine and
+// fails on a loaded CI runner, which is how four runs failed. Start is the
+// ensure half alone, so between it and Send there is nothing to publish.
+//
+// The replay is returned for the one assertion that needs it: an event the
+// agent emits at startup cannot reach any subscriber, because none can exist
+// yet. See TestSessionReportsWhatItMayDo.
+func startTurn(t *testing.T, m *Manager, scope *studydb.Scope, p catalog.Problem, text string) (*Session, []Event, chan Event) {
+	t.Helper()
+	s, err := m.Start(scope, p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	replay, ch, stop := s.Subscribe()
+	t.Cleanup(stop)
+	if err := s.Send(text); err != nil {
+		t.Fatal(err)
+	}
+	return s, replay, ch
+}
+
 // collect reads events until one of kind stop arrives, or the test times out.
 func collect(t *testing.T, ch chan Event, stop string) []Event {
 	t.Helper()
@@ -100,13 +128,11 @@ while IFS= read -r line; do
   echo '{"type":"result","subtype":"success","total_cost_usd":0.0123}'
 done
 `)
-	s, err := m.Send(nil, twoSum, "what is the pattern?")
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, ch, cancel := s.Subscribe()
-	defer cancel()
-	events := collect(t, ch, KindDone)
+	s, replay, ch := startTurn(t, m, nil, twoSum, "what is the pattern?")
+	// The agent announces itself when it starts, which is before a subscriber
+	// can exist, so the event is in the replay rather than on the channel. That
+	// is the production path too: the panel opens after the session does.
+	events := append(replay, collect(t, ch, KindDone)...)
 
 	var ready *Event
 	for i := range events {
@@ -136,9 +162,7 @@ while IFS= read -r line; do
   echo '{"type":"result","subtype":"success","total_cost_usd":0.01}'
 done
 `)
-	s, _ := m.Send(nil, twoSum, "hint?")
-	_, ch, cancel := s.Subscribe()
-	defer cancel()
+	_, _, ch := startTurn(t, m, nil, twoSum, "hint?")
 	events := collect(t, ch, KindDone)
 
 	// The completed message repeats what the deltas already said; publishing
@@ -158,9 +182,7 @@ while IFS= read -r line; do
   echo '{"type":"result","subtype":"success"}'
 done
 `)
-	s, _ := m.Send(nil, twoSum, "hint?")
-	_, ch, cancel := s.Subscribe()
-	defer cancel()
+	_, _, ch := startTurn(t, m, nil, twoSum, "hint?")
 	if got := textOf(collect(t, ch, KindDone)); got != "Sort it first." {
 		t.Errorf("text = %q, want the completed message to be used", got)
 	}
@@ -174,9 +196,7 @@ while IFS= read -r line; do
   echo '{"type":"result","subtype":"success"}'
 done
 `)
-	s, _ := m.Send(nil, twoSum, "review it")
-	_, ch, cancel := s.Subscribe()
-	defer cancel()
+	_, _, ch := startTurn(t, m, nil, twoSum, "review it")
 	events := collect(t, ch, KindDone)
 
 	for _, e := range events {
@@ -200,9 +220,7 @@ while IFS= read -r line; do
   echo '{"type":"result","subtype":"success"}'
 done
 `)
-	s, _ := m.Send(nil, twoSum, "write it for me")
-	_, ch, cancel := s.Subscribe()
-	defer cancel()
+	_, _, ch := startTurn(t, m, nil, twoSum, "write it for me")
 	for _, e := range collect(t, ch, KindDone) {
 		if e.Kind == KindDenied && e.Tool == "Edit" {
 			return
@@ -218,9 +236,7 @@ while IFS= read -r line; do
   echo '{"type":"result","subtype":"error_max_budget","is_error":true,"result":"budget exhausted"}'
 done
 `)
-	s, _ := m.Send(nil, twoSum, "hi")
-	_, ch, cancel := s.Subscribe()
-	defer cancel()
+	_, _, ch := startTurn(t, m, nil, twoSum, "hi")
 	events := collect(t, ch, KindError)
 	last := events[len(events)-1]
 	if last.Kind != KindError || !strings.Contains(last.Text, "budget") {
@@ -240,14 +256,12 @@ while IFS= read -r line; do
   echo '{"type":"result","subtype":"success"}'
 done
 `)
-	s, err := m.Send(nil, twoSum, "first")
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, ch, cancel := s.Subscribe()
-	defer cancel()
+	s, _, ch := startTurn(t, m, nil, twoSum, "first")
 	collect(t, ch, KindDone)
 
+	// The second turn goes through Send on purpose: that it hands back the same
+	// session is what this test is about. The subscription already exists, so
+	// there is nothing to race with here.
 	again, err := m.Send(nil, twoSum, "second")
 	if err != nil {
 		t.Fatal(err)
@@ -276,25 +290,18 @@ while IFS= read -r line; do
   echo '{"type":"result","subtype":"success"}'
 done
 `)
-	first, _ := m.Send(nil, twoSum, "first")
-	_, ch, cancel := first.Subscribe()
+	first, _, ch := startTurn(t, m, nil, twoSum, "first")
 	collect(t, ch, KindDone)
-	cancel()
 
 	m.Reset(nil, twoSum.Slug)
 	if m.Get(nil, twoSum.Slug) != nil {
 		t.Error("the session survived a reset")
 	}
 
-	second, err := m.Send(nil, twoSum, "first again")
-	if err != nil {
-		t.Fatal(err)
-	}
+	second, _, ch2 := startTurn(t, m, nil, twoSum, "first again")
 	if second == first {
 		t.Fatal("reset handed back the same session")
 	}
-	_, ch2, cancel2 := second.Subscribe()
-	defer cancel2()
 	// A fresh process counts from one again.
 	if got := textOf(collect(t, ch2, KindDone)); got != "turn 1" {
 		t.Errorf("after reset the session said %q, want a fresh process", got)
@@ -313,10 +320,8 @@ while IFS= read -r line; do
   echo '{"type":"result","subtype":"success"}'
 done
 `)
-	s, _ := m.Send(nil, twoSum, "a question asked before the page was open")
-	_, ch, cancel := s.Subscribe()
+	s, _, ch := startTurn(t, m, nil, twoSum, "a question asked before the page was open")
 	collect(t, ch, KindDone)
-	cancel()
 
 	replay, ch2, cancel2 := s.Subscribe()
 	defer cancel2()
@@ -353,9 +358,7 @@ while IFS= read -r line; do
   echo '{"type":"result","subtype":"success"}'
 done
 `)
-	s, _ := m.Send(nil, twoSum, "hi")
-	_, ch, cancel := s.Subscribe()
-	defer cancel()
+	_, _, ch := startTurn(t, m, nil, twoSum, "hi")
 	if got := textOf(collect(t, ch, KindDone)); got != "still here" {
 		t.Errorf("text = %q, want the session to survive bad lines", got)
 	}
@@ -368,12 +371,7 @@ echo '`+initEvent+`'
 echo 'something went wrong' >&2
 exit 3
 `)
-	s, err := m.Send(nil, twoSum, "hi")
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, ch, cancel := s.Subscribe()
-	defer cancel()
+	s, _, ch := startTurn(t, m, nil, twoSum, "hi")
 	events := collect(t, ch, KindExit)
 	last := events[len(events)-1]
 	if last.Kind != KindExit {
@@ -393,10 +391,8 @@ func TestSendToADeadSessionFails(t *testing.T) {
 echo '`+initEvent+`'
 exit 0
 `)
-	s, _ := m.Send(nil, twoSum, "hi")
-	_, ch, cancel := s.Subscribe()
+	s, _, ch := startTurn(t, m, nil, twoSum, "hi")
 	collect(t, ch, KindExit)
-	cancel()
 
 	if err := s.Send("anyone there?"); err == nil {
 		t.Error("sending to an exited session reported success")
@@ -411,13 +407,8 @@ while IFS= read -r line; do
   echo '{"type":"result","subtype":"success"}'
 done
 `)
-	s, err := m.Send(nil, twoSum, "hi")
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, ch, cancel := s.Subscribe()
+	s, _, ch := startTurn(t, m, nil, twoSum, "hi")
 	collect(t, ch, KindDone)
-	cancel()
 
 	m.Close()
 
@@ -637,9 +628,7 @@ while IFS= read -r line; do
   echo '{"type":"result","subtype":"success"}'
 done
 `)
-	s, _ := m.Send(nil, twoSum, "hint?")
-	_, ch, cancel := s.Subscribe()
-	defer cancel()
+	_, _, ch := startTurn(t, m, nil, twoSum, "hint?")
 
 	if got := textOf(collect(t, ch, KindDone)); got != "Nice — one boundary to pin down." {
 		t.Errorf("text = %q, want it exactly once", got)
@@ -657,9 +646,7 @@ while IFS= read -r line; do
   echo '{"type":"result","subtype":"success"}'
 done
 `)
-	s, _ := m.Send(nil, twoSum, "hint?")
-	_, ch, cancel := s.Subscribe()
-	defer cancel()
+	_, _, ch := startTurn(t, m, nil, twoSum, "hint?")
 
 	if got := textOf(collect(t, ch, KindDone)); got != "First half. Second half." {
 		t.Errorf("text = %q, want the streamed half once and the unstreamed half added", got)
@@ -676,9 +663,7 @@ while IFS= read -r line; do
   echo '{"type":"result","subtype":"success"}'
 done
 `)
-	s, _ := m.Send(nil, twoSum, "hint?")
-	_, ch, cancel := s.Subscribe()
-	defer cancel()
+	s, _, ch := startTurn(t, m, nil, twoSum, "hint?")
 	if got := textOf(collect(t, ch, KindDone)); got != "Same answer." {
 		t.Fatalf("first turn text = %q", got)
 	}

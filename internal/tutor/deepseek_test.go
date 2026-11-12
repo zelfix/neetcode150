@@ -104,12 +104,7 @@ func TestDeepSeekStreamsAnAnswerAndChargesTheTurn(t *testing.T) {
 	}
 	defer db.Close()
 
-	s, err := m.Send(db.Owner(), twoSum, "where do I start?")
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, ch, stop := s.Subscribe()
-	defer stop()
+	_, _, ch := startTurn(t, m, db.Owner(), twoSum, "where do I start?")
 	if got := textOf(collect(t, ch, KindDone)); got != "What does the map hold?" {
 		t.Fatalf("reply = %q", got)
 	}
@@ -150,12 +145,9 @@ func TestDeepSeekKeepsTheCodeOutOfTheCachedPrefix(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	s, err := m.Send(scope, twoSum, "a question")
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, ch, stop := s.Subscribe()
-	defer stop()
+	// The system prompt is assembled inside Start rather than when the turn is
+	// sent, so the hints saved above have to be in place before it.
+	_, _, ch := startTurn(t, m, scope, twoSum, "a question")
 	collect(t, ch, KindDone)
 
 	if len(body.Messages) < 2 || body.Messages[0].Role != "system" {
@@ -199,12 +191,7 @@ func TestDeepSeekLeavesTheGeneratedSuiteOut(t *testing.T) {
 		_ = json.NewDecoder(r.Body).Decode(&body)
 		sseReply(w, []string{"ok"}, deepseekUsage{PromptTokens: 1, PromptCacheMiss: 1, CompletionTokens: 1})
 	})
-	s, err := m.Send(nil, twoSum, "q")
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, ch, stop := s.Subscribe()
-	defer stop()
+	_, _, ch := startTurn(t, m, nil, twoSum, "q")
 	collect(t, ch, KindDone)
 	for _, msg := range body.Messages {
 		if strings.Contains(msg.Content, "GENERATED FIXTURES") {
@@ -251,12 +238,20 @@ func TestDeepSeekReportsAServiceFailureInWords(t *testing.T) {
 		w.WriteHeader(http.StatusTooManyRequests)
 		_, _ = w.Write([]byte(`{"error":{"message":"rate limited"}}`))
 	})
-	s, err := m.Send(nil, twoSum, "q")
+	s, err := m.Start(nil, twoSum)
 	if err != nil {
 		t.Fatal(err)
 	}
+	// A 429 is transient, so this one is retried: on the real backoff the test
+	// would sit out a second and a half of sleeps before the error it is
+	// waiting for. Replacing the wait is only safe before the first turn, which
+	// is the other reason the turn is sent last.
+	s.deep.retryWait = func(int, time.Duration) time.Duration { return time.Millisecond }
 	_, ch, stop := s.Subscribe()
 	defer stop()
+	if err := s.Send("q"); err != nil {
+		t.Fatal(err)
+	}
 	events := collect(t, ch, KindError)
 	last := events[len(events)-1]
 	if !strings.Contains(last.Text, "429") && !strings.Contains(last.Text, "rate limited") {
@@ -286,11 +281,11 @@ func TestDeepSeekRetriesATransientFailure(t *testing.T) {
 		waits = append(waits, retryAfter)
 		return time.Millisecond
 	}
+	_, ch, stop := s.Subscribe()
+	defer stop()
 	if err := s.Send("q"); err != nil {
 		t.Fatal(err)
 	}
-	_, ch, stop := s.Subscribe()
-	defer stop()
 	if got := textOf(collect(t, ch, KindDone)); got != "third time" {
 		t.Fatalf("reply = %q", got)
 	}
@@ -312,12 +307,7 @@ func TestDeepSeekDoesNotRetryARefusal(t *testing.T) {
 		w.WriteHeader(http.StatusUnauthorized)
 		_, _ = w.Write([]byte(`{"error":{"message":"bad key"}}`))
 	})
-	s, err := m.Send(nil, twoSum, "q")
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, ch, stop := s.Subscribe()
-	defer stop()
+	_, _, ch := startTurn(t, m, nil, twoSum, "q")
 	collect(t, ch, KindError)
 	if atomic.LoadInt32(&calls) != 1 {
 		t.Errorf("a 401 was retried: %d requests", calls)
@@ -392,31 +382,13 @@ func TestDeepSeekReportsNoFileAccess(t *testing.T) {
 
 // A restored conversation continues rather than starting over, or the person is
 // asked again what they already answered.
-// gated holds a fake back until the test says it may answer.
-//
-// Send starts the turn in a goroutine and returns, so an in-process fake can
-// finish it before the test reaches Subscribe. The events are then in the
-// replay that Subscribe hands back, and a test waiting on the channel alone
-// waits for something that has already happened — reporting no events at all
-// after the full deadline. It passes on a developer's machine and fails on a
-// loaded CI runner, which is exactly how it did fail.
-//
-// One token per turn: release before collecting each one.
-func gated(h http.HandlerFunc) (http.HandlerFunc, func()) {
-	tokens := make(chan struct{}, 8)
-	return func(w http.ResponseWriter, r *http.Request) {
-		<-tokens
-		h(w, r)
-	}, func() { tokens <- struct{}{} }
-}
-
 func TestDeepSeekResumesAStoredConversation(t *testing.T) {
 	root := deepseekRoot(t)
 	var body deepseekRequest
-	handler, release := gated(func(w http.ResponseWriter, r *http.Request) {
+	handler := func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewDecoder(r.Body).Decode(&body)
 		sseReply(w, []string{"Carrying on."}, deepseekUsage{PromptTokens: 1, PromptCacheMiss: 1, CompletionTokens: 1})
-	})
+	}
 	db, err := studydb.Open(root)
 	if err != nil {
 		t.Fatal(err)
@@ -425,24 +397,12 @@ func TestDeepSeekResumesAStoredConversation(t *testing.T) {
 	scope := db.Owner()
 
 	first, _ := deepseekManager(t, root, handler)
-	s, err := first.Send(scope, twoSum, "my first question")
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, ch, stop := s.Subscribe()
-	release()
+	_, _, ch := startTurn(t, first, scope, twoSum, "my first question")
 	collect(t, ch, KindDone)
-	stop()
 	first.Close()
 
 	second, _ := deepseekManager(t, root, handler)
-	s2, err := second.Send(scope, twoSum, "my second question")
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, ch2, stop2 := s2.Subscribe()
-	defer stop2()
-	release()
+	_, _, ch2 := startTurn(t, second, scope, twoSum, "my second question")
 	collect(t, ch2, KindDone)
 
 	var asked []string
@@ -502,12 +462,7 @@ func TestDeepSeekSpeaksTheProblemsLanguage(t *testing.T) {
 	}
 	defer db.Close()
 
-	s, err := m.Send(db.Owner(), twoSum, "q")
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, ch, stop := s.Subscribe()
-	defer stop()
+	_, _, ch := startTurn(t, m, db.Owner(), twoSum, "q")
 	collect(t, ch, KindDone)
 
 	system, turn := body.Messages[0].Content, body.Messages[len(body.Messages)-1].Content
