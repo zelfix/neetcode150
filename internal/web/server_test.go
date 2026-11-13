@@ -809,7 +809,7 @@ func TestProblemPageLeadsIntoTheWorkspace(t *testing.T) {
 	if !strings.Contains(body, `href="/problems/two-sum/solve"`) {
 		t.Error("no link into the workspace")
 	}
-	if !strings.Contains(body, ">Start <") {
+	if !strings.Contains(body, ">Start<") {
 		t.Error("an untouched problem should offer Start")
 	}
 
@@ -817,14 +817,14 @@ func TestProblemPageLeadsIntoTheWorkspace(t *testing.T) {
 	if rec := postJSON(t, h, "/problems/two-sum/create", struct{}{}); rec.Code != http.StatusOK {
 		t.Fatal(rec.Body.String())
 	}
-	if body := get(t, h, "/problems/two-sum").Body.String(); !strings.Contains(body, ">Continue <") {
+	if body := get(t, h, "/problems/two-sum").Body.String(); !strings.Contains(body, ">Continue<") {
 		t.Error("a problem in progress should offer Continue")
 	}
 
 	if _, err := prog.Rate("two-sum", 4, srv.now()); err != nil {
 		t.Fatal(err)
 	}
-	if body := get(t, h, "/problems/two-sum").Body.String(); !strings.Contains(body, ">Open workspace <") {
+	if body := get(t, h, "/problems/two-sum").Body.String(); !strings.Contains(body, ">Open workspace<") {
 		t.Error("a solved problem should offer the workspace, not Start")
 	}
 }

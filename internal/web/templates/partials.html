@@ -10,7 +10,7 @@
   <span class="row-id">{{.ID}}</span>
   <span class="row-title">{{.Title}}{{if .Blind75}}<span class="b75" title="Also in the Blind 75">75</span>{{end}}</span>
   <span class="row-diff is-{{lower .Difficulty}}">{{.Difficulty}}</span>
-  <span class="row-status"><i class="dot is-{{statusClass .Entry.Status}}"></i>{{statusLabel .Entry.Status}}</span>
+  <span class="row-status"><i class="dot is-{{statusClass .Entry.Status}}"></i><span class="status-label">{{statusLabel .Entry.Status}}</span></span>
   <span class="row-when">{{if .IsDue}}<span class="due-flag">due</span>{{else if .Entry.NextReview}}{{until .Entry.NextReview}}{{else if .Entry.LastTouched}}{{ago .Entry.LastTouched}}{{end}}</span>
 </a>
 {{end}}

@@ -11,13 +11,13 @@
   </div>
   {{if .DueProblems}}
   {{range .DueProblems}}
-  <div class="row" style="grid-template-columns: 3.2rem 1fr 5rem 6rem">
+  <div class="row due-row">
     <span class="row-id">{{.ID}}</span>
     <span class="row-title"><a href="/problems/{{.Slug}}/solve">{{.Title}}</a>{{if .Blind75}}<span class="b75">75</span>{{end}}</span>
     <span class="row-diff is-{{lower .Difficulty}}">{{.Difficulty}}</span>
     <span class="row-when">{{if .DaysOverdue}}{{plural .DaysOverdue "day" "days"}} over{{else}}today{{end}}</span>
   </div>
-  <div style="padding: 0 0 1.25rem; max-width: 18rem">
+  <div class="rate-inline">
     {{template "rateForm" dict "P" . "BackTo" "/review/"}}
   </div>
   {{end}}
