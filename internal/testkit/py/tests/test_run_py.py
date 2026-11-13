@@ -74,6 +74,9 @@ class RunPy(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertEqual(results["TestPracticeCases/example/example_1"], "fail")
         self.assertIn("got [0,0]; want [0,1]", out)
+        # The failing data goes with the verdict, so nobody opens the fixture
+        # file to learn what broke.
+        self.assertIn("input: [2,7,11,15], 9", out)
 
     def test_exception_names_the_users_line(self):
         d = package("""

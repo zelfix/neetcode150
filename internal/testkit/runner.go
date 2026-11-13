@@ -1,6 +1,7 @@
 package testkit
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"reflect"
@@ -24,10 +25,57 @@ func Run(t *testing.T, spec string, functions ...any) {
 	for _, c := range s.Cases {
 		t.Run(c.Kind+"/"+c.Name, func(t *testing.T) {
 			if err := checkCase(s, c, false, functions...); err != nil {
-				t.Fatal(err)
+				t.Fatalf("%v\n%s", err, describeInput(s, c))
 			}
 		})
 	}
+}
+
+// inputLimit bounds the input shown under a failure. A fixture of ten thousand
+// nodes is not something to read; the case's name says what it is.
+const inputLimit = 320
+
+// describeInput is the line under a failed case that shows what it was given:
+// "got true; want false" alone leaves the person opening the fixture file to
+// find out. Operations cases list the calls instead of arguments.
+func describeInput(s testbank.Suite, c testbank.Case) string {
+	var b strings.Builder
+	if s.Mode == "operations" {
+		b.WriteString("ops: ")
+		for i, op := range c.Ops {
+			if i > 0 {
+				b.WriteString(", ")
+			}
+			b.WriteString(op + "(")
+			if i < len(c.Calls) {
+				b.WriteString(joinRaw(c.Calls[i]))
+			}
+			b.WriteString(")")
+		}
+	} else {
+		b.WriteString("input: " + joinRaw(c.Args))
+		if c.CyclePos != nil && *c.CyclePos >= 0 {
+			fmt.Fprintf(&b, "; tail links back to index %d", *c.CyclePos)
+		}
+	}
+	text := b.String()
+	if r := []rune(text); len(r) > inputLimit {
+		text = string(r[:inputLimit]) + "…"
+	}
+	return text
+}
+
+func joinRaw(raw []json.RawMessage) string {
+	parts := make([]string, len(raw))
+	for i, r := range raw {
+		var buf bytes.Buffer
+		if err := json.Compact(&buf, r); err != nil {
+			parts[i] = string(r)
+			continue
+		}
+		parts[i] = buf.String()
+	}
+	return strings.Join(parts, ", ")
 }
 
 // Validate checks every fixture against the actual Go signature without calling

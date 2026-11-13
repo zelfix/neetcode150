@@ -286,9 +286,34 @@ def run_suite(suite, entry, module, emitter, case_timeout, deadline_at, solution
         elif err is None:
             emitter.passed_(test, elapsed)
         elif isinstance(err, CaseError):
-            emitter.failed_(test, str(err), elapsed)
+            emitter.failed_(test, "%s\n%s" % (err, describe_input(suite, case)), elapsed)
         else:
             emitter.failed_(test, describe_exception(err, solution_path), elapsed)
+
+
+# Bounds the input shown under a failure, as inputLimit does in Go.
+INPUT_LIMIT = 320
+
+
+def describe_input(suite, case):
+    """The line under a failed case that shows what it was given, mirroring
+    Go's describeInput: arguments for a function case, calls for operations."""
+    if suite.get("mode") == "operations":
+        ops = case.get("ops") or []
+        calls = case.get("calls") or []
+        parts = []
+        for i, op in enumerate(ops):
+            args = calls[i] if i < len(calls) else []
+            parts.append("%s(%s)" % (op, ", ".join(compare.dumps(a) for a in args)))
+        text = "ops: " + ", ".join(parts)
+    else:
+        text = "input: " + ", ".join(compare.dumps(a) for a in (case.get("args") or []))
+        pos = case.get("cyclePos")
+        if pos is not None and pos >= 0:
+            text += "; tail links back to index %d" % pos
+    if len(text) > INPUT_LIMIT:
+        text = text[:INPUT_LIMIT] + "…"
+    return text
 
 
 def validate_suite(suite, entry, module):

@@ -197,6 +197,29 @@ func TestOperationSequencesAndPanicReporting(t *testing.T) {
 	}
 }
 
+func TestFailureNamesTheInput(t *testing.T) {
+	c := fixture(`[[2, 7, 11, 15], 9]`, `[0,1]`)
+	if got := describeInput(testbank.Suite{Mode: "function"}, c); got != "input: [2,7,11,15], 9" {
+		t.Errorf("function input: %q", got)
+	}
+	pos := 1
+	c.CyclePos = &pos
+	if got := describeInput(testbank.Suite{Policy: "cycle"}, c); got != "input: [2,7,11,15], 9; tail links back to index 1" {
+		t.Errorf("cycle input: %q", got)
+	}
+	var ops testbank.Case
+	if err := json.Unmarshal([]byte(`{"ops":["Counter","add","value"],"calls":[[2],[3],[]],"want":[null,null,5]}`), &ops); err != nil {
+		t.Fatal(err)
+	}
+	if got := describeInput(testbank.Suite{Mode: "operations"}, ops); got != "ops: Counter(2), add(3), value()" {
+		t.Errorf("operations input: %q", got)
+	}
+	long := fixture(`["`+strings.Repeat("x", 1000)+`"]`, `0`)
+	if got := describeInput(testbank.Suite{}, long); len([]rune(got)) != inputLimit+1 || !strings.HasSuffix(got, "…") {
+		t.Errorf("long input not clipped: %d runes", len([]rune(got)))
+	}
+}
+
 func TestCodecsCheckRoundTripWithoutPrescribingFormat(t *testing.T) {
 	c := fixture(`[["","a#"]]`, `["","a#"]`)
 	s := testbank.Suite{Mode: "strings-codec"}
