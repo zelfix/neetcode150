@@ -13,28 +13,6 @@ import (
 	"neetcode150/internal/studydb"
 )
 
-// A problem that has been started but not finished is still unsolved, and
-// the pool `nc drill` draws from has to say so rather than report it empty.
-func TestDrillCountsAnAttemptedProblemAsUnsolved(t *testing.T) {
-	root := t.TempDir()
-	writeCatalog(t, root)
-	if err := cmdStatus(root, []string{"two-sum", "attempted"}); err != nil {
-		t.Fatal(err)
-	}
-	if err := cmdStatus(root, []string{"valid-anagram", "solved"}); err != nil {
-		t.Fatal(err)
-	}
-	if e := entry(t, root, "two-sum"); e.Status != progress.Attempted {
-		t.Fatalf("status = %s, want attempted", e.Status)
-	}
-	if err := cmdDrill(root, nil); err != nil {
-		t.Errorf("drill with one attempted problem: %v", err)
-	}
-	if err := cmdDrill(root, []string{"--solved"}); err != nil {
-		t.Errorf("drill --solved with one solved problem: %v", err)
-	}
-}
-
 // Reissuing a link must not touch the budget unless --budget was typed, and
 // when it was, it has to take effect rather than be parsed and dropped.
 func TestUserLinkChangesTheBudgetOnlyWhenAsked(t *testing.T) {
@@ -86,7 +64,7 @@ func TestUserLinkChangesTheBudgetOnlyWhenAsked(t *testing.T) {
 // Flags such as --rung and --undo are only discoverable from the CLI if the
 // command itself answers --help.
 func TestEveryCommandAnswersHelp(t *testing.T) {
-	for _, cmd := range []string{"rate", "drill", "serve", "user", "fetch", "weak"} {
+	for _, cmd := range []string{"rate", "review", "serve", "user", "fetch", "weak"} {
 		out := capture(t, func() {
 			if err := run([]string{cmd, "--help"}); err != nil {
 				t.Errorf("nc %s --help: %v", cmd, err)

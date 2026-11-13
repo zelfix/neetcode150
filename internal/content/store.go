@@ -22,6 +22,9 @@ type Doc struct {
 	HTMLBody    template.HTML // the document without its leading H1
 	ModTime     time.Time
 	Missing     bool // the file does not exist yet
+	// FollowUp is a problem statement's trailing follow-up question, held back
+	// from Body and the rendered HTML. See SplitFollowUp.
+	FollowUp string
 }
 
 // Title is the frontmatter title, or the first heading, or "".
@@ -108,6 +111,12 @@ func (s *Store) Doc(scope *studydb.Scope, relPath string) (*Doc, error) {
 		return nil, err
 	}
 	fm, body := SplitFrontmatter(string(raw))
+	// Only a problem statement: a pattern guide or a note that happens to say
+	// "follow up" is prose, not a question being held back.
+	followUp := ""
+	if filepath.Base(relPath) == "problem.md" {
+		body, followUp = SplitFollowUp(body)
+	}
 	doc := &Doc{
 		Path:        relPath,
 		Frontmatter: fm,
@@ -115,6 +124,7 @@ func (s *Store) Doc(scope *studydb.Scope, relPath string) (*Doc, error) {
 		HTML:        s.renderer.MustRender(body),
 		HTMLBody:    s.renderer.MustRender(StripLeadingH1(body)),
 		ModTime:     info.ModTime(),
+		FollowUp:    followUp,
 	}
 
 	s.mu.Lock()
@@ -129,6 +139,29 @@ var leadingH1RE = regexp.MustCompile(`\A\s*#\s+[^\n]*\n+`)
 // render their own heading use this so the title does not appear twice.
 func StripLeadingH1(body string) string {
 	return leadingH1RE.ReplaceAllString(body, "")
+}
+
+// followUpRE matches the marker LeetCode puts before a statement's optional
+// extra question: "**Follow up:**", "**Follow-up:**", either capitalisation.
+var followUpRE = regexp.MustCompile(`(?mi)^\*\*follow[- ]?up:?\*\*[ \t]*`)
+
+// SplitFollowUp separates a statement's trailing follow-up question from the
+// statement itself.
+//
+// 22 of the 150 carry one, always as the last thing in the document. Showing it
+// with the statement gives away that there is a better solution than the
+// obvious one, and often which direction it is in — which is the question a
+// tutor or an interviewer should be asking once the obvious one works, not
+// something to read beforehand. So the pages render the statement without it
+// and the prompts carry it privately.
+//
+// A document with no follow-up comes back unchanged with an empty second value.
+func SplitFollowUp(body string) (statement, followUp string) {
+	m := followUpRE.FindStringIndex(body)
+	if m == nil {
+		return body, ""
+	}
+	return strings.TrimRight(body[:m[0]], " \t\r\n"), strings.TrimSpace(body[m[1]:])
 }
 
 var frontmatterRE = regexp.MustCompile(`(?s)\A---\r?\n(.*?)\r?\n---\r?\n?`)

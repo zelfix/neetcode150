@@ -1,0 +1,122 @@
+{{define "content"}}
+<div class="lede">
+  <h1>Interview</h1>
+  <p>Two or three problems drawn at random, one time limit each, and an interviewer who does
+  not give hints. The pattern is withheld: naming the approach yourself is most of the work,
+  and the roadmap hands it to you before you have read the statement.</p>
+</div>
+
+{{if .Why}}
+<section class="block">
+  <p class="empty">No interviewer on this instance: {{.Why}}</p>
+</section>
+{{end}}
+
+{{if .Err}}<section class="block"><p class="empty">{{.Err}}</p></section>{{end}}
+
+{{if .Live}}
+{{/* Deliberately no pattern anywhere in this block, and no problemRow or cells:
+     all three print it, which is the one thing a random draw has to withhold. */}}
+<section class="block">
+  <div class="block-head">
+    <h2>{{if .Live.Live}}In progress{{else}}Interview {{.Live.ID}}{{end}}</h2>
+    <span class="meta">{{date .Live.Started}}{{if .Live.Minutes}} &middot; {{plural .Live.Minutes "minute" "minutes"}}{{end}}</span>
+  </div>
+  <div class="rows">
+    {{range .Live.Problems}}
+    <div class="row" style="grid-template-columns: 4.5rem 1fr 7rem 6rem">
+      <span class="row-id">{{.Index}} of {{.Total}}</span>
+      <span class="row-title">
+        {{if .Current}}<a href="/problems/{{.Slug}}/solve">{{.Title}}</a>{{else}}{{.Title}}{{end}}
+      </span>
+      <span class="row-when">
+        {{if .Done}}{{plural .Minutes "minute" "minutes"}} of {{.Limit}}
+        {{else if .Current}}{{.Elapsed}} of {{.Limit}} min
+        {{else}}{{.Limit}} min{{end}}
+      </span>
+      <span class="row-when">
+        {{if .Submits}}{{if .Passed}}tests passed{{else}}tests failed{{end}}
+        {{else if .Done}}not submitted{{end}}
+      </span>
+    </div>
+    {{end}}
+  </div>
+  {{if and .Live.Live (not .Live.Finishing)}}
+  <form class="interview-controls" method="post" action="/interview/next">
+    <button class="primary">Next problem</button>
+  </form>
+  <form class="interview-controls" method="post" action="/interview/finish">
+    <button>Finish now and get the feedback</button>
+  </form>
+  {{end}}
+</section>
+
+{{if .Live.Finishing}}
+{{/* The feedback is a model turn and takes as long as it takes. app.js polls
+     /interview/state and reloads the moment the report lands. */}}
+<section class="block" data-interview-pending>
+  <div class="block-head"><h2>Feedback</h2></div>
+  <p class="empty">The interviewer is writing it. This page will show it as soon as it
+  arrives — it usually takes under a minute.</p>
+</section>
+{{end}}
+
+{{if .Live.Report}}
+<section class="block">
+  <div class="block-head"><h2>Feedback</h2></div>
+  <article class="prose interview-report">{{.Live.Report}}</article>
+</section>
+{{end}}
+{{end}}
+
+{{if and (not .Live) (not .Why)}}
+<section class="block">
+  <div class="block-head"><h2>Start one</h2></div>
+  <form class="drill-controls" method="post" action="/interview/start">
+    <label>Problems
+      <select name="problems">
+        {{range $.Counts}}<option value="{{.}}"{{if eq . $.Problems}} selected{{end}}>{{.}}</option>{{end}}
+      </select>
+    </label>
+    <label>Minutes each
+      <select name="limit">
+        {{range $.Limits}}<option value="{{.}}"{{if eq . $.Limit}} selected{{end}}>{{.}}</option>{{end}}
+      </select>
+    </label>
+    <label>Pattern
+      <select name="pattern">
+        <option value="">any</option>
+        {{range .Groups}}<option value="{{.Slug}}"{{if eq .Slug $.Pattern}} selected{{end}}>{{.Pattern}}</option>{{end}}
+      </select>
+    </label>
+    {{/* One button per language rather than a button and a selector: the
+         language is part of starting, as it is on a problem's Start row. One
+         choice for the whole interview, not per problem. */}}
+    <div class="start-row">
+      {{range .Langs}}
+      <button class="primary" name="lang" value="{{.ID}}"
+        {{if .Why}}disabled title="{{.Why}}"{{end}}>Begin in {{.Label}}</button>
+      {{end}}
+    </div>
+  </form>
+  <p class="note">Unsolved problems are drawn first; solved ones are used when the pool is
+  too small. Nothing here writes a rating or moves a review date — the interview keeps its
+  own record, and the time you spend is logged against the problem.</p>
+</section>
+{{end}}
+
+{{if .Past}}
+<section class="block">
+  <div class="block-head"><h2>Earlier interviews</h2></div>
+  <div class="rows">
+    {{range .Past}}
+    <a class="row row-link" href="/interview/{{.ID}}" style="grid-template-columns: 7rem 1fr 6rem">
+      <span class="row-id">{{date .Started}}</span>
+      <span class="row-title">{{plural (len .Problems) "problem" "problems"}}{{if not .Finished}} &middot; unfinished{{end}}</span>
+      <span class="row-when">{{if .Minutes}}{{plural .Minutes "minute" "minutes"}}{{end}}</span>
+    </a>
+    {{end}}
+  </div>
+</section>
+{{end}}
+{{end}}

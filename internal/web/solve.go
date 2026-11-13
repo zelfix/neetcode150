@@ -75,6 +75,30 @@ type solvePage struct {
 	PendingSubmitSeq int
 	ElapsedSeconds   int64
 	ElapsedLabel     string
+	// Interview is set while this problem is the live interview's current one.
+	// The template keys every difference off it, and what it suppresses matters
+	// as much as what it adds: see interviewChrome.
+	Interview *interviewChrome
+}
+
+// interviewChrome is what the workspace shows during an interview.
+//
+// The suppressions live in handleSolve rather than here: an interview must not
+// offer the previous solutions, the archived attempts, the diff or the ratings
+// table for this problem, because every one of them is the answer or a route to
+// it. The pattern is withheld in the template for the same reason.
+type interviewChrome struct {
+	ID    int64
+	Index int
+	Total int
+	Limit int // minutes allowed on this problem
+	// Elapsed is seconds on this problem, which is a different clock from the
+	// study timer: an interview does not start or consume that one.
+	Elapsed int64
+	// Said is whether the interviewer has already been told the time is up, so
+	// the page stops reporting it.
+	Said bool
+	Last bool // the last problem, so the button says so
 }
 
 // recordView fills the work column before an attempt starts: why this problem
@@ -148,7 +172,7 @@ func (s *session) record(p catalog.Problem, view problemView, now time.Time) rec
 	default:
 		last := r.Sittings[len(r.Sittings)-1]
 		if last.Rung > 0 {
-			r.Notes = append(r.Notes, fmt.Sprintf("Last sitting needed hint rung %d.", last.Rung))
+			r.Notes = append(r.Notes, fmt.Sprintf("Last sitting needed hint %d of 5.", last.Rung))
 		} else {
 			r.Notes = append(r.Notes, "Last sitting was unaided.")
 		}
@@ -156,8 +180,8 @@ func (s *session) record(p catalog.Problem, view problemView, now time.Time) rec
 			r.Notes = append(r.Notes, "The rating fell last time, so the interval before it was too long.")
 		}
 		if last.Generous {
-			r.Notes = append(r.Notes, "That rating sat next to a high rung. The rung is the honest "+
-				"measure where the rating is the felt one.")
+			r.Notes = append(r.Notes, "That rating sat next to a high hint, so the schedule "+
+				"went by the hint.")
 		}
 	}
 
@@ -256,6 +280,27 @@ func (s *session) handleSolve(w http.ResponseWriter, r *http.Request) {
 	pending, pendingSubmit := s.pendingSubmissions[s.key(p)]
 	s.submissionMu.Unlock()
 
+	// An interview takes the page over. The editor is live from the start —
+	// the interview scaffolded the file and its own clock is already running —
+	// and everything the study record would otherwise offer about this problem
+	// is withheld, because an earlier solution is the answer.
+	var chrome *interviewChrome
+	if rec, st, ok := s.interviewHere(p.Slug); ok {
+		ip := st.Problems[st.Current]
+		chrome = &interviewChrome{
+			ID: rec.ID, Index: st.Current + 1, Total: len(st.Problems),
+			Limit: ip.Limit, Said: ip.TimeUp, Last: st.Current+1 == len(st.Problems),
+		}
+		if ip.Started != nil {
+			chrome.Elapsed = int64(now.Sub(*ip.Started).Seconds())
+		}
+		active = true
+		code, previousCode = current, ""
+		submissions, attempts, archived, latestReview = nil, nil, 0, nil
+		coach = s.interviewTutorView(p.Slug)
+		elapsed = time.Duration(chrome.Elapsed) * time.Second
+	}
+
 	s.render(w, "solve", solvePage{
 		common:            s.fullCommon(fmt.Sprintf("%d. %s", p.ID, p.Title), "problems"),
 		P:                 view,
@@ -268,8 +313,8 @@ func (s *session) handleSolve(w http.ResponseWriter, r *http.Request) {
 		PreviousAvailable: previousCode != "" || len(submissions) > 0,
 		Active:            active,
 		ChatEnabled:       active || coach.Active || exists || latestReview != nil,
-		SolutionPath:      s.work().Rel(p, l.SolutionFile),
-		TestPath:          s.work().Rel(p, l.TestFile),
+		SolutionPath:      s.work(p).Rel(p, l.SolutionFile),
+		TestPath:          s.work(p).Rel(p, l.TestFile),
 		Lang:              l,
 		Langs:             s.langChoices(),
 		Archived:          archived,
@@ -283,6 +328,7 @@ func (s *session) handleSolve(w http.ResponseWriter, r *http.Request) {
 		PendingSubmitSeq:  pending.FollowupSeq,
 		ElapsedSeconds:    int64(elapsed.Seconds()),
 		ElapsedLabel:      formatElapsed(elapsed),
+		Interview:         chrome,
 	})
 }
 
@@ -361,6 +407,16 @@ func (s *session) diffAgainstLast(attempts []studydb.Attempt, current string, l 
 }
 
 func (s *session) tutorView(slug string) tutorView {
+	return s.panelView(slug, tutor.RoleTutor)
+}
+
+// interviewTutorView is the same panel pointed at the interviewer's session, so
+// an interview's chat is not the tutoring conversation about the same problem.
+func (s *session) interviewTutorView(slug string) tutorView {
+	return s.panelView(slug, tutor.RoleInterviewer)
+}
+
+func (s *session) panelView(slug string, role tutor.Role) tutorView {
 	available, why := s.tutor.Available()
 	v := tutorView{
 		Available: available,
@@ -368,11 +424,20 @@ func (s *session) tutorView(slug string) tutorView {
 		Provider:  string(s.tutor.Provider()),
 		Mode:      string(s.tutor.Mode()),
 	}
-	if sess := s.tutor.Get(s.progress.Scope(), slug); sess != nil {
+	if sess := s.tutor.GetAs(s.progress.Scope(), slug, role); sess != nil {
 		v.Active = true
 		v.HasTurns = len(sess.Transcript()) > 0
 	}
 	return v
+}
+
+// tutorRole is which conversation the panel is showing for this problem. The
+// interview takes it over while it is the one being asked about.
+func (s *session) tutorRole(slug string) tutor.Role {
+	if _, _, ok := s.interviewHere(slug); ok {
+		return tutor.RoleInterviewer
+	}
+	return tutor.RoleTutor
 }
 
 // ---------- the JSON API behind the editor ----------
@@ -421,7 +486,22 @@ func (s *session) inputs(p catalog.Problem, l lang.Lang) (signature, statement s
 	signature, _ = readIfPresent(filepath.Join(s.root, p.ContentDir(), l.SignatureFile))
 	raw, _ := readIfPresent(filepath.Join(s.root, p.ContentDir(), "problem.md"))
 	_, statement = content.SplitFrontmatter(raw)
+	// Without the follow-up: this goes into the generated test file's comments,
+	// where it would be the first thing read.
+	statement, _ = content.SplitFollowUp(statement)
 	return signature, statement
+}
+
+// followUpFor is the statement's own follow-up question, which the pages hold
+// back. It is handed to whoever is asking the questions instead.
+func (s *session) followUpFor(p catalog.Problem) string {
+	raw, err := readIfPresent(filepath.Join(s.root, p.ContentDir(), "problem.md"))
+	if err != nil {
+		return ""
+	}
+	_, body := content.SplitFrontmatter(raw)
+	_, followUp := content.SplitFollowUp(body)
+	return followUp
 }
 
 type saveResponse struct {
@@ -590,6 +670,16 @@ func (s *session) handleSubmit(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, out)
 		return
 	}
+	// In an interview the submission is shown to the interviewer, which answers
+	// with a follow-up or says it is satisfied. No rating is recorded and
+	// nothing is archived: the sitting's only record is the interview's own.
+	if _, _, ok := s.interviewHere(p.Slug); ok {
+		if err := s.submitToInterview(p, req.Code, run.Output, passed); err != nil {
+			out.RatingError = err.Error()
+		}
+		writeJSON(w, http.StatusOK, out)
+		return
+	}
 	sess, err := s.tutor.Start(s.progress.Scope(), p)
 	if err != nil {
 		out.RatingError = err.Error()
@@ -691,7 +781,7 @@ func (s *session) advanceSubmissionAfterAnswer(p catalog.Problem, pending pendin
 		sess.PublishSubmissionQuestion("I could not save the rating. Send a short reply to retry.")
 		return
 	}
-	message := fmt.Sprintf("Rating %d/5 · hint rung %d\n\n%s", decision.Confidence, decision.Rung, decision.Feedback)
+	message := fmt.Sprintf("Rating %d/5 · hint %d of 5\n\n%s", decision.Confidence, decision.Rung, decision.Feedback)
 	if strings.TrimSpace(decision.Followup) != "" {
 		message += "\n\nExplore next\n" + decision.Followup
 	}
@@ -969,12 +1059,12 @@ func (s *session) handleStartAttempt(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	signature, statement := s.inputs(p, l)
-	solutionPath := s.work().Path(p, l.SolutionFile)
+	solutionPath := s.work(p).Path(p, l.SolutionFile)
 	var archive string
 	if _, statErr := os.Stat(solutionPath); statErr == nil {
-		archive, _, err = scaffold.Reset(s.progress.Scope(), s.work(), p, l, signature, statement, s.now())
+		archive, _, err = scaffold.Reset(s.progress.Scope(), s.work(p), p, l, signature, statement, s.now())
 	} else if os.IsNotExist(statErr) {
-		_, _, err = scaffold.Create(s.progress.Scope(), s.work(), p, l, signature, statement)
+		_, _, err = scaffold.Create(s.progress.Scope(), s.work(p), p, l, signature, statement)
 	} else {
 		err = statErr
 	}
@@ -995,9 +1085,9 @@ func (s *session) handleStartAttempt(w http.ResponseWriter, r *http.Request) {
 	s.openLesson(p)
 	code, _ := s.readSolution(p)
 	testCode := s.readTests(p)
-	created := []string{s.work().Rel(p, l.SolutionFile)}
-	if _, err := os.Stat(s.work().Path(p, l.TestFile)); err == nil {
-		created = append(created, s.work().Rel(p, l.TestFile))
+	created := []string{s.work(p).Rel(p, l.SolutionFile)}
+	if _, err := os.Stat(s.work(p).Path(p, l.TestFile)); err == nil {
+		created = append(created, s.work(p).Rel(p, l.TestFile))
 	}
 	archiveRel := archive
 	writeJSON(w, http.StatusOK, createResponse{Code: code, TestCode: testCode, Created: created, Archive: filepath.ToSlash(archiveRel)})
@@ -1067,7 +1157,7 @@ func (s *session) handleCreateSolution(w http.ResponseWriter, r *http.Request) {
 	}
 	signature, statement := s.inputs(p, l)
 
-	written, _, err := scaffold.Create(s.progress.Scope(), s.work(), p, l, signature, statement)
+	written, _, err := scaffold.Create(s.progress.Scope(), s.work(p), p, l, signature, statement)
 	if err != nil {
 		s.fail(w, err)
 		return
@@ -1311,7 +1401,7 @@ func (s *session) save(p catalog.Problem, code string) (saveResponse, error) {
 }
 
 func (s *session) saveDraft(p catalog.Problem, code string) (saveResponse, error) {
-	path := s.work().Path(p, s.language(p).SolutionFile)
+	path := s.work(p).Path(p, s.language(p).SolutionFile)
 	if _, err := os.Stat(path); err != nil {
 		return saveResponse{}, fmt.Errorf("no solution file yet for %s; create it first", p.Slug)
 	}
@@ -1322,7 +1412,7 @@ func (s *session) saveDraft(p catalog.Problem, code string) (saveResponse, error
 }
 
 func (s *session) readSolution(p catalog.Problem) (code string, exists bool) {
-	code, err := readIfPresent(s.work().Path(p, s.language(p).SolutionFile))
+	code, err := readIfPresent(s.work(p).Path(p, s.language(p).SolutionFile))
 	return code, err == nil && code != ""
 }
 
@@ -1392,7 +1482,7 @@ func (s *session) handleResolve(w http.ResponseWriter, r *http.Request) {
 	signature, statement := s.inputs(p, l)
 
 	now := s.now()
-	archive, _, err := scaffold.Reset(s.progress.Scope(), s.work(), p, l, signature, statement, now)
+	archive, _, err := scaffold.Reset(s.progress.Scope(), s.work(p), p, l, signature, statement, now)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusConflict)
 		return
@@ -1422,7 +1512,7 @@ func (s *session) handleResolve(w http.ResponseWriter, r *http.Request) {
 // readTests includes personal tests and the additional practice suite in one tab.
 func (s *session) readTests(p catalog.Problem) string {
 	l := s.language(p)
-	paths := l.TestFiles(s.work().Dir(p))
+	paths := l.TestFiles(s.work(p).Dir(p))
 	comment := "//"
 	if l.ID == lang.Python {
 		comment = "#"

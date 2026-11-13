@@ -33,7 +33,7 @@ import (
 var assets embed.FS
 
 // pageNames are the templates that each compose with the layout.
-var pageNames = []string{"dashboard", "problems", "problem", "patterns", "pattern", "review", "coach", "drill", "people", "solve"}
+var pageNames = []string{"dashboard", "problems", "problem", "pattern", "review", "interview", "solve"}
 
 // Server serves the site.
 // submissionKey identifies one person's unfinished submission. Keyed by slug
@@ -81,6 +81,15 @@ type Server struct {
 
 	submissionMu       sync.Mutex
 	pendingSubmissions map[submissionKey]pendingSubmission
+
+	// interviewMu serialises every read-modify-write of an interview's payload.
+	// The payload is one JSON document saved whole, and four things write it
+	// without a request ordering them: Next, Finish, the time-up report, and
+	// the interviewer's own decision arriving seconds after the submission. Two
+	// of those interleaved lose one's write — the interview steps back onto a
+	// problem it had closed. One lock for everybody is enough: a mutation is a
+	// few statements, and the model turns run outside it.
+	interviewMu sync.Mutex
 
 	// background is the parent of work that outlives the request that started
 	// it, such as a submission review, so that stopping the server stops it
@@ -206,13 +215,20 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /problems/{$}", s.with((*session).handleProblems))
 	mux.HandleFunc("GET /problems/{slug}", s.with((*session).handleProblem))
 	mux.HandleFunc("GET /problems/{slug}/solve", s.with((*session).handleSolve))
-	mux.HandleFunc("GET /patterns/{$}", s.with((*session).handlePatterns))
 	mux.HandleFunc("GET /patterns/{slug}", s.with((*session).handlePattern))
 	mux.HandleFunc("GET /review/{$}", s.with((*session).handleReview))
-	mux.HandleFunc("GET /coach/{$}", s.with((*session).handleCoach))
-	mux.HandleFunc("GET /drill/{$}", s.with((*session).handleDrill))
-	mux.HandleFunc("GET /people/{$}", s.with((*session).handlePeople))
-	mux.HandleFunc("POST /me/name", guard(s.with((*session).handleSetName)))
+	// The interview needs an interviewer, so every one of these sits behind the
+	// same gate as the panel: on a provider that can read the server, they are
+	// the owner's alone.
+	mux.HandleFunc("GET /interview/{$}", s.tutorGate((*session).handleInterview))
+	// A literal segment beats the wildcard below it, so /interview/state is the
+	// poll and /interview/4 is a report.
+	mux.HandleFunc("GET /interview/state", s.tutorGate((*session).handleInterviewState))
+	mux.HandleFunc("GET /interview/{id}", s.tutorGate((*session).handleInterviewReport))
+	mux.HandleFunc("POST /interview/start", guard(s.tutorGate((*session).handleInterviewStart)))
+	mux.HandleFunc("POST /interview/next", guard(s.tutorGate((*session).handleInterviewNext)))
+	mux.HandleFunc("POST /interview/finish", guard(s.tutorGate((*session).handleInterviewFinish)))
+	mux.HandleFunc("POST /interview/timeup", guardJSON(s.tutorGate((*session).handleInterviewTimeUp)))
 	// A person's own default language: it changes one row, their own, and
 	// mints nothing, so it is not an admin surface.
 	mux.HandleFunc("POST /problems/{slug}/status", guard(s.with((*session).handleSetStatus)))
@@ -236,12 +252,15 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /problems/{slug}/tutor/interrupt", guardJSON(s.tutorGate((*session).handleTutorInterrupt)))
 
 	// Accept the paths without the trailing slash too.
-	for _, p := range []string{"/problems", "/patterns", "/review", "/coach", "/drill", "/people"} {
+	for _, p := range []string{"/problems", "/review", "/interview"} {
 		target := p + "/"
 		mux.HandleFunc("GET "+p, func(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, target, http.StatusMovedPermanently)
 		})
 	}
+	// /patterns/ and /coach/ are absent rather than redirected: both were
+	// merged into other pages, and the site is not published, so there is no
+	// link to keep working. `/patterns/<slug>` above is the guide, unaffected.
 	return instrument(mux)
 }
 
@@ -340,49 +359,6 @@ func (s *Server) hasGuide(patternSlug string) bool {
 
 // ---------- pages ----------
 
-type dashboardPage struct {
-	common
-	Groups     []groupView
-	Next       *problemView
-	NextAction string
-	NextReason string
-	DueSoon    []problemView
-	Recent     []problemView
-}
-
-func (s *session) handleDashboard(w http.ResponseWriter, r *http.Request) {
-	now := s.now()
-	page := dashboardPage{
-		common: s.common("Dashboard", "dashboard"),
-		Groups: s.groups(now),
-	}
-	if p, reason, ok := s.progress.Next(s.cat.Problems, now); ok {
-		v := s.view(p, now)
-		_, hasSolution := s.readSolution(p)
-		page.Next, page.NextReason = &v, reason
-		page.NextAction = workAction(v, hasSolution)
-	}
-	due := s.views(s.progress.DueReview(s.cat.Problems, now), now)
-	page.DueSoon = due[:min(len(due), 5)]
-	page.Recent = s.recent(now, 6)
-	s.render(w, "dashboard", page)
-}
-
-// recent lists the problems you touched most recently.
-func (s *session) recent(now time.Time, limit int) []problemView {
-	var touched []problemView
-	for _, p := range s.cat.Problems {
-		v := s.view(p, now)
-		if v.Entry.LastTouched != nil {
-			touched = append(touched, v)
-		}
-	}
-	sort.SliceStable(touched, func(i, j int) bool {
-		return touched[i].Entry.LastTouched.After(*touched[j].Entry.LastTouched)
-	})
-	return touched[:min(len(touched), limit)]
-}
-
 type problemsPage struct {
 	common
 	Groups     []groupView
@@ -461,7 +437,7 @@ func (s *session) handleProblem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	solution := s.work().Rel(p, s.language(p).SolutionFile)
+	solution := s.work(p).Rel(p, s.language(p).SolutionFile)
 	_, statErr := os.Stat(filepath.Join(s.root, solution))
 
 	page := problemPage{
@@ -487,18 +463,6 @@ func (s *session) handleProblem(w http.ResponseWriter, r *http.Request) {
 		page.Next = &s.cat.Problems[p.Order+1]
 	}
 	s.render(w, "problem", page)
-}
-
-type patternsPage struct {
-	common
-	Groups []groupView
-}
-
-func (s *session) handlePatterns(w http.ResponseWriter, r *http.Request) {
-	s.render(w, "patterns", patternsPage{
-		common: s.common("Patterns", "patterns"),
-		Groups: s.groups(s.now()),
-	})
 }
 
 type patternPage struct {
@@ -581,6 +545,42 @@ func (s *session) handleSetStatus(w http.ResponseWriter, r *http.Request) {
 	s.redirectBack(w, r, p)
 }
 
+// rateOutcome is one button on the rate form: how much help the sitting needed,
+// in words, and the rating it records.
+//
+// The form used to ask for a 1-5 rating and a hint rung separately. The tutor
+// still reports both, because it has the transcript to judge them from, but
+// asking a person for two numbers — one of them named "rung" — produced pairs
+// that did not mean much. Each button now sets both.
+//
+// There are four because applyRating does four things: reset, lapse, hold,
+// advance. The first two record a rung the scheduler ignores (it gates only
+// ratings of 3 and up); it is kept because the dashboard and `nc weak` read
+// the rungs to report how much help a problem needs.
+type rateOutcome struct {
+	Key   string
+	Label string
+	Title string
+
+	confidence, rung int
+}
+
+var rateOutcomes = []rateOutcome{
+	{"answer", "needed the answer", "Shown the solution — back to the start of the ladder", 1, 5},
+	{"hint", "needed a hint", "Got there on a nudge — falls two stages", 2, 3},
+	{"effort", "got there with effort", "Unaided, with work — holds its place", 3, 0},
+	{"easy", "got there easily", "Unaided and quick — the interval widens", 5, 0},
+}
+
+func rateOutcomeFor(key string) (rateOutcome, bool) {
+	for _, o := range rateOutcomes {
+		if o.Key == key {
+			return o, true
+		}
+	}
+	return rateOutcome{}, false
+}
+
 func (s *session) handleRate(w http.ResponseWriter, r *http.Request) {
 	p, ok := s.cat.BySlug(r.PathValue("slug"))
 	if !ok {
@@ -591,19 +591,11 @@ func (s *session) handleRate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	now := s.now()
-	// The rung is optional, so a bare confidence button behaves exactly as it
-	// did before the ladder reached the form. Ranges are left to checkRating,
-	// which both RateHinted and Amend go through.
-	rung := 0
-	if raw := r.FormValue("rung"); raw != "" {
-		var err error
-		if rung, err = strconv.Atoi(raw); err != nil {
-			http.Error(w, "rung must be a number from 0 to 5", http.StatusBadRequest)
-			return
-		}
-	}
 
 	// Undo takes no rating: it drops the last one and replays the schedule.
+	// Amending one is deliberately not offered here — correcting a rating by
+	// hand means naming a confidence and a rung, which is the thing this form
+	// no longer asks for. Undo and submit again, or use `nc rate --amend`.
 	if r.FormValue("action") == "undo" {
 		if _, _, _, err := s.progress.Undo(p.Slug, now); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -613,17 +605,9 @@ func (s *session) handleRate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	n, err := strconv.Atoi(r.FormValue("confidence"))
-	if err != nil {
-		http.Error(w, "confidence must be a number from 1 to 5", http.StatusBadRequest)
-		return
-	}
-	if r.FormValue("action") == "amend" {
-		if _, _, err := s.progress.Amend(p.Slug, n, rung, now); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		s.redirectBack(w, r, p)
+	outcome, ok := rateOutcomeFor(r.FormValue("outcome"))
+	if !ok {
+		http.Error(w, "outcome must be one of answer, hint, effort, easy", http.StatusBadRequest)
 		return
 	}
 
@@ -637,7 +621,7 @@ func (s *session) handleRate(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if _, err := s.progress.RateHinted(p.Slug, n, rung, now); err != nil {
+	if _, err := s.progress.RateHinted(p.Slug, outcome.confidence, outcome.rung, now); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -726,7 +710,10 @@ func (s *Server) funcs() template.FuncMap {
 			return string(st)
 		},
 		"statusLabel": func(st progress.Status) string { return st.Label() },
-		"pct":         func(sum progress.Summary) int { return sum.Percent() },
+		// The buttons are rendered from the same table the handler reads, so a
+		// label can never describe a different rating from the one it submits.
+		"rateOutcomes": func() []rateOutcome { return rateOutcomes },
+		"pct":          func(sum progress.Summary) int { return sum.Percent() },
 		// Both shapes turn up: schedule fields are optional and so are
 		// pointers, while a recorded rating always has a date.
 		"date": func(v any) string {

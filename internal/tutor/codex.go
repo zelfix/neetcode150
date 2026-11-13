@@ -80,7 +80,7 @@ func (m *Manager) startCodex(scope *studydb.Scope, s *Session) error {
 		pending:   map[int]chan codexResponse{},
 		doneTurns: map[string]bool{},
 		first:     true,
-		seed:      m.seed(scope, s.Problem),
+		seed:      m.seed(scope, s.Problem, s.Role),
 	}
 	s.mu.Unlock()
 

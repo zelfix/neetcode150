@@ -42,7 +42,7 @@ func fakeClaude(t *testing.T, script string) *Manager {
 	}
 	m := New(t.TempDir(), ModeTutor, 0)
 	m.why = "" // the real binary is not needed
-	m.newCmd = func(ctx context.Context, _ *studydb.Scope, p catalog.Problem, id string) *exec.Cmd {
+	m.newCmd = func(ctx context.Context, _ *studydb.Scope, p catalog.Problem, _ Role, id string) *exec.Cmd {
 		return exec.CommandContext(ctx, "/bin/sh", path, id)
 	}
 	t.Cleanup(m.Close)
@@ -459,7 +459,7 @@ func TestUnavailableManagerExplainsItself(t *testing.T) {
 
 func TestArgsDifferByMode(t *testing.T) {
 	joined := func(mode Mode) string {
-		return strings.Join(New(t.TempDir(), mode, 1.5).args(nil, twoSum, "id-1"), " ")
+		return strings.Join(New(t.TempDir(), mode, 1.5).args(nil, twoSum, RoleTutor, "id-1"), " ")
 	}
 
 	full := joined(ModeFull)
@@ -495,7 +495,7 @@ func TestArgsDifferByMode(t *testing.T) {
 }
 
 func TestSeedNamesTheProblemAndThePaths(t *testing.T) {
-	seed := New(t.TempDir(), ModeFull, 0).seed(nil, twoSum)
+	seed := New(t.TempDir(), ModeFull, 0).seed(nil, twoSum, RoleTutor)
 	for _, want := range []string{
 		"1. Two Sum", "two-sum", "Arrays & Hashing",
 		"solutions/0001-two-sum/solution.go",
@@ -508,8 +508,67 @@ func TestSeedNamesTheProblemAndThePaths(t *testing.T) {
 	}
 	// The person has an editor and a test button on the page; telling them to
 	// go and run the CLI would be wrong.
-	if !strings.Contains(seed, "do not tell them to") {
+	if !strings.Contains(seed, "nc start") {
 		t.Error("the seed does not warn against sending them to the terminal")
+	}
+}
+
+// The interviewer runs on the same providers from the same repository, so what
+// keeps it from coaching is the seed: a different protocol, no ladder, and an
+// instruction not to go and read either off disk.
+func TestTheInterviewerSeedWithholdsTheLadderAndTheProtocol(t *testing.T) {
+	root := t.TempDir()
+	db, err := studydb.Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	scope := db.Owner()
+	if err := scope.SaveDocument(twoSum.Slug, "hints", "## Hint 1\n\nUse a hash map.\n"); err != nil {
+		t.Fatal(err)
+	}
+	m := New(root, ModeTutor, 0)
+
+	seed := m.seed(scope, twoSum, RoleInterviewer)
+	if strings.Contains(seed, "Use a hash map") {
+		t.Error("the interviewer was handed the recorded hint ladder")
+	}
+	for _, want := range []string{"tutor/INTERVIEW.md", "Do not read tutor/TUTOR.md", "never say it"} {
+		if !strings.Contains(seed, want) {
+			t.Errorf("the interviewer seed is missing %q", want)
+		}
+	}
+	// The tutoring seed on the same problem is the control: the ladder is
+	// withheld because of the role, not because it could not be read.
+	if tutoring := m.seed(scope, twoSum, RoleTutor); !strings.Contains(tutoring, "Use a hash map") {
+		t.Error("the tutoring seed lost the ladder, so this test proves nothing")
+	}
+}
+
+// The HTTP provider is handed everything, so the same rule has to hold there.
+func TestTheInterviewerSystemPromptWithholdsTheLadder(t *testing.T) {
+	root := t.TempDir()
+	db, err := studydb.Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	scope := db.Owner()
+	if err := scope.SaveDocument(twoSum.Slug, "hints", "## Hint 1\n\nUse a hash map.\n"); err != nil {
+		t.Fatal(err)
+	}
+	m := New(root, ModeTutor, 0)
+
+	if got := m.systemPrompt(scope, twoSum, RoleInterviewer); strings.Contains(got, "Use a hash map") {
+		t.Error("the interviewer's system prompt carries the recorded hint ladder")
+	}
+	if got := m.systemPrompt(scope, twoSum, RoleTutor); !strings.Contains(got, "Use a hash map") {
+		t.Error("the tutor's system prompt lost the ladder, so this test proves nothing")
+	}
+	// turnContext reads the study workspace, which is the wrong directory for
+	// an interview; the interview sends the code it was submitted instead.
+	if got := m.turnContext(scope, twoSum, RoleInterviewer); got != "" {
+		t.Errorf("turnContext = %q for an interview, want nothing", got)
 	}
 }
 
@@ -672,5 +731,38 @@ done
 	}
 	if got := textOf(collect(t, ch, KindDone)); got != "Same answer." {
 		t.Errorf("second turn text = %q, want the identical reply delivered again", got)
+	}
+}
+
+// The statement's follow-up question is held back from the page, so the prompt
+// is where it has to arrive — under its own heading, with the rule attached.
+func TestTheFollowUpReachesThePromptPrivately(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, twoSum.ContentDir()), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, twoSum.ContentDir(), "problem.md"),
+		[]byte("---\ntitle: Two Sum\n---\n\nFind the two indices.\n\n**Follow up:** One pass?\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	m := New(root, ModeTutor, 0)
+
+	for _, role := range []Role{RoleTutor, RoleInterviewer} {
+		got := m.systemPrompt(nil, twoSum, role)
+		if !strings.Contains(got, followUpBriefing) {
+			t.Errorf("%s: the prompt carries the follow-up with no explanation of what it is", role)
+		}
+		at, briefed := strings.Index(got, "One pass?"), strings.Index(got, followUpBriefing)
+		if at < 0 {
+			t.Errorf("%s: the follow-up never reached the prompt", role)
+			continue
+		}
+		if at < briefed {
+			t.Errorf("%s: the follow-up appears before the rule about it, so it reads as statement", role)
+		}
+		// The seed takes the CLI providers, which read the file themselves.
+		if seed := m.seed(nil, twoSum, role); !strings.Contains(seed, followUpBriefing) {
+			t.Errorf("%s: the seed does not say the follow-up is held back", role)
+		}
 	}
 }

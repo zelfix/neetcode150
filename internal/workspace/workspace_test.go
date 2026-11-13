@@ -11,8 +11,34 @@ import (
 
 var twoSum = catalog.Problem{ID: 1, Slug: "two-sum", Dir: "0001-two-sum"}
 
-// There are two path shapes, so every assertion here is made twice: a bug that
-// only reaches guests is the one this package exists to prevent.
+// An interview scaffolds its problems blank, so it must not land anywhere near
+// the study files — including the owner's, who has no _work directory otherwise.
+func TestInterviewFilesStayOutOfTheStudyTree(t *testing.T) {
+	root := filepath.Join("/tmp", "project")
+	for _, userID := range []int64{studydb.OwnerID, 7} {
+		lay := Interview(root, userID, 3)
+		got := lay.PkgDir(twoSum)
+		if strings.HasPrefix(got, solutions) {
+			t.Errorf("interview PkgDir = %q, which is inside the study tree", got)
+		}
+		if !strings.Contains(got, "interview-3") {
+			t.Errorf("interview PkgDir = %q, want the interview id in it", got)
+		}
+		if got == For(root, userID).PkgDir(twoSum) {
+			t.Errorf("interview and study layouts agree on %q", got)
+		}
+		if !strings.HasPrefix(got, guests) {
+			t.Errorf("interview PkgDir = %q, want it under %q so ./... skips it", got, guests)
+		}
+	}
+	// Two interviews are two directories, or the second would resume the first.
+	if a, b := Interview(root, 7, 1).PkgDir(twoSum), Interview(root, 7, 2).PkgDir(twoSum); a == b {
+		t.Errorf("interviews 1 and 2 share %q", a)
+	}
+}
+
+// There are two study path shapes, so every assertion here is made twice: a bug
+// that only reaches guests is the one this package exists to prevent.
 func TestOwnerKeepsSolutionsAndGuestsGetTheirOwn(t *testing.T) {
 	root := filepath.Join("/tmp", "project")
 	owner := Owner(root)

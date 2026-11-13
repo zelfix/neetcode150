@@ -58,11 +58,15 @@ The rest of this README assumes `nc` is on your path. If you skipped the build s
 
 `nc serve` has a workspace at `/problems/<slug>/solve`: a chat on the left, an editor
 and test output on the right. The statement is the first chat message, rendered directly
-from the fetched document without an AI request. Scroll up to reread it. The **My notes**
+from the fetched document without an AI request. Scroll up to reread it. A statement's
+trailing **Follow up:** question is the one part held back: reading "could you do this in
+one pass?" before you start tells you that one pass is possible, which is the question
+worth being asked once your first solution works. The tutor and the interviewer are given
+it instead, and raise it then. The **My notes**
 tab on the right autosaves your Markdown and preserves it across attempts. After a completed
 attempt, the chat stays open for Go idioms, allocation choices and trade-offs. These
 follow-up conversations do not restart the timer or change the saved rating. Useful
-optional advice is kept with the review in History. Clicking a problem in the roadmap,
+optional advice is kept with the review in History. Clicking a problem in the problem list,
 dashboard, pattern page or review queue opens this workspace directly. The statement is
 visible first; the editor stays blank and inactive until **Start**. If an earlier solution
 exists, it is kept under a collapsed previous-solutions section. Starting archives that
@@ -115,24 +119,37 @@ The test pane is read-only on purpose: a test you can edit from the same window 
 you can make pass by editing it.
 
 The **History** tab holds the rest of what a review needs. Every rating the problem has had
-is listed there with its hint rung, the interval it earned, and a flag when a rating looks
-generous next to the rung it needed — and it stays readable once an attempt is running,
+is listed there with the hint it needed, the interval it earned, and a flag when a rating
+looks generous next to that hint — and it stays readable once an attempt is running,
 which is when it matters. Below it sits the comparison between your current solution and
 the last attempt archived in the same language, rebuilt each time the tests pass. If the
 two are the same line for line, it says so, which is the question worth asking: was that
 memory or understanding?
 
-The problem's reading page carries the same rating history, lets you record the hint rung
-along with the rating, amend a rating you got wrong or undo it outright, and log time the
-clock missed. **Drill** draws a problem at random and does not tell you which pattern it
-is; naming it yourself is the exercise.
+The problem's reading page carries the same rating history, lets you record how a sitting
+went, undo a rating you got wrong, and log time the clock missed. Rating there is four
+buttons in words — needed the answer, needed a hint, got there with effort, got there
+easily — because a rating and a hint rung are two numbers to translate a sitting into, and
+the four cover everything the schedule does with them. The tutor still rates on the full
+scale when you submit from the workspace, and so does `nc rate`.
 
-**People** is the one page that looks across everybody sharing the instance: who has
-finished how many problems, on how many days, for how long. It ranks effort and nothing
-else — ratings and hint rungs are not there and will not be, because those are what the
-review schedule reads and they only work while they are honest. A table that rewarded a
-high rating would put a price on admitting you needed a hint. You can change the name
-others see on that page; it is a label, and renaming moves none of your work.
+**All problems** is the whole roadmap on one page: the eighteen patterns as an index at the
+top, each lane jumping to that pattern's group in the list below, and each group's heading
+opening its guide. There was a separate **Patterns** page until the two were merged — they
+were two views of the same eighteen groups, and the dashboard already carries the same
+lanes. Search and the difficulty, status and Blind 75 filters narrow the list; a pattern
+whose problems are all filtered out drops out of the index with them.
+
+**Interview** is two or three problems drawn at random, with a time limit on each and the
+tutor acting as an interviewer: it greets you, says how the session will go, and then hands
+over the first problem. No hints, no pattern named, and a complication once a solution
+works. You pick Go or Python on the way in, for the whole sitting. It writes no rating and moves no review date — it logs the time and
+keeps its own feedback at the end. This replaced a Drill page that drew one random problem
+and stopped there.
+
+No page looks across the people sharing an instance. There was one, ranking effort, and it
+was removed. Your name is now a label for whoever runs the instance: it appears in their
+`nc user list` and nowhere on the site.
 
 This is the one part of the site that writes files and runs code, so those endpoints are
 guarded. A request has to prove it came from one of this site's own pages (`Sec-Fetch-Site`,
@@ -282,7 +299,6 @@ does, kept for scripting and for when the site is not running.
 | `nc time <problem> <minutes>` | Log time spent, if the clock did not catch it |
 | `nc resolve <problem>` | Archive the solution and reset it for a cold re-solve |
 | `nc diff <problem>` | The last archived attempt against the current one |
-| `nc drill [--pattern p] [--solved]` | A problem at random, pattern withheld |
 | `nc weak [-n 10]` | What is least secure, and why |
 | `nc review` | What is due for review |
 | `nc stats` | Progress by pattern, with how securely each is held |
@@ -307,6 +323,7 @@ AGENTS.md                        instructions for any coding agent
 CLAUDE.md, GEMINI.md             short pointers to AGENTS.md
 tutor/
   TUTOR.md                       the tutoring protocol
+  INTERVIEW.md                   the interview protocol: the same tutor, no hints
   references/                    complexity targets, Go and Python idioms, loop invariants
 
 content/
@@ -357,6 +374,12 @@ seen the answer:
 | **4** | Comfortable. | Interval widens. |
 | **5** | Near-instant. | Interval widens. |
 
+The site asks this in words instead of numbers: four buttons, each setting the rating and
+the hint rung together. Four rather than five because 4 and 5 do the same thing to the
+ladder and differ only in ease, so the form always records the 5 — which also stops a 5
+followed by a 4 from reading as a slip. The numbers themselves are the tutor's and
+`nc rate`'s.
+
 The hint you needed is counted separately, and it has the final say on the schedule: a
 sitting that needed the invariant spelled out (rung 3) holds its rung rather than earning
 the next one, and one handed pseudocode or working Go (rung 4 or 5) falls back down the
@@ -384,28 +407,29 @@ something better, or forget something you knew?
 
 Reviews are not the only thing worth mixing up. `nc next` walks the roadmap in order, which
 means you know the pattern before you have read the statement, and that is most of the
-work. `nc drill` draws a problem at random and does not tell you which pattern it belongs
-to. Interleaved practice feels worse during a session and holds up better weeks later.
+work. The site's **Interview** page draws at random and withholds the pattern, so naming
+the approach is yours to do. Interleaved practice feels worse during a session and holds up
+better weeks later.
 
-## Coach
+## What the dashboard reports
 
-A count of solved problems flatters a problem that was only ever solved with help, which is
-exactly the one worth going back to. The site's **Coach** page answers the harder question
-off the data the ratings already carry.
+A count of solved problems says nothing about which of them needed help. The dashboard
+carries both: what to work on next, and what the ratings say about what is already done.
+This was a separate **Coach** page until the two were merged.
 
-The headline is the share of rated problems whose last sitting needed no hint at all —
-not how much you have covered, but how much you can do unaided. Below it, patterns are
+The figures are the share of rated problems whose last sitting needed no hint, how many are
+shaky or due, and the share of test runs that passed first time. Below them, patterns are
 ranked for attention: hints needed, slips since last time and low ratings all push a
-pattern up, while a pattern you have not started is not listed, because it is not a
-weakness. A pattern that is holding is not listed either; a list that flags everything
-stops being read. `nc stats` prints the same per-pattern figures in the terminal, and
-`nc weak` names the individual problems.
+pattern up. A pattern you have not started is not listed, and nor is one that is holding —
+a list that flags everything stops being read. Then the individual problems that look least
+secure, and a per-pattern table with unaided share, average hint and minutes spent.
+`nc stats` prints the same per-pattern figures in the terminal, and `nc weak` names the
+individual problems.
 
-The page also keeps the one thing the test output knew and nothing used to record: which
-fixtures each run broke. Over time that separates two different failures. Breaking a worked
-example means the approach is wrong; breaking only corner cases means it is nearly right and
-under-tested. Runs that never happened — a compile error, a cut-off loop — are not counted,
-or the pass rate would measure typing rather than understanding.
+The dashboard also shows which test fixtures each run broke. That separates two different
+failures: breaking a worked example means the approach is wrong, while breaking only corner
+cases means it is nearly right and under-tested. Runs that never happened — a compile
+error, a cut-off loop — are not counted, or the pass rate would measure typing instead.
 
 ## What is not here
 

@@ -88,6 +88,45 @@ func TestADeadInviteLooksExactlyLikeNoLink(t *testing.T) {
 	}
 }
 
+// An invite opened by somebody already signed in must not be redeemable: it
+// would mint a second account and replace their cookie with it, cutting them
+// off from their own work unless they kept their original link.
+func TestAnInviteIsNotForSomebodyAlreadySignedIn(t *testing.T) {
+	srv, _, _ := testSite(t)
+	h := srv.Handler()
+	mintInvite(t, srv, "tok", 2, 5, time.Hour)
+
+	page := httptest.NewRecorder()
+	h.ServeHTTP(page, signedRequest(httptest.NewRequest(http.MethodGet, "/invite/tok", nil)))
+	if page.Code != http.StatusSeeOther || page.Header().Get("Location") != "/" {
+		t.Errorf("GET /invite signed in = %d to %q, want a redirect home", page.Code, page.Header().Get("Location"))
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/invite", strings.NewReader(url.Values{"token": {"tok"}, "name": {"dima"}}.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
+	h.ServeHTTP(rec, signedRequest(req))
+	if rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != "/" {
+		t.Errorf("POST /invite signed in = %d to %q, want a redirect home", rec.Code, rec.Header().Get("Location"))
+	}
+	for _, c := range rec.Result().Cookies() {
+		if c.Name == cookieName {
+			t.Error("the signed-in person's cookie was replaced")
+		}
+	}
+	users, err := srv.db.Users()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(users) != 1 {
+		t.Errorf("%d users, want only the owner: the invite was spent on somebody who had an account", len(users))
+	}
+	if v, err := srv.db.InviteByToken("tok", srv.now()); err != nil || v.UsesLeft != 2 {
+		t.Errorf("uses left = %d, %v; want 2 and no error", v.UsesLeft, err)
+	}
+}
+
 func TestRedeemingAnInviteCreatesOneOwnIdentity(t *testing.T) {
 	srv, _, _ := testSite(t)
 	h := srv.Handler()

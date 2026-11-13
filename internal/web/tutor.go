@@ -45,7 +45,7 @@ func (s *session) handleTutorEvents(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, fmt.Errorf("this server cannot stream"))
 		return
 	}
-	sess := s.tutor.Get(s.progress.Scope(), p.Slug)
+	sess := s.tutor.GetAs(s.progress.Scope(), p.Slug, s.tutorRole(p.Slug))
 	if sess == nil {
 		// Nothing to follow yet. The page opens this stream only once a session
 		// exists, so reaching here means it has just been reset; 404 tells the
@@ -157,7 +157,17 @@ func (s *session) handleTutorSend(w http.ResponseWriter, r *http.Request) {
 	s.submissionMu.Unlock()
 
 	var sess *tutor.Session
-	if inSubmission {
+	// An interview owns this problem's chat while it is the current one, and it
+	// has none of the study machinery below: no pending assessment to answer and
+	// no post-attempt branch, which would hand it the last reviewed solution.
+	if role := s.tutorRole(p.Slug); role == tutor.RoleInterviewer {
+		sess, err = s.tutor.StartAs(s.progress.Scope(), p, role)
+		if err == nil && sess == nil {
+			err = fmt.Errorf("no interviewer session for this problem")
+		} else if err == nil {
+			err = sess.Send(req.Text)
+		}
+	} else if inSubmission {
 		sess, err = s.tutor.Start(s.progress.Scope(), p)
 		if err != nil {
 			// Preserve the pending assessment for a later retry.
@@ -267,6 +277,13 @@ func (s *session) handleTutorReset(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "finish the tutor follow-up before starting over", http.StatusConflict)
 		return
 	}
+	// An interview's conversation is the interview's, and it ends when the
+	// interview moves on. Clearing it here would leave the interviewer with no
+	// memory of the problem it is in the middle of.
+	if _, _, ok := s.interviewHere(p.Slug); ok {
+		http.Error(w, "an interview is in progress on this problem", http.StatusConflict)
+		return
+	}
 	s.tutor.Reset(s.progress.Scope(), p.Slug)
 	available, why := s.tutor.Available()
 	writeJSON(w, http.StatusOK, tutorStatus{
@@ -283,7 +300,12 @@ func (s *session) handleTutorInterrupt(w http.ResponseWriter, r *http.Request) {
 		s.notFound(w, r, "No problem with that slug.")
 		return
 	}
-	if err := s.tutor.Interrupt(s.progress.Scope(), p.Slug); err != nil {
+	sess := s.tutor.GetAs(s.progress.Scope(), p.Slug, s.tutorRole(p.Slug))
+	if sess == nil {
+		http.Error(w, "no tutor session for "+p.Slug, http.StatusConflict)
+		return
+	}
+	if err := sess.Interrupt(); err != nil {
 		http.Error(w, err.Error(), http.StatusConflict)
 		return
 	}

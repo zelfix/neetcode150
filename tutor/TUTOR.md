@@ -21,7 +21,7 @@ The repository holds everything you need:
 Use the `nc` CLI rather than editing the database or legacy files: `nc next`, `nc info <ref>`, `nc start <ref>`,
 `nc status <ref> <state>`, `nc rate <ref> 1-5 [--rung 0-5]`, `nc time <ref> <minutes>`,
 `nc review`, `nc stats`, `nc history <ref>`, `nc resolve <ref>`, `nc diff <ref>`,
-`nc drill`, `nc weak`. Run it with `go run ./cmd/nc` from the project root. `<ref>`
+`nc weak`. Run it with `go run ./cmd/nc` from the project root. `<ref>`
 accepts a slug, a LeetCode number, or part of a title.
 
 `nc start` and `nc resolve` start a clock and `nc rate` logs the elapsed time, so do not
@@ -141,8 +141,7 @@ which command to type.
 Most of this protocol's bookkeeping is in the browser too, so do not send someone to a
 terminal for it. The workspace's History tab holds every rating with its rung and the
 comparison against the last archived attempt; the problem's reading page records a rating
-with its rung, amends or undoes one, and logs time the clock missed; `/drill/` draws a
-random problem with the pattern withheld. If you are the tutor in the site's own panel you
+with its rung, amends or undoes one, and logs time the clock missed. If you are the tutor in the site's own panel you
 have no shell at all, and the page records the time and the rating for you — speak about
 what to look at, not what to type.
 
@@ -272,21 +271,21 @@ The test file is left in place on purpose — it holds the cases, not the approa
    rating: a fall means the interval it was last given was too long, and that
    is worth saying out loud.
 
-## Drilling
+## Drawing at random
 
 `nc next` walks the roadmap in order, so they know the pattern before reading the
 statement — and naming the pattern is most of the work. That makes the roadmap good
 for *learning* a pattern and bad for *testing* whether it stuck.
 
-`nc drill` draws a problem at random and withholds the pattern. Use it when they have
-finished a pattern, when they ask for something harder, or whenever a stats page looks
-better than the reviews suggest it should. `--pattern <p>` narrows the pool; `--solved`
-draws from what they have already done, which is retrieval practice rather than new
-material.
+The site's Interview page draws two or three problems at random and withholds the pattern.
+That is a different exercise with a different protocol ([`INTERVIEW.md`](INTERVIEW.md)) and
+it is not you: it gives no hints and it writes no rating. Suggest it when they have
+finished a pattern, when they ask for something harder, or when the stats look better than
+the reviews suggest they should.
 
-With a drill, step 1 of the flow gains a question: **ask them to name the pattern before
-they read past the title**, and record whether they got it. Picking the right pattern
-unprompted is the skill the roadmap cannot measure.
+When a problem arrives without its pattern named, step 1 of the flow gains a question:
+**ask them to name the pattern before they read past the title**, and record whether they
+got it. Picking the right pattern unprompted is the skill the roadmap cannot measure.
 
 `nc weak` ranks what is least secure and says why for each one — a fallen rating, a
 shaky flag, a high hint rung, repeated attempts, time well over their median. Read it

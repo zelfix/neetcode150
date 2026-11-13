@@ -22,22 +22,36 @@
 
 <section class="block">
   <div class="block-head">
-    <h2>The roadmap</h2>
+    <h2>Where you are</h2>
     <span class="meta metas">
         <span>{{.Summary.Done}} solved</span>
         <span>{{.Summary.Attempted}} in progress</span>
         <span>{{.Summary.New}} untouched</span>
       </span>
   </div>
-  <div class="roadmap">
-    {{range .Groups}}
-    <a class="lane{{if eq .Summary.Done .Summary.Total}} done{{end}}" href="/patterns/{{.Slug}}">
-      <span class="lane-name">{{.Pattern}}</span>
-      <span class="lane-count">{{.Summary.Done}}/{{.Summary.Total}}</span>
-      {{template "cells" .Problems}}
-    </a>
+  {{if .Rated}}
+  <div class="tiles">
+    <div class="tile">
+      <span class="tile-n">{{.UnaidedShare}}%</span>
+      <span class="tile-k">solved unaided</span>
+      <span class="tile-s">{{.Unaided}} of {{plural .Rated "rated problem" "rated problems"}}, counting the last sitting only</span>
+    </div>
+    <div class="tile">
+      <span class="tile-n">{{.Summary.Done}}</span>
+      <span class="tile-k">problems touched</span>
+      <span class="tile-s">{{.Summary.Shaky}} flagged shaky &middot; {{.Summary.DueNow}} due now</span>
+    </div>
+    {{if .Tally.Runs}}
+    <div class="tile">
+      <span class="tile-n">{{.Tally.Share}}%</span>
+      <span class="tile-k">clean test runs</span>
+      <span class="tile-s">{{.Tally.Clean}} of {{plural .Tally.Runs "run" "runs"}} passed first time through</span>
+    </div>
     {{end}}
   </div>
+  {{else}}
+  <p class="empty">Nothing rated yet. Rate a sitting and the figures appear here.</p>
+  {{end}}
 </section>
 
 <div class="pair">
@@ -62,4 +76,79 @@
     {{end}}
   </section>
 </div>
+
+{{if .Rated}}
+<section class="block">
+  <div class="block-head">
+    <h2>Where to go back</h2>
+    {{if .Concerns}}<span class="meta">most concerning first</span>{{end}}
+  </div>
+  {{if .Concerns}}
+  <div class="rows">
+    {{range .Concerns}}
+    <a class="row row-link" href="/patterns/{{.PatternSlug}}" style="grid-template-columns: 1fr 4.5rem 5.5rem 5rem 4.5rem">
+      <span class="row-title">{{.Pattern}}</span>
+      <span class="row-when">{{.Solved}}/{{.Total}} done</span>
+      <span class="row-when{{if lt .UnaidedShare 50}} is-warn{{end}}">{{.UnaidedShare}}% unaided</span>
+      <span class="row-when">hint {{printf "%.1f" .Rung}}</span>
+      <span class="row-when{{if .Slipped}} is-warn{{end}}">{{.SlipShare}}% slip</span>
+    </a>
+    {{end}}
+  </div>
+  <p class="note">A pattern climbs this list when its problems needed hints, slipped since last time, or were rated low. Patterns you have not started are not listed.</p>
+  {{else}}
+  <p class="empty">Nothing stands out. Every pattern you have rated is holding.</p>
+  {{end}}
+</section>
+{{end}}
+
+{{if .Weakest}}
+<section class="block">
+  <div class="block-head">
+    <h2>Least secure problems</h2>
+    <span class="meta">{{plural (len .Weakest) "problem" "problems"}}</span>
+  </div>
+  {{range .Weakest}}
+  <div class="row row-stack">
+    <span class="row-title"><a href="/problems/{{.Problem.Slug}}">{{.Problem.ID}}. {{.Problem.Title}}</a></span>
+    <span class="row-sub">{{.Problem.Pattern}} &middot; {{range $i, $r := .Reasons}}{{if $i}}; {{end}}{{$r}}{{end}}</span>
+  </div>
+  {{end}}
+</section>
+{{end}}
+
+{{if .Cases}}
+<section class="block">
+  <div class="block-head">
+    <h2>Cases you break most</h2>
+    <span class="meta">{{.Examples}} example &middot; {{.Edges}} corner</span>
+  </div>
+  <div class="rows">
+    {{range .Cases}}
+    <a class="row row-link" href="/problems/{{.Slug}}/solve" style="grid-template-columns: 3.2rem 1fr 4.5rem 5rem">
+      <span class="row-id">{{if .ID}}{{.ID}}{{end}}</span>
+      <span class="row-title">{{.Title}} <span class="row-sub">&mdash; {{.Name}}</span></span>
+      <span class="row-diff is-{{if eq .Kind "example"}}medium{{else}}easy{{end}}">{{.Kind}}</span>
+      <span class="row-when">{{plural .Failures "break" "breaks"}}</span>
+    </a>
+    {{end}}
+  </div>
+  <p class="note">Breaking a worked example means the approach is wrong. Breaking only corner cases means it is nearly right and under-tested, which is a different fix.</p>
+</section>
+{{end}}
+
+<section class="block">
+  <div class="block-head"><h2>Every pattern</h2></div>
+  <div class="rows">
+    {{range .Patterns}}
+    <a class="row row-link" href="/patterns/{{.PatternSlug}}" style="grid-template-columns: 1fr 4.5rem 5.5rem 5rem 5rem">
+      <span class="row-title">{{.Pattern}}</span>
+      <span class="row-when">{{.Solved}}/{{.Total}}</span>
+      <span class="row-when">{{if .Rated}}{{.UnaidedShare}}% unaided{{else}}&mdash;{{end}}</span>
+      <span class="row-when">{{if .Rated}}hint {{printf "%.1f" .Rung}}{{else}}&mdash;{{end}}</span>
+      <span class="row-when">{{if .Minutes}}{{.Minutes}} min{{else}}&mdash;{{end}}</span>
+    </a>
+    {{end}}
+  </div>
+</section>
 {{end}}

@@ -403,3 +403,36 @@ func TestResetArchivesCurrentSolutionAndWritesFreshScaffold(t *testing.T) {
 		t.Error("Reset with no solution.go returned nil error")
 	}
 }
+
+// An interview scaffolds with WithoutPattern, because the file it hands over
+// opens with a comment naming the problem — and the pattern is the thing the
+// candidate is being asked to work out.
+func TestWithoutPatternKeepsThePatternOutOfTheHeader(t *testing.T) {
+	sig := "func twoSum(nums []int, target int) []int {\n    \n}"
+	statement := "**Input:** `nums = [2,7,11,15], target = 9`\n\n**Output:** `[0,1]`\n"
+
+	plain := Generate(twoSum, sig, statement)
+	if !strings.Contains(plain.Solution, twoSum.Pattern) {
+		t.Fatal("the ordinary header lost the pattern, so this test proves nothing")
+	}
+	anon := WithoutPattern(twoSum)
+	for _, l := range []lang.Lang{lang.Of(lang.Go), lang.Of(lang.Python)} {
+		f := GenerateFor(l, anon, sig, statement)
+		if strings.Contains(f.Solution, twoSum.Pattern) {
+			t.Errorf("%s solution names the pattern", l.Label)
+		}
+		// Still the same problem, and the rest of the header has to survive.
+		for _, want := range []string{"1. Two Sum", "Easy", twoSum.LeetCodeURL} {
+			if !strings.Contains(f.Solution, want) {
+				t.Errorf("%s solution lost %q from the header", l.Label, want)
+			}
+		}
+		if strings.Contains(f.Solution, "Easy, ") {
+			t.Errorf("%s solution left a dangling separator where the pattern was", l.Label)
+		}
+	}
+	// It is a copy: the catalog's own problem must keep its pattern.
+	if twoSum.Pattern == "" {
+		t.Error("WithoutPattern mutated the problem it was given")
+	}
+}

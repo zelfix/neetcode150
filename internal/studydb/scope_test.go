@@ -74,7 +74,7 @@ func TestScopesDoNotSeeEachOther(t *testing.T) {
 		if err := c.scope.RecordTestRun("two-sum", now, 1, 1, []FailedCase{{Kind: "edge", Name: c.mark}}); err != nil {
 			t.Fatal(err)
 		}
-		id, err := c.scope.NewSession("two-sum", "claude", now)
+		id, err := c.scope.NewSession("two-sum", "claude", "tutor", now)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -122,7 +122,7 @@ func TestScopesDoNotSeeEachOther(t *testing.T) {
 		if err != nil || kinds["edge"] != 1 {
 			t.Fatalf("%s sees kinds %v, %v", c.mark, kinds, err)
 		}
-		sess, err := c.scope.Session("two-sum")
+		sess, err := c.scope.Session("two-sum", "tutor")
 		if err != nil || sess == nil {
 			t.Fatalf("%s has no session: %v", c.mark, err)
 		}
@@ -142,10 +142,10 @@ func TestScopesDoNotSeeEachOther(t *testing.T) {
 	}
 
 	// Retiring and deleting must not reach across either.
-	if err := other.RetireSession("two-sum"); err != nil {
+	if err := other.RetireSession("two-sum", "tutor"); err != nil {
 		t.Fatal(err)
 	}
-	if sess, err := owner.Session("two-sum"); err != nil || sess == nil {
+	if sess, err := owner.Session("two-sum", "tutor"); err != nil || sess == nil {
 		t.Fatal("retiring the guest's session retired the owner's")
 	}
 	// The sharpest of the leaks this replaces: the old DELETE was by slug alone,
@@ -182,7 +182,7 @@ func TestDeletingAUserRemovesEverythingOfTheirs(t *testing.T) {
 	if err := scope.RecordTestRun("two-sum", now, 1, 0, nil); err != nil {
 		t.Fatal(err)
 	}
-	id, err := scope.NewSession("two-sum", "claude", now)
+	id, err := scope.NewSession("two-sum", "claude", "tutor", now)
 	if err != nil {
 		t.Fatal(err)
 	}

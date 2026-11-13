@@ -303,7 +303,7 @@ func GeneratePython(p catalog.Problem, signature, statement string) Files {
 	}
 
 	var sol strings.Builder
-	fmt.Fprintf(&sol, "# %d. %s — %s, %s\n", p.ID, p.Title, p.Difficulty, p.Pattern)
+	fmt.Fprintf(&sol, "# %s\n", headerLine(p))
 	fmt.Fprintf(&sol, "# %s\n", p.LeetCodeURL)
 	fmt.Fprintf(&sol, "#\n# Statement: %s/problem.md\n\n", p.ContentDir())
 	if names := typingNames(body.String()); len(names) > 0 {

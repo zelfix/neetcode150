@@ -140,11 +140,11 @@ func TestTwoPeopleGetSeparateTutorConversations(t *testing.T) {
 		t.Fatal("one session served two people")
 	}
 	// And their stored transcripts are separate rows.
-	ownerRec, err := prog.Scope().Session("two-sum")
+	ownerRec, err := prog.Scope().Session("two-sum", "tutor")
 	if err != nil || ownerRec == nil {
 		t.Fatalf("owner session not stored: %v", err)
 	}
-	guestRec, err := srv.db.For(guestUser.ID).Session("two-sum")
+	guestRec, err := srv.db.For(guestUser.ID).Session("two-sum", "tutor")
 	if err != nil || guestRec == nil {
 		t.Fatalf("guest session not stored: %v", err)
 	}

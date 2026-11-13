@@ -9,6 +9,12 @@
   const search = document.querySelector("[data-search]");
   const counter = document.querySelector("[data-count]");
   const sections = Array.from(document.querySelectorAll("[data-group-section]"));
+  // The patterns index at the top of the list. Its entries jump to a group, so
+  // one whose group the filters have emptied has to go with it — a jump that
+  // lands on a hidden heading looks like a broken link.
+  const lanes = new Map(
+    Array.from(document.querySelectorAll("[data-lane-for]")).map((el) => [el.dataset.laneFor, el]),
+  );
 
   // active holds the selected values per filter group, e.g. {difficulty: Set}.
   const active = new Map();
@@ -35,6 +41,7 @@
     for (const section of sections) {
       const any = section.querySelector(".row:not(.hidden)");
       section.classList.toggle("hidden", !any);
+      lanes.get(section.dataset.pattern)?.classList.toggle("hidden", !any);
     }
     if (counter) {
       counter.textContent = shown === rows.length ? "" : `${shown} of ${rows.length}`;
@@ -56,6 +63,26 @@
       });
     }
     search?.addEventListener("input", apply);
+  }
+
+  // ---- an interview whose feedback is still being written ----
+
+  // The report is a model turn, so the page that asked for it is rendered
+  // before the answer exists. Poll until the row is finished, then show it.
+  if (document.querySelector("[data-interview-pending]")) {
+    const tick = window.setInterval(async () => {
+      try {
+        const res = await fetch("/interview/state", { headers: { Accept: "application/json" } });
+        if (!res.ok) return;
+        const st = await res.json();
+        if (!st.live) {
+          window.clearInterval(tick);
+          window.location.reload();
+        }
+      } catch {
+        // A dropped poll is not news; the next one will say.
+      }
+    }, 3000);
   }
 
   // ---- keyboard navigation ----

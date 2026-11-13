@@ -222,3 +222,97 @@ func TestDocHTMLBodyDropsOnlyTheTitle(t *testing.T) {
 		t.Errorf("Title() = %q", doc.Title())
 	}
 }
+
+// 22 of the 150 statements end with a follow-up question. Reading it before
+// starting gives away that a better solution exists, so the pages hold it back
+// and the prompts carry it privately.
+func TestSplitFollowUpHoldsBackTheTrailingQuestion(t *testing.T) {
+	cases := []struct {
+		name, body, wantStatement, wantFollowUp string
+	}{
+		{
+			name:          "one line",
+			body:          "Find the two indices.\n\n**Follow up:** Could you do it in one pass?\n",
+			wantStatement: "Find the two indices.",
+			wantFollowUp:  "Could you do it in one pass?",
+		},
+		{
+			name:          "hyphenated",
+			body:          "Sort it.\n\n**Follow-up:** Can you do better than `O(n^2)`?\n",
+			wantStatement: "Sort it.",
+			wantFollowUp:  "Can you do better than `O(n^2)`?",
+		},
+		{
+			name:          "a list after the marker",
+			body:          "Zero the matrix.\n\n**Follow up:**\n\n- `O(mn)` space is a bad idea.\n- Constant space?\n",
+			wantStatement: "Zero the matrix.",
+			wantFollowUp:  "- `O(mn)` space is a bad idea.\n- Constant space?",
+		},
+		{
+			name:          "none",
+			body:          "Just the statement.\n",
+			wantStatement: "Just the statement.\n",
+			wantFollowUp:  "",
+		},
+		{
+			name:          "the words in prose are not the marker",
+			body:          "You might follow up on this later.\n",
+			wantStatement: "You might follow up on this later.\n",
+			wantFollowUp:  "",
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			statement, followUp := SplitFollowUp(c.body)
+			if statement != c.wantStatement {
+				t.Errorf("statement = %q, want %q", statement, c.wantStatement)
+			}
+			if followUp != c.wantFollowUp {
+				t.Errorf("follow-up = %q, want %q", followUp, c.wantFollowUp)
+			}
+		})
+	}
+}
+
+// Only a problem statement is split. A pattern guide that discusses following
+// up on something is prose, not a question being withheld.
+func TestOnlyAProblemStatementLosesItsFollowUp(t *testing.T) {
+	root := t.TempDir()
+	write := func(rel, body string) {
+		t.Helper()
+		full := filepath.Join(root, rel)
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(full, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("content/problems/0001-two-sum/problem.md",
+		"---\ntitle: Two Sum\n---\n\nFind the two indices.\n\n**Follow up:** One pass?\n")
+	write("content/patterns/arrays-hashing.md",
+		"---\ntitle: Arrays & Hashing\n---\n\nTrade memory for passes.\n\n**Follow up:** read the guide again.\n")
+	store := NewStore(root, NewRenderer())
+
+	statement, err := store.Doc(nil, "content/problems/0001-two-sum/problem.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(statement.Body, "One pass?") || strings.Contains(string(statement.HTML), "One pass?") {
+		t.Error("the rendered statement still shows the follow-up")
+	}
+	if statement.FollowUp != "One pass?" {
+		t.Errorf("FollowUp = %q, want it kept aside", statement.FollowUp)
+	}
+
+	guide, err := store.Doc(nil, "content/patterns/arrays-hashing.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(guide.Body, "read the guide again") {
+		t.Error("a pattern guide lost text to the follow-up rule")
+	}
+	if guide.FollowUp != "" {
+		t.Errorf("guide FollowUp = %q, want nothing", guide.FollowUp)
+	}
+}

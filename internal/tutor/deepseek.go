@@ -202,7 +202,7 @@ func (m *Manager) startDeepSeek(scope *studydb.Scope, s *Session) error {
 		model:   m.model,
 		base:    m.deepseekBase,
 		rates:   m.deepseekRates,
-		system:  m.systemPrompt(scope, s.Problem),
+		system:  m.systemPrompt(scope, s.Problem, s.Role),
 		retryWait: func(attempt int, retryAfter time.Duration) time.Duration {
 			if retryAfter > 0 {
 				return min(retryAfter, 10*time.Second)
@@ -210,7 +210,7 @@ func (m *Manager) startDeepSeek(scope *studydb.Scope, s *Session) error {
 			return time.Duration(attempt) * 500 * time.Millisecond
 		},
 		turnContext: func() string {
-			return m.turnContext(scope, s.Problem)
+			return m.turnContext(scope, s.Problem, s.Role)
 		},
 	}
 	if c.model == "" {

@@ -126,7 +126,7 @@ func TestEveryPageRenders(t *testing.T) {
 	srv, _, _ := testSite(t)
 	h := srv.Handler()
 
-	for _, path := range []string{"/", "/problems/", "/problems/two-sum", "/patterns/", "/patterns/arrays-hashing", "/review/", "/coach/", "/highlight.css", "/static/app.css"} {
+	for _, path := range []string{"/", "/problems/", "/problems/two-sum", "/patterns/arrays-hashing", "/review/", "/interview/", "/highlight.css", "/static/app.css"} {
 		rec := get(t, h, path)
 		if rec.Code != http.StatusOK {
 			t.Errorf("GET %s = %d, want 200", path, rec.Code)
@@ -151,7 +151,7 @@ func TestUnknownSlugsAre404(t *testing.T) {
 func TestPathsWithoutATrailingSlashRedirect(t *testing.T) {
 	srv, _, _ := testSite(t)
 	h := srv.Handler()
-	for _, path := range []string{"/problems", "/patterns", "/review"} {
+	for _, path := range []string{"/problems", "/review", "/interview"} {
 		rec := get(t, h, path)
 		if rec.Code != http.StatusMovedPermanently {
 			t.Errorf("GET %s = %d, want 301", path, rec.Code)
@@ -159,6 +159,44 @@ func TestPathsWithoutATrailingSlashRedirect(t *testing.T) {
 		if got := rec.Header().Get("Location"); got != path+"/" {
 			t.Errorf("GET %s redirected to %q", path, got)
 		}
+	}
+}
+
+// The patterns index and the problem list were two views of the same eighteen
+// groups, and are one page now. The old URL is simply gone: nothing links it,
+// and an unpublished site has no history to keep a redirect for.
+func TestThePatternsIndexIsNowTheProblemList(t *testing.T) {
+	srv, _, _ := testSite(t)
+	h := srv.Handler()
+
+	// Both spellings, because a wildcard route for the guides sits one segment
+	// below and must not quietly answer for the index.
+	for _, path := range []string{"/patterns/", "/patterns"} {
+		if code := get(t, h, path).Code; code != http.StatusNotFound {
+			t.Errorf("GET %s = %d, want 404", path, code)
+		}
+	}
+
+	body := get(t, h, "/problems/").Body.String()
+	// The index the merged page absorbed: one lane per pattern, jumping to that
+	// pattern's own group further down rather than opening its guide.
+	for _, want := range []string{
+		`class="roadmap pattern-index"`,
+		`href="#pattern-arrays-hashing"`,
+		`data-lane-for="arrays-hashing"`,
+		`id="pattern-arrays-hashing"`,
+		`data-pattern="arrays-hashing"`,
+		`<a href="/patterns/arrays-hashing">`, // the group heading still opens the guide
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("the merged list is missing %q", want)
+		}
+	}
+	if strings.Contains(body, `href="/patterns/"`) {
+		t.Error("something still links the index that was merged away")
+	}
+	if nav := get(t, h, "/").Body.String(); strings.Contains(nav, ">Patterns<") {
+		t.Error("the nav still offers a separate Patterns page")
 	}
 }
 
@@ -257,7 +295,7 @@ func TestRatePostSchedulesAReview(t *testing.T) {
 	h := srv.Handler()
 
 	rec := postForm(t, h, "/problems/two-sum/rate",
-		url.Values{"confidence": {"4"}, "from": {"/review/"}})
+		url.Values{"outcome": {"easy"}, "from": {"/review/"}})
 
 	if rec.Code != http.StatusSeeOther {
 		t.Fatalf("POST rate = %d, want 303", rec.Code)
@@ -279,8 +317,8 @@ func TestBadMutationsAreRejected(t *testing.T) {
 		want int
 	}{
 		{"/problems/two-sum/status", url.Values{"status": {"brilliant"}}, http.StatusBadRequest},
-		{"/problems/two-sum/rate", url.Values{"confidence": {"9"}}, http.StatusBadRequest},
-		{"/problems/two-sum/rate", url.Values{"confidence": {"abc"}}, http.StatusBadRequest},
+		{"/problems/two-sum/rate", url.Values{"outcome": {"brilliant"}}, http.StatusBadRequest},
+		{"/problems/two-sum/rate", url.Values{}, http.StatusBadRequest},
 		{"/problems/nope/status", url.Values{"status": {"solved"}}, http.StatusNotFound},
 	}
 	for _, tc := range cases {
@@ -302,6 +340,28 @@ func TestRedirectBackRefusesAnOffsiteTarget(t *testing.T) {
 	}
 }
 
+// No page shows who else is on the instance. This is pinned rather than left to
+// the reader of AGENTS.md: the page that used to do it ranked only effort, which
+// is the safe half, and what made it worth removing was that it existed at all —
+// it was the only reason a name had to be public. See the identity section there
+// before adding anything across people.
+func TestNoPageLooksAcrossPeople(t *testing.T) {
+	srv, _, _ := testSite(t)
+	h := srv.Handler()
+
+	for _, path := range []string{"/people/", "/people"} {
+		if code := get(t, h, path).Code; code != http.StatusNotFound {
+			t.Errorf("GET %s = %d, want 404", path, code)
+		}
+	}
+	if code := postForm(t, h, "/me/name", url.Values{"name": {"someone"}}).Code; code != http.StatusNotFound {
+		t.Errorf("POST /me/name = %d, want 404; renaming went with the page", code)
+	}
+	if body := get(t, h, "/").Body.String(); strings.Contains(body, "/people/") {
+		t.Error("the nav still links a people page")
+	}
+}
+
 func TestDashboardSuggestsTheNextProblemInOrder(t *testing.T) {
 	srv, _, prog := testSite(t)
 	h := srv.Handler()
@@ -310,19 +370,21 @@ func TestDashboardSuggestsTheNextProblemInOrder(t *testing.T) {
 	if !strings.Contains(body, "Contains Duplicate") {
 		t.Error("dashboard should suggest the first problem in the roadmap")
 	}
-	// One cell per problem makes up the roadmap meter.
-	if n := strings.Count(body, `class="cell `); n != 3 {
-		t.Errorf("got %d roadmap cells, want 3", n)
-	}
 
 	if _, err := prog.SetStatus("contains-duplicate", progress.Solved, srv.now()); err != nil {
 		t.Fatal(err)
 	}
-	body = get(t, h, "/").Body.String()
-	if !strings.Contains(body, "Two Sum") {
+	if body := get(t, h, "/").Body.String(); !strings.Contains(body, "Two Sum") {
 		t.Error("after solving the first, the dashboard should move on")
 	}
-	if !strings.Contains(body, `class="cell is-solved"`) {
+
+	// The cell meter moved to the problem list with the patterns index; the
+	// dashboard carries the per-pattern figures instead.
+	list := get(t, h, "/problems/").Body.String()
+	if n := strings.Count(list, `class="cell `); n != 3 {
+		t.Errorf("got %d roadmap cells, want 3", n)
+	}
+	if !strings.Contains(list, `class="cell is-solved"`) {
 		t.Error("the solved problem's cell should be filled")
 	}
 }
@@ -345,7 +407,7 @@ func TestReviewQueueListsWhatIsDue(t *testing.T) {
 	if !strings.Contains(body, "Two Sum") {
 		t.Error("the due problem is not listed")
 	}
-	if !strings.Contains(body, `name="confidence"`) {
+	if !strings.Contains(body, `name="outcome"`) {
 		t.Error("the queue should let you rate a problem in place")
 	}
 }
@@ -978,7 +1040,7 @@ func fakeTutor(t *testing.T, srv *Server, script string) {
 		t.Fatal(err)
 	}
 	m := tutor.NewWithCommand(t.TempDir(), tutor.ModeTutor,
-		func(ctx context.Context, _ *studydb.Scope, p catalog.Problem, id string) *exec.Cmd {
+		func(ctx context.Context, _ *studydb.Scope, p catalog.Problem, _ tutor.Role, id string) *exec.Cmd {
 			return exec.CommandContext(ctx, "/bin/sh", path, id)
 		})
 	srv.UseTutor(m)
@@ -1396,8 +1458,8 @@ func TestRecordFillsTheWorkColumnBeforeStart(t *testing.T) {
 	for _, want := range []string{
 		"record-table",
 		"26", // the sitting, not a cumulative total
-		"Last sitting needed hint rung 3.",
-		"rating looks generous next to that rung",
+		"Last sitting needed hint 3 of 5.",
+		"rating looks generous next to the hint it needed",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("the record is missing %q", want)

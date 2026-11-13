@@ -6,9 +6,11 @@
       {{/* The opening message is deterministic: the fetched statement, not an AI paraphrase. */}}
       <article class="tutor-turn is-tutor statement-turn" data-statement-message>
         <header class="statement-head">
-          <p class="message-author">Tutor <span>· Problem statement</span></p>
+          <p class="message-author">{{if .Interview}}Interviewer{{else}}Tutor{{end}} <span>· Problem statement</span></p>
           <h1>{{.P.ID}}. {{.P.Title}}</h1>
-          <p class="brief-facts"><span class="is-{{lower .P.Difficulty}}">{{.P.Difficulty}}</span><span>{{.P.Pattern}}</span></p>
+          {{/* The pattern is withheld during an interview: the problem was drawn at
+               random so that naming the approach is part of the exercise. */}}
+          <p class="brief-facts"><span class="is-{{lower .P.Difficulty}}">{{.P.Difficulty}}</span>{{if not .Interview}}<span>{{.P.Pattern}}</span>{{end}}</p>
         </header>
         {{if .Statement.Empty}}
         <p class="notes-empty">No statement on disk. Run <code>nc fetch</code> first.</p>
@@ -20,6 +22,7 @@
     </div>
     {{if .ChatEnabled}}
     {{if .Tutor.Available}}
+    {{if not .Interview}}
     <div class="tutor-presets" data-study-presets{{if not .Active}} hidden{{end}}>
       <button type="button" class="chip" data-ask="What pattern is this, and why that one?">Which pattern?</button>
       <button type="button" class="chip" data-ask="I have written something. Review my solution — complexity and {{.Lang.Label}} idioms — but do not rewrite it for me.">Review mine</button>
@@ -32,6 +35,7 @@
       <button type="button" class="chip" data-ask="What time, memory, or readability trade-offs are worth exploring in my solution?">Trade-offs</button>
       <button type="button" class="chip" data-ask="Explain your last feedback in more detail. Keep my completed attempt's rating unchanged.">Explain feedback</button>
     </div>
+    {{end}}
 
     <form class="chat-ask" data-tutor-form>
       <textarea data-tutor-input rows="2" aria-label="Ask the tutor"
@@ -56,11 +60,24 @@
   {{/* The right pane is the code and the two moves that matter: run them, hand
        them in. Saving is not a decision, so it happens on its own. */}}
   <section class="workspace">
+    {{if .Interview}}
+    {{/* No clock here: the header below already runs one, and during an
+         interview it is counting the interview's own time. Two <time data-clock>
+         elements meant the script drove the first and left the other at 00:00. */}}
+    <header class="work-head interview-head" data-interview="{{.Interview.ID}}"
+      data-limit="{{.Interview.Limit}}" data-said="{{.Interview.Said}}">
+      <span class="path there">Interview · problem {{.Interview.Index}} of {{.Interview.Total}}</span>
+      <span class="lang-badge">{{.Interview.Limit}} min each</span>
+      <form method="post" action="/interview/next" class="interview-inline">
+        <button type="submit" class="link">{{if .Interview.Last}}Finish and get feedback{{else}}Next problem{{end}}</button>
+      </form>
+    </header>
+    {{end}}
     <header class="work-head">
       <span class="path there">{{.SolutionPath}}</span>
       <span class="lang-badge" title="This problem is worked in {{.Lang.Label}}">{{.Lang.Label}}</span>
       <time class="solve-clock"{{if .Active}} data-clock{{end}} data-seconds="{{.ElapsedSeconds}}">{{.ElapsedLabel}}</time>
-      {{if and .Active (not .PendingSubmit)}}<button type="button" class="link" data-cancel>Cancel attempt</button>{{end}}
+      {{if and .Active (not .PendingSubmit) (not .Interview)}}<button type="button" class="link" data-cancel>Cancel attempt</button>{{end}}
     </header>
 
     <div class="work-tabs" role="tablist" aria-label="Workspace">
@@ -192,7 +209,7 @@
         {{end}}
         {{range .Submissions}}
         <details class="submission">
-          <summary>{{.Name}}{{if .Lang}} · {{.Lang}}{{end}}{{if .Review}} · rating {{.Review.Confidence}}/5 · rung {{.Review.Rung}}{{if .Review.Passed}} · tests passed{{else}} · tests failed{{end}}{{end}}</summary>
+          <summary>{{.Name}}{{if .Lang}} · {{.Lang}}{{end}}{{if .Review}} · rating {{.Review.Confidence}}/5 · hint {{.Review.Rung}}{{if .Review.Passed}} · tests passed{{else}} · tests failed{{end}}{{end}}</summary>
           {{if .Review}}
           <p><strong>Tutor:</strong> {{.Review.Feedback}}</p>
           {{if .Review.Followup}}<p><strong>Explore next:</strong> {{.Review.Followup}}</p>{{end}}

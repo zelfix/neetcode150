@@ -10,7 +10,9 @@ import (
 	"neetcode150/internal/studydb"
 )
 
-func TestCoachPageReportsWhatIsNotSecure(t *testing.T) {
+// These figures were a Coach page of their own until it was merged into the
+// dashboard, so they are asserted against "/".
+func TestDashboardReportsWhatIsNotSecure(t *testing.T) {
 	srv, _, prog := testSite(t)
 	h := srv.Handler()
 	now := srv.now()
@@ -26,15 +28,15 @@ func TestCoachPageReportsWhatIsNotSecure(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	body := get(t, h, "/coach/").Body.String()
+	body := get(t, h, "/").Body.String()
 	for _, want := range []string{
 		"solved unaided",
 		"Two Pointers",       // the pattern taken with help
 		"Valid Palindrome",   // the least secure problem
-		"needed hint rung 5", // and why
+		"needed hint 5 of 5", // and why
 	} {
 		if !strings.Contains(body, want) {
-			t.Errorf("the coach page does not mention %q", want)
+			t.Errorf("the dashboard does not mention %q", want)
 		}
 	}
 	// Arrays & Hashing was held unaided, so it is not something to go back to.
@@ -47,14 +49,41 @@ func TestCoachPageReportsWhatIsNotSecure(t *testing.T) {
 	}
 }
 
-func TestCoachPageOnAnEmptySlate(t *testing.T) {
+func TestDashboardOnAnEmptySlate(t *testing.T) {
 	srv, _, _ := testSite(t)
-	rec := get(t, srv.Handler(), "/coach/")
+	rec := get(t, srv.Handler(), "/")
 	if rec.Code != http.StatusOK {
-		t.Fatalf("GET /coach/ = %d", rec.Code)
+		t.Fatalf("GET / = %d", rec.Code)
 	}
 	if !strings.Contains(rec.Body.String(), "Nothing rated yet") {
 		t.Error("an unrated slate should say so rather than show zeroes")
+	}
+}
+
+// The page is gone, not moved: nothing links it and the site is not published.
+func TestTheCoachPageIsNowTheDashboard(t *testing.T) {
+	srv, _, prog := testSite(t)
+	h := srv.Handler()
+
+	for _, path := range []string{"/coach/", "/coach"} {
+		if code := get(t, h, path).Code; code != http.StatusNotFound {
+			t.Errorf("GET %s = %d, want 404", path, code)
+		}
+	}
+	// Two of the sections only render once something is rated.
+	if _, err := prog.RateHinted("two-sum", 2, 5, srv.now()); err != nil {
+		t.Fatal(err)
+	}
+	body := get(t, h, "/").Body.String()
+	// The four sections it brought with it, plus the per-pattern table that
+	// replaced the dashboard's own lanes.
+	for _, want := range []string{"solved unaided", "Where to go back", "Every pattern"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("the dashboard is missing %q", want)
+		}
+	}
+	if strings.Contains(body, ">Coach<") {
+		t.Error("the nav still offers a separate Coach page")
 	}
 }
 
@@ -107,8 +136,8 @@ func TestRunningTestsRecordsWhichCasesBroke(t *testing.T) {
 		t.Errorf("a failed run was recorded: %d runs", tally.Runs)
 	}
 
-	body := get(t, h, "/coach/").Body.String()
+	body := get(t, h, "/").Body.String()
 	if !strings.Contains(body, "empty input") || !strings.Contains(body, "Cases you break most") {
-		t.Error("the coach page does not show the broken cases")
+		t.Error("the dashboard does not show the broken cases")
 	}
 }

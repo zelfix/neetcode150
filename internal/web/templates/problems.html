@@ -1,8 +1,24 @@
 {{define "content"}}
 <div class="lede">
   <h1>All problems</h1>
-  <p>The full roadmap, in the order it is meant to be worked through.</p>
+  <p>The full roadmap, in the order it is meant to be worked through. Eighteen ideas carry
+  all 150: learn the idea once and the problems become variations of it.</p>
 </div>
+
+{{/* The patterns index. It had its own page until the two were merged, which
+     only ever showed these eighteen lanes over the same groups listed below.
+     Here the lanes jump to their group rather than opening the guide — the
+     group's own heading does that — and app.js hides a lane whose group the
+     filters have emptied, so a jump always lands on something. */}}
+<nav class="roadmap pattern-index" aria-label="Jump to a pattern">
+  {{range .Groups}}
+  <a class="lane{{if eq .Summary.Done .Summary.Total}} done{{end}}" href="#pattern-{{.Slug}}" data-lane-for="{{.Slug}}">
+    <span class="lane-name">{{.Pattern}}{{if not .HasGuide}} <span class="b75">no guide</span>{{end}}</span>
+    <span class="lane-count">{{.Summary.Done}}/{{.Summary.Total}}</span>
+    {{template "cells" .Problems}}
+  </a>
+  {{end}}
+</nav>
 
 <div class="filters" data-filters>
   <input class="search" type="search" placeholder="Search by name or number" data-search autocomplete="off" aria-label="Search problems">
@@ -19,7 +35,7 @@
 </div>
 
 {{range .Groups}}
-<section class="group" data-group-section>
+<section class="group" id="pattern-{{.Slug}}" data-group-section data-pattern="{{.Slug}}">
   <div class="group-head">
     <h2>{{if .HasGuide}}<a href="/patterns/{{.Slug}}">{{.Pattern}}</a>{{else}}{{.Pattern}}{{end}}</h2>
     <span class="meta">{{.Summary.Done}}/{{.Summary.Total}}</span>

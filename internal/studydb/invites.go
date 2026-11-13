@@ -179,7 +179,7 @@ func (d *DB) RedeemInvite(inviteToken, name, personalTokenHash string, now time.
 		// Inside the transaction, so a redemption that cannot have its name does
 		// not spend the use. What keeps two redemptions from choosing the same
 		// name is narrower than the transaction, and claimName says what.
-		if err := claimName(tx, name, 0); err != nil {
+		if err := claimName(tx, name); err != nil {
 			return err
 		}
 
@@ -205,8 +205,7 @@ func (d *DB) RedeemInvite(inviteToken, name, personalTokenHash string, now time.
 	return d.User(id)
 }
 
-// claimName reports whether a name is free. exceptID is the row allowed to
-// already hold it, for a rename that only changes capitalisation.
+// claimName reports whether a name is free.
 //
 // Case-insensitive on purpose: users.name's UNIQUE is not, but findUser in the
 // CLI matches with EqualFold, so "Dima" beside "dima" would be two rows that
@@ -220,40 +219,14 @@ func (d *DB) RedeemInvite(inviteToken, name, personalTokenHash string, now time.
 // place here relying on that single lane for correctness rather than for speed,
 // and against a pool it would need a unique index on lower(name), or to take
 // the row with SELECT … FOR UPDATE.
-func claimName(tx *sql.Tx, name string, exceptID int64) error {
+func claimName(tx *sql.Tx, name string) error {
 	var clashes int
 	if err := tx.QueryRow(
-		"SELECT count(*) FROM users WHERE name=? COLLATE NOCASE AND id<>?", name, exceptID).Scan(&clashes); err != nil {
+		"SELECT count(*) FROM users WHERE name=? COLLATE NOCASE", name).Scan(&clashes); err != nil {
 		return err
 	}
 	if clashes > 0 {
 		return ErrNameTaken
 	}
 	return nil
-}
-
-// RenameUser changes what somebody is called. Progress is keyed by id, so a
-// rename moves no work: it is a label, which is the whole reason people may
-// choose their own.
-func (d *DB) RenameUser(id int64, name string) error {
-	if name == "" {
-		return fmt.Errorf("a name cannot be empty")
-	}
-	return d.Write(func(tx *sql.Tx) error {
-		if err := claimName(tx, name, id); err != nil {
-			return err
-		}
-		res, err := tx.Exec("UPDATE users SET name=? WHERE id=?", name, id)
-		if err != nil {
-			return err
-		}
-		n, err := res.RowsAffected()
-		if err != nil {
-			return err
-		}
-		if n == 0 {
-			return fmt.Errorf("no user %d", id)
-		}
-		return nil
-	})
 }

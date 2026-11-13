@@ -101,6 +101,7 @@ type Session struct {
 	persistenceErr error
 	Slug           string
 	Problem        catalog.Problem
+	Role           Role
 	Started        time.Time
 
 	mu      sync.Mutex

@@ -185,6 +185,8 @@ a:focus-visible, button:focus-visible, input:focus-visible, summary:focus-visibl
   border-bottom: 1px solid var(--rule-soft);
 }
 .lane:hover { background: var(--ink-2); }
+.lane.hidden { display: none; }
+.pattern-index { margin-bottom: 1.75rem; max-width: 46rem; }
 .lane-name { color: var(--dim); font-size: var(--t-s); }
 .lane:hover .lane-name { color: var(--text); }
 .lane.done .lane-name { color: var(--text); }
@@ -304,6 +306,9 @@ a:focus-visible, button:focus-visible, input:focus-visible, summary:focus-visibl
 
 .group { margin-bottom: 2.25rem; }
 .group.hidden { display: none; }
+/* The patterns index jumps here, and both the page header and the filter bar
+   are sticky, so an unadjusted anchor parks the heading underneath them. */
+.group[id] { scroll-margin-top: 7rem; }
 
 .group-head {
   display: flex;
@@ -494,17 +499,12 @@ a:focus-visible, button:focus-visible, input:focus-visible, summary:focus-visibl
   font: inherit;
   font-size: var(--t-s);
   padding: 0.3rem 0;
-  font-variant-numeric: tabular-nums;
 }
 .rate-row button:hover { background: var(--accent-q); border-color: var(--accent); color: var(--text); }
-.rate-ends { display: flex; justify-content: space-between; color: var(--dimmer); font-size: 0.7rem; }
-.people-table .is-you { color: var(--text); }
-.people-table .is-you td { font-weight: 600; }
-.rename { display: flex; flex-direction: column; gap: 0.4rem; padding: 0.9rem 1rem; }
-.rename label { color: var(--dim); font-size: var(--t-xs); }
-.rename-row { display: flex; gap: 0.5rem; max-width: 28rem; }
-.rename-row input { flex: 1; min-width: 0; }
-
+/* One per line: the labels are too long to share a row the way five digits did. */
+.rate-words { flex-direction: column; gap: 0.3rem; }
+.rate-words button { padding: 0.35rem 0.6rem; text-align: left; }
+.rate-ends { color: var(--dimmer); display: block; font-size: 0.7rem; }
 .drill-controls { align-items: end; display: flex; flex-wrap: wrap; gap: 0.75rem; padding: 0.9rem 1rem; }
 .drill-controls label { color: var(--dim); display: flex; flex-direction: column; font-size: var(--t-xs); gap: 0.3rem; }
 .drill-check { align-items: center; flex-direction: row !important; }
@@ -518,14 +518,10 @@ a:focus-visible, button:focus-visible, input:focus-visible, summary:focus-visibl
 .log-time label { color: var(--dim); font-size: var(--t-xs); font-weight: 600; }
 .log-time-row { display: flex; gap: 0.35rem; }
 .log-time-row input { flex: 1; min-width: 0; }
-.rate-rung { color: var(--dim); display: flex; font-size: var(--t-xs); gap: 0.35rem; align-items: center; }
-.rate-rung select { flex: 1; min-width: 0; }
 /* Separated from the rating buttons above it: correcting a rating is a
    different act from recording one, and should not be a neighbouring click. */
 .rate-correct { border-top: 1px solid var(--rule-soft); margin-top: 0.9rem; padding-top: 0.9rem; }
 .rate-correct .rate-row { align-items: center; }
-.rate-correct select { min-width: 0; }
-.rate-correct .rate-ends { display: block; }
 
 .kv { display: flex; flex-direction: column; gap: 0.3rem; color: var(--dim); }
 .kv div { display: flex; justify-content: space-between; gap: 1rem; }
@@ -733,6 +729,18 @@ body.app-full {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* The interview's own header sits above the file's, so the problem number and
+   the limit are the first things in the column rather than a path. */
+.interview-head {
+  border-bottom: 1px solid var(--rule);
+  margin-bottom: 0.6rem;
+  padding-bottom: 0.6rem;
+}
+.interview-head .path { color: var(--text); }
+.interview-inline { margin: 0; }
+.interview-controls { display: inline-block; margin: 0.9rem 0.6rem 0 0; }
+.interview-report { padding: 0 1rem 1rem; }
 
 .work-bar { align-items: center; display: flex; flex: none; gap: 1rem; position: relative; }
 .work-bar .solve-state { flex: 1; min-width: 0; }
@@ -1031,10 +1039,9 @@ textarea[aria-label="Your solution"]:disabled { cursor: not-allowed; opacity: 0.
   * { animation: none !important; transition: none !important; }
 }
 
-/* ---------- Coach ---------- */
+/* ---------- Dashboard figures ---------- */
 
-/* The headline numbers. Three at most: a page of statistics is a page nobody
-   reads, and the point is to be glanceable before it is exhaustive. */
+/* The headline numbers, three at most. */
 .tiles {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));

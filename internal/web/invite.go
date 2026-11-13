@@ -38,9 +38,10 @@ var invitePage = template.Must(template.New("invite").Parse(`<!doctype html>
       placeholder="dima" aria-label="Your name" value="{{.Name}}">
     <button type="submit">Join</button>
   </form>
-  <p class="muted">A name is suggested so you need not invent one; change it to
-  anything free. You get your own link afterwards — keep it, it is what signs
-  you in from then on, and it cannot be looked up.</p>
+  <p class="muted">Nobody using this site sees it — it is how whoever runs the
+  instance tells one person's work from another's. You get your own link
+  afterwards: keep it, it is what signs you in from then on, and it cannot be
+  looked up.</p>
 </main>
 </body></html>
 `))
@@ -65,16 +66,24 @@ func noReferrer(w http.ResponseWriter) {
 // exist.
 func (s *Server) handleInvite(w http.ResponseWriter, r *http.Request) {
 	token := r.PathValue("token")
+	noReferrer(w)
+	// Somebody already signed in has nothing to gain here and an account to
+	// lose: redeeming would mint a second identity and swap their cookie for
+	// it, leaving months of work reachable only through a link they may not
+	// have kept. The invite is somebody else's to spend.
+	if s.hasSession(r) {
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	}
 	if _, err := s.db.InviteByToken(token, s.now()); err != nil {
-		noReferrer(w)
 		s.askForALink(w, r)
 		return
 	}
-	noReferrer(w)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	// Pre-filled, so joining is one click and nobody has to decide on the spot
-	// how much of their real name to give a study group. It is editable.
-	_ = invitePage.Execute(w, inviteView{Token: token, Name: s.freeSuggestion()})
+	// Empty: a pseudonym used to be suggested here, back when a page showed
+	// every name to everybody. The name is now only a label in the owner's
+	// `nc user list`, where "amber_otter_317" is harder to read than a name.
+	_ = invitePage.Execute(w, inviteView{Token: token})
 }
 
 // handleInviteRedeem spends one use and signs the newcomer in.
@@ -87,10 +96,16 @@ func (s *Server) handleInviteRedeem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	noReferrer(w)
+	if s.hasSession(r) {
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	}
 	token := r.FormValue("token")
 	name := strings.TrimSpace(r.FormValue("name"))
 
-	// Checked before anything is written, so a bad name does not spend a use.
+	// A dead invite gets the same refusal as no link, not the form again: the
+	// name checks below would otherwise send them round "try another name" on
+	// an invite nothing can redeem.
 	if _, err := s.db.InviteByToken(token, s.now()); err != nil {
 		s.askForALink(w, r)
 		return
@@ -98,11 +113,7 @@ func (s *Server) handleInviteRedeem(w http.ResponseWriter, r *http.Request) {
 	again := func(msg string) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.WriteHeader(http.StatusBadRequest)
-		shown := name
-		if shown == "" {
-			shown = s.freeSuggestion()
-		}
-		_ = invitePage.Execute(w, inviteView{Token: token, Name: shown, Err: msg})
+		_ = invitePage.Execute(w, inviteView{Token: token, Name: name, Err: msg})
 	}
 	switch {
 	case name == "":

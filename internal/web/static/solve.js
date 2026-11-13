@@ -149,10 +149,57 @@
       clock.textContent = [hours, minutes, remainder].map((part) => String(part).padStart(2, "0")).join(":");
     };
     paintClock();
+    // During an interview the page keeps the clock and reports the limit
+    // passing, once. The server holds the flag that makes it once: a reload
+    // starts a new interval here, and the interviewer must not be told twice.
+    const head = root.querySelector("[data-interview]");
+    const limit = head ? Number(head.dataset.limit) * 60 : 0;
+    let reported = head ? head.dataset.said === "true" : true;
+    // post() is rooted at this problem; the interview endpoints are not.
+    const reportTimeUp = async () => {
+      reported = true;
+      try {
+        const res = await fetch("/interview/timeup", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: "{}",
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      } catch {
+        reported = false; // a failed report is retried on the next tick
+      }
+    };
     clockInterval = window.setInterval(() => {
       seconds += 1;
       paintClock();
+      if (!reported && limit > 0 && seconds >= limit) {
+        void reportTimeUp();
+      }
     }, 1000);
+
+    // The interview can move without this page doing anything: the interviewer
+    // closes a problem itself once it is satisfied. Follow it rather than
+    // leaving the editor open on a problem that is over.
+    if (head) {
+      const id = head.dataset.interview;
+      window.setInterval(async () => {
+        let st;
+        try {
+          const res = await fetch("/interview/state", { headers: { Accept: "application/json" } });
+          if (!res.ok) return;
+          st = await res.json();
+        } catch {
+          return; // a dropped poll is not news; the next one will say
+        }
+        if (!st.live || st.finishing) {
+          window.location.assign(`/interview/${st.id || id}`);
+          return;
+        }
+        if (st.slug && st.slug !== slug) {
+          window.location.assign(`/problems/${encodeURIComponent(st.slug)}/solve`);
+        }
+      }, 4000);
+    }
   }
 
   // ---- create ----
@@ -242,7 +289,7 @@
         }
         if (!result.passed) testsPassedForCurrent = false;
         awaitingSubmitRating = false;
-        say(`Rated ${result.confidence}/5 · hint rung ${result.rung}; saved ${result.archive}`, "ok");
+        say(`Rated ${result.confidence}/5 · hint ${result.rung}; saved ${result.archive}`, "ok");
         await reloadWorkspace();
       } catch (err) {
         say(err.message, "bad");

@@ -9,12 +9,14 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"neetcode150/internal/catalog"
+	"neetcode150/internal/content"
 	"neetcode150/internal/lang"
 	"neetcode150/internal/studydb"
 	"neetcode150/internal/workspace"
@@ -34,11 +36,14 @@ const (
 )
 
 // Manager owns the running sessions, one per person per problem.
-// sessionKey identifies one person's conversation about one problem. Keyed by
-// slug alone, two people on the same problem shared a process and a transcript.
+// sessionKey identifies one person's conversation about one problem in one
+// role. Keyed by slug alone, two people on the same problem shared a process
+// and a transcript; without the role, a tutoring conversation and an interview
+// on the same problem would be the same conversation.
 type sessionKey struct {
 	userID int64
 	slug   string
+	role   Role
 }
 
 type Manager struct {
@@ -63,7 +68,7 @@ type Manager struct {
 	// newCmd is injected in tests. The real one runs claude; a test one runs a
 	// stand-in that speaks the same protocol, so no test costs money or needs
 	// a network.
-	newCmd func(ctx context.Context, scope *studydb.Scope, p catalog.Problem, sessionID string) *exec.Cmd
+	newCmd func(ctx context.Context, scope *studydb.Scope, p catalog.Problem, role Role, sessionID string) *exec.Cmd
 
 	// onSpend is told what each turn cost, as an increment. Set by the site so
 	// the per-person ceiling survives a restart.
@@ -147,7 +152,7 @@ func (m *Manager) Model() string { return m.model }
 // is concerned, a stand-in speaking the same stream-json protocol over the same
 // pipes is indistinguishable from the real binary, so the protocol is what gets
 // substituted rather than the behaviour around it.
-func NewWithCommand(root string, mode Mode, newCmd func(ctx context.Context, scope *studydb.Scope, p catalog.Problem, sessionID string) *exec.Cmd) *Manager {
+func NewWithCommand(root string, mode Mode, newCmd func(ctx context.Context, scope *studydb.Scope, p catalog.Problem, role Role, sessionID string) *exec.Cmd) *Manager {
 	m := New(root, mode, 0)
 	if newCmd == nil {
 		m.why = "no tutor command is configured"
@@ -195,19 +200,19 @@ func (m *Manager) FileAccess() bool {
 	return m.provider == ProviderClaude || m.provider == ProviderCodex
 }
 
-func (m *Manager) restoredLocked(scope *studydb.Scope, slug string) (*Session, error) {
-	key := sessionKey{userID: userOf(scope), slug: slug}
+func (m *Manager) restoredLocked(scope *studydb.Scope, slug string, role Role) (*Session, error) {
+	key := sessionKey{userID: userOf(scope), slug: slug, role: role}
 	if s := m.sessions[key]; s != nil {
 		return s, nil
 	}
 	if scope == nil {
 		return nil, nil
 	}
-	record, err := scope.Session(slug)
+	record, err := scope.Session(slug, string(role))
 	if err != nil || record == nil {
 		return nil, err
 	}
-	s := &Session{Slug: slug, Started: record.Started, storage: scope, storageID: record.ID, restored: true, subs: map[chan Event]struct{}{}}
+	s := &Session{Slug: slug, Role: role, Started: record.Started, storage: scope, storageID: record.ID, restored: true, subs: map[chan Event]struct{}{}}
 	for _, raw := range record.Events {
 		var e Event
 		if err := json.Unmarshal(raw, &e); err != nil {
@@ -241,9 +246,15 @@ func userOf(scope *studydb.Scope) int64 {
 
 // Get includes a saved transcript even when its agent process is no longer running.
 func (m *Manager) Get(scope *studydb.Scope, slug string) *Session {
+	return m.GetAs(scope, slug, RoleTutor)
+}
+
+// GetAs is Get for one role. The plain Get is the tutor, which is what every
+// caller outside the interview wants.
+func (m *Manager) GetAs(scope *studydb.Scope, slug string, role Role) *Session {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	s, err := m.restoredLocked(scope, slug)
+	s, err := m.restoredLocked(scope, slug, role)
 	if err != nil {
 		panic(fmt.Errorf("restore tutor: %w", err))
 	}
@@ -252,7 +263,15 @@ func (m *Manager) Get(scope *studydb.Scope, slug string) *Session {
 
 // Start returns a session without asking the model to produce a public reply.
 func (m *Manager) Start(scope *studydb.Scope, p catalog.Problem) (*Session, error) {
-	return m.ensure(scope, p)
+	return m.ensure(scope, p, RoleTutor)
+}
+
+// StartAs starts a session in one role, for the interview.
+func (m *Manager) StartAs(scope *studydb.Scope, p catalog.Problem, role Role) (*Session, error) {
+	if !role.Valid() {
+		return nil, fmt.Errorf("unknown tutor role %q", role)
+	}
+	return m.ensure(scope, p, role)
 }
 
 // Send delivers a turn, starting a session for the problem if there is none.
@@ -265,7 +284,7 @@ func (m *Manager) SendAs(scope *studydb.Scope, p catalog.Problem, text, display 
 	if text = strings.TrimSpace(text); text == "" {
 		return nil, fmt.Errorf("nothing to send")
 	}
-	s, err := m.ensure(scope, p)
+	s, err := m.ensure(scope, p, RoleTutor)
 	if err != nil {
 		return nil, err
 	}
@@ -277,13 +296,19 @@ func (m *Manager) SendAs(scope *studydb.Scope, p catalog.Problem, text, display 
 
 // Reset ends the session for a problem so the next turn starts clean.
 func (m *Manager) Reset(scope *studydb.Scope, slug string) {
-	key := sessionKey{userID: userOf(scope), slug: slug}
+	m.ResetAs(scope, slug, RoleTutor)
+}
+
+// ResetAs is Reset for one role. An interview is retired this way when it ends,
+// so the next one on the same problem starts from nothing.
+func (m *Manager) ResetAs(scope *studydb.Scope, slug string, role Role) {
+	key := sessionKey{userID: userOf(scope), slug: slug, role: role}
 	m.mu.Lock()
 	s := m.sessions[key]
 	delete(m.sessions, key)
 	m.forget(key)
 	if scope != nil {
-		if err := scope.RetireSession(slug); err != nil {
+		if err := scope.RetireSession(slug, string(role)); err != nil {
 			m.mu.Unlock()
 			panic(err)
 		}
@@ -332,14 +357,14 @@ func (m *Manager) Close() {
 }
 
 // ensure returns the session for a problem, starting one if needed.
-func (m *Manager) ensure(scope *studydb.Scope, p catalog.Problem) (*Session, error) {
-	key := sessionKey{userID: userOf(scope), slug: p.Slug}
+func (m *Manager) ensure(scope *studydb.Scope, p catalog.Problem, role Role) (*Session, error) {
+	key := sessionKey{userID: userOf(scope), slug: p.Slug, role: role}
 	m.mu.Lock()
 	if m.closed {
 		m.mu.Unlock()
 		return nil, fmt.Errorf("the server is shutting down")
 	}
-	existing, err := m.restoredLocked(scope, p.Slug)
+	existing, err := m.restoredLocked(scope, p.Slug, role)
 	if err != nil {
 		m.mu.Unlock()
 		return nil, err
@@ -365,9 +390,9 @@ func (m *Manager) ensure(scope *studydb.Scope, p catalog.Problem) (*Session, err
 
 	s := existing
 	if s == nil {
-		s = &Session{Slug: p.Slug, Started: time.Now(), subs: map[chan Event]struct{}{}, storage: scope, spend: m.onSpend}
+		s = &Session{Slug: p.Slug, Role: role, Started: time.Now(), subs: map[chan Event]struct{}{}, storage: scope, spend: m.onSpend}
 		if scope != nil {
-			s.storageID, err = scope.NewSession(p.Slug, string(m.provider), s.Started)
+			s.storageID, err = scope.NewSession(p.Slug, string(m.provider), string(role), s.Started)
 			if err != nil {
 				m.mu.Unlock()
 				return nil, err
@@ -375,6 +400,7 @@ func (m *Manager) ensure(scope *studydb.Scope, p catalog.Problem) (*Session, err
 		}
 	}
 	s.Problem = p
+	s.Role = role
 	s.spend = m.onSpend
 	s.done = make(chan struct{})
 	s.stderrDone = make(chan struct{})
@@ -457,7 +483,7 @@ func (m *Manager) start(scope *studydb.Scope, s *Session) error {
 	if err != nil {
 		return err
 	}
-	cmd := m.newCmd(context.Background(), scope, s.Problem, id)
+	cmd := m.newCmd(context.Background(), scope, s.Problem, s.Role, id)
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
@@ -498,15 +524,15 @@ func (s *Session) readStderr(r io.Reader) {
 }
 
 // realCmd is the actual invocation.
-func (m *Manager) realCmd(ctx context.Context, scope *studydb.Scope, p catalog.Problem, sessionID string) *exec.Cmd {
-	cmd := exec.CommandContext(ctx, m.bin, m.args(scope, p, sessionID)...)
+func (m *Manager) realCmd(ctx context.Context, scope *studydb.Scope, p catalog.Problem, role Role, sessionID string) *exec.Cmd {
+	cmd := exec.CommandContext(ctx, m.bin, m.args(scope, p, role, sessionID)...)
 	// The repository root, so the session picks up CLAUDE.md and AGENTS.md on
 	// its own and sees the paths the seed prompt refers to.
 	cmd.Dir = m.root
 	return cmd
 }
 
-func (m *Manager) args(scope *studydb.Scope, p catalog.Problem, sessionID string) []string {
+func (m *Manager) args(scope *studydb.Scope, p catalog.Problem, role Role, sessionID string) []string {
 	a := []string{
 		"-p",
 		"--input-format", "stream-json",
@@ -516,7 +542,7 @@ func (m *Manager) args(scope *studydb.Scope, p catalog.Problem, sessionID string
 		"--verbose",
 		"--include-partial-messages",
 		"--session-id", sessionID,
-		"--append-system-prompt", m.seed(scope, p),
+		"--append-system-prompt", m.seed(scope, p, role),
 	}
 	if m.budget > 0 {
 		a = append(a, "--max-budget-usd", strconv.FormatFloat(m.budget, 'f', -1, 64))
@@ -538,10 +564,15 @@ func (m *Manager) args(scope *studydb.Scope, p catalog.Problem, sessionID string
 // through CLAUDE.md, which the session reads because cmd.Dir is the repository;
 // this adds only what CLAUDE.md cannot know — which problem is open, and that
 // the person is in a browser rather than a terminal.
-func (m *Manager) seed(scope *studydb.Scope, p catalog.Problem) string {
+func (m *Manager) seed(scope *studydb.Scope, p catalog.Problem, role Role) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "You are tutoring one NeetCode 150 problem in this repository: "+
-		"%d. %s (%s), pattern %q.\n\n", p.ID, p.Title, p.Slug, p.Pattern)
+	if role == RoleInterviewer {
+		fmt.Fprintf(&b, "You are interviewing somebody on one NeetCode 150 problem in this repository: "+
+			"%d. %s (%s), pattern %q.\n\n", p.ID, p.Title, p.Slug, p.Pattern)
+	} else {
+		fmt.Fprintf(&b, "You are tutoring one NeetCode 150 problem in this repository: "+
+			"%d. %s (%s), pattern %q.\n\n", p.ID, p.Title, p.Slug, p.Pattern)
+	}
 	// The owner's layout: one live session and one transcript per problem means
 	// the panel is the owner's until that is per-user, and the site refuses a
 	// guest rather than pointing the agent at the wrong workspace.
@@ -551,7 +582,15 @@ func (m *Manager) seed(scope *studydb.Scope, p catalog.Problem) string {
 	fmt.Fprintf(&b, "Relevant paths:\n- statement: %s/problem.md\n- the user's solution: %s\n- their tests: %s\n- language reference: tutor/references/%s\n\n",
 		p.ContentDir(), lay.Rel(p, l.SolutionFile), lay.Rel(p, l.TestFile), l.IdiomsRef)
 	b.WriteString("Personal notes, recorded hints and session logs are in study.sqlite3, not the old Markdown files. The application supplies historical learning evidence; never edit legacy personal files.\n")
-	if scope != nil {
+	// This provider reads problem.md itself, so the follow-up cannot be kept
+	// out of its hands the way it is kept off the page. Say what it is for.
+	if _, followUp := content.SplitFollowUp(readCapped(filepath.Join(m.root, p.ContentDir(), "problem.md"), maxStatement)); followUp != "" {
+		b.WriteString("The statement ends with a **Follow up:** question. The page does not show it to " +
+			"them. " + followUpBriefing + "\n")
+	}
+	// The ladder is the answer in stages, so an interviewer is not given it —
+	// and this provider can read the repository, so it is also told not to look.
+	if scope != nil && role == RoleTutor {
 		if hints, err := scope.Document(p.Slug, "hints"); err == nil && hints != "" {
 			if len(hints) > 16000 {
 				hints = hints[:16000]
@@ -559,20 +598,18 @@ func (m *Manager) seed(scope *studydb.Scope, p catalog.Problem) string {
 			b.WriteString("Recorded hint ladder (private reference; reveal only the next requested rung):\n" + hints + "\n")
 		}
 	}
-	b.WriteString("Follow tutor/TUTOR.md, which AGENTS.md points you at. The hint ladder " +
-		"and the rule that you climb one rung per request are the parts that matter.\n\n")
-	b.WriteString("The person is working in this project's browser workspace, not a terminal. " +
-		"They have an editor and a Run-tests button on the same page, so do not tell them to " +
-		"run `nc start` or the test command — they can already do both, and the page logs the time " +
-		"and the rating for them.\n\n")
-	b.WriteString("Your replies render as Markdown in a narrow side panel. Keep them short: " +
-		"a few sentences, or a short list. Ask one question at a time and wait for the answer. " +
-		"Reply in the user's language. Be warm and supportive: acknowledge a specific sound idea, " +
-		"effort, or self-correction before the next question. Treat mistakes as something to explore " +
-		"together, not as a judgement of ability. Avoid exaggerated praise and keep ratings honest.")
+	if role == RoleInterviewer {
+		b.WriteString("Follow tutor/INTERVIEW.md. Do not read tutor/TUTOR.md, the recorded hint " +
+			"ladder in study.sqlite3, or any solution on disk: the point of the exercise is that " +
+			"you do not hand any of it over.\n\n")
+	} else {
+		b.WriteString("Follow tutor/TUTOR.md, which AGENTS.md points you at. The hint ladder " +
+			"and the rule that you climb one rung per request are the parts that matter.\n\n")
+	}
+	b.WriteString(role.Briefing())
 	b.WriteString("\n\n" + LearningPolicy)
 	if scope != nil {
-		record, err := scope.Session(p.Slug)
+		record, err := scope.Session(p.Slug, string(role))
 		if err == nil && record != nil && len(record.Events) > 0 {
 			var history strings.Builder
 			for _, raw := range record.Events[max(0, len(record.Events)-300):] {

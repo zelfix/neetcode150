@@ -52,6 +52,11 @@ Supporting references, cited from the protocol:
 | `tutor/references/go-idioms.md` | Go mechanics these problems need, and Go-specific traps |
 | `tutor/references/invariants.md` | Loop invariants |
 
+`tutor/INTERVIEW.md` is the other protocol: what the site's Interview page runs instead of
+this one. Do not follow it when somebody asks to be coached, and do not fold the two
+together — the point of the second is that it withholds everything the first exists to
+give.
+
 ## Commands
 
 The study itself happens in the browser. What the CLI is actually needed for is
@@ -66,7 +71,7 @@ narrower than the list below suggests, and splits by deployment:
   See [DEPLOY.md](DEPLOY.md).
 - **Everything else** is a second way to do what the site already does, kept as the
   escape hatch and as the path an agent has in `--tutor-mode full`. Reach for the browser
-  first; `nc diff`, `nc history`, `nc drill`, `nc time` and `nc rate --rung` all have
+  first; `nc diff`, `nc history`, `nc time` and `nc rate --rung` all have
   equivalents there now.
 
 The full reference. From the project root:
@@ -87,8 +92,6 @@ go run ./cmd/nc rate <ref> <1-5>      # record how it went, reschedule the revie
 go run ./cmd/nc time <ref> <minutes>  # log time spent, if the clock missed it
 go run ./cmd/nc resolve <ref>         # archive the solution, reset it for a cold re-solve
 go run ./cmd/nc diff <ref>            # last archived attempt vs the current one
-go run ./cmd/nc drill [--pattern p]   # a problem at random, pattern withheld
-                                      #   --solved draws from solved ones, for retrieval practice
 go run ./cmd/nc weak [-n 10]          # what is least secure, and why
 go run ./cmd/nc review [--limit 8]    # what is due, most overdue first
 go run ./cmd/nc stats                 # progress by pattern, and how securely each is held
@@ -172,17 +175,85 @@ path. The eleven comparison policies exist twice, so both suites run the shared 
 validates all 150 fixtures against the Python stubs under `python3`. Keep the harness on
 the standard library; its tests are `make python-test`.
 
-The site's Coach page at `/coach/` reports what is not secure yet: the share of problems
-last solved unaided, which patterns to go back to, and which test fixtures keep breaking.
-It is read-only, and reuses `progress.Patterns`, `progress.Weakest` and the run records
-that `handleRunTests` files — do not re-derive weakness anywhere else.
+The dashboard reports what is not secure yet: the share of problems last solved unaided,
+which patterns to go back to, which problems look weakest, and which test fixtures keep
+breaking. That half was a Coach page at `/coach/` until the two were merged — both read the
+same ratings, so the split put the count of solved problems on one page and the figures
+that qualify it on another. `/coach/` is gone, not redirected. It is all read-only, and
+reuses `progress.Patterns`, `progress.Weakest` and the run records that `handleRunTests`
+files — do not re-derive weakness anywhere else. The per-pattern table replaced the
+dashboard's own lane strip, which `/problems/` now carries.
 
-`/drill/` draws one problem at random and withholds its pattern, which is the whole point
-of the page: do not render `.P.Pattern` on it, and do not reuse `problemRow` or `cells`
-there, because both print it. The draw is `Server.pick`, injected like `Server.now` so a
-test gets a determined problem. The pool is `progress.DrillPool` and the pattern filter is
-`catalog.MatchPattern`; the CLI's `nc drill` calls the same two, so there is one answer to
-"what may be drawn".
+`/problems/` is the only index over the eighteen groups. `/patterns/` was a second one and
+is gone outright rather than redirected — the site has never been published, so a redirect
+would be a second name for a page kept for nobody. `/patterns/<slug>` still serves the
+guide. The lanes at the top of the
+list are that former page. Two details there are easy to undo by accident: the lanes are
+in-page jumps (`#pattern-<slug>`) rather than links to the guide, because the group's own
+heading is already that link; and `app.js` hides a lane whose group the filters emptied, so
+a jump cannot land on a hidden heading. Both halves come from one `s.groups(now)` call.
+
+`/interview/` runs a practice interview: two or three problems drawn at random, a time
+limit each, and the tutor in a second role. It replaced `/drill/`, which drew one random
+problem and stopped there, and `nc drill` went with it. The draw is still `Server.pick`,
+injected like `Server.now` so a test gets a determined interview, over
+`progress.DrillPool` and `catalog.MatchPattern`.
+
+Four things about it are load-bearing, and each is easy to undo by accident:
+
+- **The pattern is withheld everywhere the interview reaches**, not just on its own page.
+  `solve.html` prints `.P.Pattern` in the statement header, and the record pane prints it
+  again; both are behind `{{if not .Interview}}` or behind `Active`. Do not render it, and
+  do not reuse `problemRow` or `cells` on the interview page, because both print it.
+- **An interview writes no rating and moves no review date.** `handleSubmit` branches to
+  `submitToInterview` before it reaches `CompleteIn` or `InsertAttempt`; what it records is
+  the time, through `progress.ClockMinutes` into `AddMinutes`. The review ladder is built on
+  cold unaided solves and an interview is a different measurement.
+- **Its files are not the study files.** `workspace.Interview` puts them under
+  `_work/<user>/interview-<id>/`, and `s.work(p)` is the only place that chooses. A problem
+  drawn into an interview is scaffolded blank, so writing it into `solutions/` would destroy
+  a solution the person already has. The workspace also withholds its own previous
+  solutions, archived attempts, diff and ratings for that problem, because each is the
+  answer or a route to it.
+- **The interviewer is a `tutor.Role`, not a prompt tacked onto the tutor.** The role is
+  part of `sessionKey` and of `tutor_sessions`, so a restored session comes back in the
+  right persona; `tutor/INTERVIEW.md` is its protocol, canonical the way `TUTOR.md` is; and
+  neither the recorded hint ladder nor `turnContext` reaches it.
+- **Anything the interviewer is meant to say goes out as `SendAs(prompt, "")`, not
+  `SendInternal`.** An internal turn is published as `internal-text`, which `solve.js`
+  skips, so the opening and the time-up line both looked like the interviewer saying
+  nothing. `SendInternal` is right only where the reply is parsed rather than read — the
+  submission decision and the final report.
+- **The language is the interview's, chosen once on the way in.** `s.language(p)` returns
+  it while the interview is live, so a problem studied in Go is interviewed in Python if
+  that is the button that was pressed, and the study row is not rewritten. The draw filters
+  out problems that cannot be scaffolded in it, which today means Python without a stub:
+  the Go scaffold writes a "write the entry point yourself" file instead of failing.
+
+Two things move the interview without a click, so the page polls `/interview/state` and
+follows: a submission the interviewer answers with `"satisfied"` closes that problem
+through `advanceInterview`, and the feedback at the end is written in the background.
+Finishing stamps `Finishing` on the payload and answers the request at once — writing the
+report inside the request meant a browser sitting on a dead page, because it is a model
+turn and takes as long as it takes. The row stays live while that runs, which is what stops
+a second interview starting in the gap, and `interviewHere` returns false for it, which is
+what takes the workspace out of interview mode.
+
+The state machine lives in the `interviews` row's JSON payload (`interviewState`), with one
+live interview per person enforced by a partial unique index rather than by a handler
+check. The time-up turn is bought once, and the flag that makes it once is on the row: the
+browser keeps the clock and reports expiry, so a reloaded tab would otherwise buy another.
+Submissions and the final report both go through the decision-JSON shape the submission
+flow uses, and the report is written from the notes stored per problem rather than from a
+transcript, which may be gone by then.
+
+A statement's trailing **Follow up:** question is held back from every page.
+`content.SplitFollowUp` takes it off, `Doc.FollowUp` keeps it, and the prompts carry it
+privately with `followUpBriefing` attached — 22 of the 150 have one, and reading "could you
+do this in one pass?" before starting gives away both that a better solution exists and
+roughly where it is. That is the question to ask once the obvious solution works, which
+makes it the tutor's to time and the interviewer's natural complication. The CLI providers
+read `problem.md` themselves, so they are told the rule rather than kept from the text.
 
 Two rules the site and the CLI share rather than each having their own:
 
@@ -201,8 +272,19 @@ starts and the record pane is swapped out for the editor) and the comparison aga
 last archived attempt. That comparison is recomputed from the run response on a passing
 run — one rendered at page load is stale as soon as the editor is touched — and the
 rendering is `createElement` and `textContent`, never `innerHTML`. The reading page carries
-the same ratings table, a rung on the rate form, amend and undo, and a box for logging time
-the clock missed. Manual time logging is deliberately *not* in the workspace: that page
+the same ratings table, undo, and a box for logging time the clock missed.
+
+What the rate form asks is deliberately coarser than what the schedule stores. It offers
+four buttons in words — `rateOutcome` in `internal/web/server.go`, which the template
+ranges over so a label cannot describe a different rating from the one it submits — and
+each sets the confidence *and* the rung. Confidence and rung are separate axes only where
+something can judge them separately: the tutor has the transcript, and the gap between the
+two is the generosity flag. Asked of a person they came apart the wrong way, a rating being
+how it felt once the answer was in view. The four are the four moves `applyRating` has —
+reset, lapse, hold, advance — so the 1-5 scale and the rung select cost nothing on the way
+out, and no button can now submit a generous pair. Amending by hand went with them: it
+means naming both numbers again. `nc rate` keeps the full range, and is the way to rate a
+problem on an instance with no tutor. Manual time logging is deliberately *not* in the workspace: that page
 runs the clock itself, and a box for adding minutes beside a live timer invites double
 counting.
 
@@ -226,21 +308,16 @@ proxy every request looks local, so an exception would make a guest who clears t
 cookie into the owner. Each person's notes, attempts, ratings and test runs are their
 own, and so is the tutor: sessions are keyed by person as well as problem.
 
-`/people/` is the one page that crosses that boundary, and what it may show is a
-deliberately short list: a name, problems finished, days worked, minutes spent. **Ratings
-and hint rungs must never appear there.** Those are what the review schedule reads, and
-they work only while they are honest — a table that rewarded a high rating would put a
-price on admitting a hint was needed, which is the same failure this file describes for a
-tutor that hands over the answer: what breaks is not politeness, it is the signal. Effort
-is safe to rank because gaming it means practising more. The page builds its rows by
-calling `progress.Summarize` once per person through `db.For(id)`, rather than growing a
-second definition of what "solved" means.
+**Nothing on the site crosses that boundary.** There was a `/people/` page ranking effort —
+problems finished, days worked, minutes spent — and it is gone, with the generated
+pseudonyms and the rename form that only existed to serve it.
 
-Because that page shows names to everybody on the instance, a newcomer redeeming an
-invite is offered a generated pseudonym (`internal/web/names.go`) rather than an empty
-field: nobody should have to decide on the spot, with a form in front of them, how much of
-their real name to give a study group. Anyone can change theirs on `/people/`; a name is a
-label, and progress is keyed by id, so a rename moves no work.
+It never showed a rating or a hint rung, which was the right constraint: those drive the
+review schedule, and a table that rewarded a high rating gives you a reason to under-report
+a hint. What was left after that constraint was a scoreboard of the two columns that were
+safe to show, and it was the only reason a name had to be visible to anyone. A name is now
+a label in the owner's `nc user list`, and `progress.Summarize` is called for one person at
+a time. Before adding any comparison across people, work out what it does to the ratings.
 
 The panel is offered to guests only on a provider that cannot read the server. The CLI
 providers (`claude`, `codex`) run an agent with the repository as its working directory,
@@ -366,7 +443,7 @@ internal/testbank/               examples and corner-case fixtures for all 150
 internal/testkit/                standard-library practice test helpers (Go)
 internal/testkit/py/             the same harness in Python, stdlib only
 internal/web/                    the study site
-tutor/                           the tutoring protocol and its references
+tutor/                           the tutoring and interview protocols, and the references
 ```
 
 Note what is gitignored: on a fresh clone there are no statements until `nc fetch` runs,

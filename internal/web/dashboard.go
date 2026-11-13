@@ -3,6 +3,7 @@ package web
 import (
 	"net/http"
 	"sort"
+	"time"
 
 	"neetcode150/internal/progress"
 	"neetcode150/internal/studydb"
@@ -16,12 +17,23 @@ type caseFailureView struct {
 	ID    int
 }
 
-type coachPage struct {
+// dashboardPage is the home page: what to work on next, and what the ratings
+// say about what has been worked on already.
+//
+// The second half was a separate Coach page. Both read the same ratings, and
+// the split meant a count of solved problems sat on one page while the figures
+// that qualify it sat on another.
+type dashboardPage struct {
 	common
 
-	// Rated is how many problems have a recorded rating, and Unaided how many
-	// of those last went unaided. The pair is the headline: not how much has
-	// been covered, but how much can be done without help.
+	Next       *problemView
+	NextAction string
+	NextReason string
+	DueSoon    []problemView
+	Recent     []problemView
+
+	// Rated is how many problems have a recorded rating, Unaided how many of
+	// those last went unaided.
 	Rated   int
 	Unaided int
 
@@ -36,28 +48,32 @@ type coachPage struct {
 }
 
 // UnaidedShare is the percentage of rated problems last solved without a hint.
-func (p coachPage) UnaidedShare() int {
+func (p dashboardPage) UnaidedShare() int {
 	if p.Rated == 0 {
 		return 0
 	}
 	return p.Unaided * 100 / p.Rated
 }
 
-// handleCoach reports what the ratings add up to.
-//
-// The dashboard answers "how far along am I", which a count of solved problems
-// can flatter. This page answers the harder question — what is not secure —
-// off the data the ratings already carry: hint rungs, slips, and which test
-// fixtures keep breaking.
-func (s *session) handleCoach(w http.ResponseWriter, r *http.Request) {
+func (s *session) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	now := s.now()
 	patterns := s.progress.Patterns(s.cat.Problems, now)
-	page := coachPage{
-		common:   s.common("Coach", "coach"),
+	page := dashboardPage{
+		common:   s.common("Dashboard", "dashboard"),
 		Patterns: patterns,
 		Concerns: progress.ByConcern(patterns),
 		Weakest:  s.progress.Weakest(s.cat.Problems, 10),
 	}
+	if p, reason, ok := s.progress.Next(s.cat.Problems, now); ok {
+		v := s.view(p, now)
+		_, hasSolution := s.readSolution(p)
+		page.Next, page.NextReason = &v, reason
+		page.NextAction = workAction(v, hasSolution)
+	}
+	due := s.views(s.progress.DueReview(s.cat.Problems, now), now)
+	page.DueSoon = due[:min(len(due), 5)]
+	page.Recent = s.recent(now, 6)
+
 	for _, rep := range patterns {
 		page.Rated += rep.Rated
 		page.Unaided += rep.Unaided
@@ -84,5 +100,20 @@ func (s *session) handleCoach(w http.ResponseWriter, r *http.Request) {
 	sort.SliceStable(page.Cases, func(i, j int) bool {
 		return page.Cases[i].Failures > page.Cases[j].Failures
 	})
-	s.render(w, "coach", page)
+	s.render(w, "dashboard", page)
+}
+
+// recent lists the problems you touched most recently.
+func (s *session) recent(now time.Time, limit int) []problemView {
+	var touched []problemView
+	for _, p := range s.cat.Problems {
+		v := s.view(p, now)
+		if v.Entry.LastTouched != nil {
+			touched = append(touched, v)
+		}
+	}
+	sort.SliceStable(touched, func(i, j int) bool {
+		return touched[i].Entry.LastTouched.After(*touched[j].Entry.LastTouched)
+	})
+	return touched[:min(len(touched), limit)]
 }

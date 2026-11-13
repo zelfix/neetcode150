@@ -2,7 +2,9 @@ package progress
 
 import (
 	"testing"
+	"time"
 
+	"neetcode150/internal/catalog"
 	"neetcode150/internal/lang"
 	"neetcode150/internal/studydb"
 )
@@ -53,5 +55,46 @@ func TestLastArchivedInPicksTheNewestOfThatLanguage(t *testing.T) {
 				t.Errorf("code = %q, want %q", got.Attempt.Code, c.code)
 			}
 		})
+	}
+}
+
+// The interview draws from this pool, and `nc drill` used to. Started but
+// unfinished counts as unsolved: leaving those out made a pool of twenty open
+// problems report "nothing left".
+func TestDrillPoolCountsAnAttemptedProblemAsUnsolved(t *testing.T) {
+	s := newStore(t)
+	now := time.Now()
+	problems := []catalog.Problem{
+		{ID: 1, Slug: "two-sum", Dir: "0001-two-sum"},
+		{ID: 2, Slug: "valid-anagram", Dir: "0002-valid-anagram"},
+		{ID: 3, Slug: "group-anagrams", Dir: "0003-group-anagrams"},
+	}
+	if _, err := s.SetStatus("two-sum", Attempted, now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.SetStatus("valid-anagram", Solved, now); err != nil {
+		t.Fatal(err)
+	}
+
+	slugs := func(got []catalog.Problem) []string {
+		out := make([]string, 0, len(got))
+		for _, p := range got {
+			out = append(out, p.Slug)
+		}
+		return out
+	}
+	unsolved := slugs(s.DrillPool(problems, false))
+	if len(unsolved) != 2 || unsolved[0] != "two-sum" || unsolved[1] != "group-anagrams" {
+		t.Errorf("unsolved pool = %v, want the attempted one and the untouched one", unsolved)
+	}
+	if solved := slugs(s.DrillPool(problems, true)); len(solved) != 1 || solved[0] != "valid-anagram" {
+		t.Errorf("solved pool = %v, want just valid-anagram", solved)
+	}
+	// Shaky is solved-but-insecure, which is still a candidate for revision.
+	if _, err := s.SetStatus("group-anagrams", Shaky, now); err != nil {
+		t.Fatal(err)
+	}
+	if solved := slugs(s.DrillPool(problems, true)); len(solved) != 2 {
+		t.Errorf("solved pool = %v, want the shaky one in it", solved)
 	}
 }

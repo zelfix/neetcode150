@@ -48,8 +48,10 @@ func TestEveryPersonalPageRefusesAnUnidentifiedRequest(t *testing.T) {
 		t.Fatal(err)
 	}
 	h := srv.Handler()
+	// /patterns/ and /coach/ are not here: both were merged into other pages
+	// and no longer exist.
 	for _, path := range []string{"/", "/problems/", "/problems/two-sum", "/problems/two-sum/solve",
-		"/patterns/", "/patterns/arrays-hashing", "/review/", "/coach/"} {
+		"/patterns/arrays-hashing", "/review/", "/interview/"} {
 		rec := getAs(t, h, path, "")
 		if rec.Code != http.StatusForbidden {
 			t.Errorf("%s without a cookie = %d, want 403", path, rec.Code)

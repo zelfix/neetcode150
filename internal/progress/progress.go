@@ -861,9 +861,9 @@ func weigh(p catalog.Problem, e Entry, median int) Weakness {
 		add(1, "last rated 3")
 	}
 	if r, ok := e.LastReview(); ok && r.Rung >= 4 {
-		add(3, fmt.Sprintf("needed hint rung %d", r.Rung))
+		add(3, fmt.Sprintf("needed hint %d of 5", r.Rung))
 	} else if ok && r.Rung >= 2 {
-		add(1, fmt.Sprintf("needed hint rung %d", r.Rung))
+		add(1, fmt.Sprintf("needed hint %d of 5", r.Rung))
 	}
 	if e.Attempts >= 2 {
 		add(1, plural(e.Attempts, "attempt", "attempts"))

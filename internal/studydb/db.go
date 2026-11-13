@@ -18,7 +18,7 @@ import (
 
 const Filename = "study.sqlite3"
 
-const schemaVersion = 6
+const schemaVersion = 7
 
 // OwnerID is the first user. The CLI is the owner's own tool and always acts as
 // this id; the legacy import and every pre-multi-user row belong to it.
@@ -185,8 +185,56 @@ PRAGMA user_version=3;`)
 			}
 			version = 6
 		}
+		if version == 6 {
+			if err := migrateV7(tx); err != nil {
+				return err
+			}
+			if _, err := tx.Exec("PRAGMA user_version=7"); err != nil {
+				return err
+			}
+			version = 7
+		}
 		return nil
 	})
+}
+
+// migrateV7 adds interviews, and the role a tutor session is running as.
+//
+// An interview is a sitting of its own: two or three problems drawn at random,
+// a time limit per problem, and a report at the end. It deliberately writes no
+// rating, so it needs somewhere other than progress to live.
+//
+// One live interview per person is a partial unique index rather than a check
+// in the handler, because the handler is where a second tab would get past it.
+//
+// The role column is what lets one person have both a tutoring conversation and
+// an interview open on the same problem: sessions are looked up by slug, and
+// without it a restored interview would come back as a tutor and start offering
+// hints.
+func migrateV7(tx *sql.Tx) error {
+	_, err := tx.Exec(`
+CREATE TABLE IF NOT EXISTS interviews (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  started_at  TEXT NOT NULL,
+  finished_at TEXT,
+  payload     TEXT NOT NULL CHECK(json_valid(payload))
+);
+CREATE INDEX IF NOT EXISTS interviews_person ON interviews(user_id,id);
+CREATE UNIQUE INDEX IF NOT EXISTS interviews_live ON interviews(user_id) WHERE finished_at IS NULL;`)
+	if err != nil {
+		return fmt.Errorf("schema v7: %w", err)
+	}
+	has, err := hasColumn(tx, "tutor_sessions", "role")
+	if err != nil {
+		return fmt.Errorf("schema v7: %w", err)
+	}
+	if !has {
+		if _, err := tx.Exec("ALTER TABLE tutor_sessions ADD COLUMN role TEXT NOT NULL DEFAULT 'tutor'"); err != nil {
+			return fmt.Errorf("schema v7: %w", err)
+		}
+	}
+	return nil
 }
 
 // migrateV6 adds invites: the authority to create an identity, delegated once
@@ -601,17 +649,20 @@ type Session struct {
 	Events         []json.RawMessage
 }
 
-func (s *Scope) NewSession(slug, provider string, started time.Time) (int64, error) {
-	r, e := s.db.SQL.Exec("INSERT INTO tutor_sessions(user_id,slug,provider,started_at) VALUES(?,?,?,?)", s.userID, slug, provider, started.Format(time.RFC3339Nano))
+// The role is part of the identity of a session, not a label on it: one person
+// can have a tutoring conversation and an interview open on the same problem,
+// and a lookup that ignored the role would hand back the wrong one.
+func (s *Scope) NewSession(slug, provider, role string, started time.Time) (int64, error) {
+	r, e := s.db.SQL.Exec("INSERT INTO tutor_sessions(user_id,slug,provider,role,started_at) VALUES(?,?,?,?,?)", s.userID, slug, provider, role, started.Format(time.RFC3339Nano))
 	if e != nil {
 		return 0, e
 	}
 	return r.LastInsertId()
 }
-func (s *Scope) Session(slug string) (*Session, error) {
+func (s *Scope) Session(slug, role string) (*Session, error) {
 	var rec Session
 	var started string
-	err := s.db.SQL.QueryRow("SELECT id,slug,provider,started_at FROM tutor_sessions WHERE user_id=? AND slug=? AND retired=0 ORDER BY id DESC LIMIT 1", s.userID, slug).Scan(&rec.ID, &rec.Slug, &rec.Provider, &started)
+	err := s.db.SQL.QueryRow("SELECT id,slug,provider,started_at FROM tutor_sessions WHERE user_id=? AND slug=? AND role=? AND retired=0 ORDER BY id DESC LIMIT 1", s.userID, slug, role).Scan(&rec.ID, &rec.Slug, &rec.Provider, &started)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -636,8 +687,8 @@ func (s *Scope) Session(slug string) (*Session, error) {
 	}
 	return &rec, rows.Err()
 }
-func (s *Scope) RetireSession(slug string) error {
-	_, e := s.db.SQL.Exec("UPDATE tutor_sessions SET retired=1 WHERE user_id=? AND slug=?", s.userID, slug)
+func (s *Scope) RetireSession(slug, role string) error {
+	_, e := s.db.SQL.Exec("UPDATE tutor_sessions SET retired=1 WHERE user_id=? AND slug=? AND role=?", s.userID, slug, role)
 	return e
 }
 

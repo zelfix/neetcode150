@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"neetcode150/internal/catalog"
+	"neetcode150/internal/content"
 	"neetcode150/internal/lang"
 	"neetcode150/internal/studydb"
 	"neetcode150/internal/workspace"
@@ -30,17 +31,31 @@ const (
 	maxLadder    = 16_000
 )
 
+// followUpBriefing explains the held-back question to whoever is given it.
+//
+// The page shows the statement without it, because reading "could you do this
+// in one pass?" before starting gives away that one pass is possible — which is
+// the question worth asking once the obvious solution works.
+const followUpBriefing = "This is part of the statement that the person cannot see: the page holds it " +
+	"back so that it does not give away that a better solution exists. Do not quote it, allude to it, " +
+	"or hint at it while they are still solving. Once their solution works it is a good thing to ask, " +
+	"in your own words."
+
 // systemPrompt is everything that does not change while a problem is open.
-func (m *Manager) systemPrompt(scope *studydb.Scope, p catalog.Problem) string {
+func (m *Manager) systemPrompt(scope *studydb.Scope, p catalog.Problem, role Role) string {
 	var b strings.Builder
 	l := m.language(scope, p.Slug)
 
-	fmt.Fprintf(&b, "You are tutoring one NeetCode 150 problem. The person is solving it in %s. Follow the protocol below exactly.\n", l.Label)
+	if role == RoleInterviewer {
+		fmt.Fprintf(&b, "You are interviewing somebody on one NeetCode 150 problem. They are writing %s. Follow the protocol below exactly.\n", l.Label)
+	} else {
+		fmt.Fprintf(&b, "You are tutoring one NeetCode 150 problem. The person is solving it in %s. Follow the protocol below exactly.\n", l.Label)
+	}
 	b.WriteString("It is the whole of your instructions: you have no access to this repository, " +
 		"no tools, and no way to read or run anything. Everything you are given arrives in these messages.\n\n")
 
-	b.WriteString("=== TUTORING PROTOCOL ===\n")
-	b.WriteString(readCapped(filepath.Join(m.root, "tutor", "TUTOR.md"), maxProtocol))
+	b.WriteString("=== PROTOCOL ===\n")
+	b.WriteString(readCapped(filepath.Join(m.root, "tutor", role.Protocol()), maxProtocol))
 	b.WriteString("\n\n=== REFERENCES CITED BY THE PROTOCOL ===\n")
 	refs := referencesFor(m.root, l)
 	for _, ref := range refs {
@@ -52,9 +67,16 @@ func (m *Manager) systemPrompt(scope *studydb.Scope, p catalog.Problem) string {
 	b.WriteString(LearningPolicy)
 
 	fmt.Fprintf(&b, "\n\n=== THE PROBLEM ===\n%d. %s (%s), pattern %q.\n\n", p.ID, p.Title, p.Slug, p.Pattern)
-	b.WriteString(readCapped(filepath.Join(m.root, p.ContentDir(), "problem.md"), maxStatement))
+	statement, followUp := content.SplitFollowUp(readCapped(filepath.Join(m.root, p.ContentDir(), "problem.md"), maxStatement))
+	b.WriteString(statement)
+	if followUp != "" {
+		b.WriteString("\n\n=== THE STATEMENT'S FOLLOW-UP QUESTION ===\n")
+		b.WriteString(followUpBriefing + "\n" + capAt(followUp, 4_000))
+	}
 
-	if scope != nil {
+	// The ladder is the tutor's own reference and the one thing an interviewer
+	// must never have: it is the answer, in stages.
+	if scope != nil && role == RoleTutor {
 		if hints, err := scope.Document(p.Slug, "hints"); err == nil && strings.TrimSpace(hints) != "" {
 			b.WriteString("\n\n=== RECORDED HINT LADDER ===\n")
 			b.WriteString("Private reference. Reveal only the rung actually asked for, one per request.\n")
@@ -63,15 +85,7 @@ func (m *Manager) systemPrompt(scope *studydb.Scope, p catalog.Problem) string {
 	}
 
 	b.WriteString("\n\n=== HOW TO ANSWER ===\n")
-	b.WriteString("The person is in a browser workspace with an editor and a Run-tests button, " +
-		"so never tell them to run `nc start` or the test command — the page does both and logs the time and the rating.\n" +
-		"Your replies render as Markdown in a narrow side panel. Keep them short: a few sentences, or a short list. " +
-		"Ask one question at a time and wait for the answer. Reply in the person's language. " +
-		"Be warm and supportive: acknowledge a specific sound idea, effort, or self-correction before the next question. " +
-		"Treat mistakes as something to explore together, not as a judgement of ability. " +
-		"Avoid exaggerated praise and keep ratings honest.\n" +
-		"You cannot see their code unless it is included in the message you are answering. " +
-		"If it is absent and you need it, say so rather than guessing.")
+	b.WriteString(role.Briefing())
 
 	return b.String()
 }
@@ -80,8 +94,14 @@ func (m *Manager) systemPrompt(scope *studydb.Scope, p catalog.Problem) string {
 //
 // Appended to the person's own message rather than kept in the system prompt,
 // so editing a solution does not invalidate the cached prefix.
-func (m *Manager) turnContext(scope *studydb.Scope, p catalog.Problem) string {
+func (m *Manager) turnContext(scope *studydb.Scope, p catalog.Problem, role Role) string {
 	if scope == nil {
+		return ""
+	}
+	// An interview works in its own directory, so this would read the wrong
+	// files. What the interviewer is shown comes from the interview's own
+	// prompts, which carry the code they were submitted with.
+	if role == RoleInterviewer {
 		return ""
 	}
 	lay := workspace.For(m.root, scope.UserID())

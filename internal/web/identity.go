@@ -63,6 +63,17 @@ func (s *Server) signedIn(w http.ResponseWriter, r *http.Request) (*session, boo
 	return &session{Server: s, user: user, progress: progress.NewScoped(s.db.For(user.ID))}, true
 }
 
+// hasSession is signedIn without the refusal: whether a valid cookie came with
+// the request, for the one page that is meant for people without one.
+func (s *Server) hasSession(r *http.Request) bool {
+	cookie, err := r.Cookie(cookieName)
+	if err != nil || cookie.Value == "" {
+		return false
+	}
+	_, err = s.db.UserByToken(cookie.Value)
+	return err == nil
+}
+
 // with adapts a session handler for the router. Method expressions keep the
 // registration readable: s.with((*session).handleDashboard).
 func (s *Server) with(h func(*session, http.ResponseWriter, *http.Request)) http.HandlerFunc {
@@ -198,7 +209,7 @@ func (s *session) cacheDir() string {
 func (s *session) runRequest(p catalog.Problem) runRequest {
 	return runRequest{
 		Root:     s.root,
-		PkgDir:   s.work().PkgDir(p),
+		PkgDir:   s.work(p).PkgDir(p),
 		UserID:   s.user.ID,
 		CacheDir: s.cacheDir(),
 		Lang:     s.language(p).ID,
@@ -206,14 +217,30 @@ func (s *session) runRequest(p catalog.Problem) runRequest {
 }
 
 // language is the site's one call to the resolution rule.
+//
+// An interview chooses once, for the whole sitting, and overrides the problem's
+// own choice while it is running: the interview writes its own files and the
+// person picked the language on the way in, so a problem they once solved in Go
+// does not decide what they are interviewed in.
 func (s *session) language(p catalog.Problem) lang.Lang {
+	if _, st, ok := s.interviewHere(p.Slug); ok && st.Lang != "" {
+		return lang.Resolve(st.Lang)
+	}
 	return lang.Resolve(s.progress.Get(p.Slug).Lang)
 }
 
 // work is this person's workspace. The owner keeps solutions/; everybody else
 // gets their own directory, so two people on one problem do not write over
 // each other's Go.
-func (s *session) work() workspace.Layout {
+//
+// It takes the problem because an interview is a third directory: a problem
+// drawn into an interview is scaffolded blank, and writing that over a solution
+// they already have would cost them the work. Every path the workspace reads or
+// writes goes through here, so the branch is in one place.
+func (s *session) work(p catalog.Problem) workspace.Layout {
+	if rec, _, ok := s.interviewHere(p.Slug); ok {
+		return workspace.Interview(s.root, s.user.ID, rec.ID)
+	}
 	return workspace.For(s.root, s.user.ID)
 }
 

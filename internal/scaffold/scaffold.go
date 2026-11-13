@@ -24,6 +24,23 @@ import (
 )
 
 // GenerateFor is Generate or GeneratePython, by language.
+// WithoutPattern is the problem with its pattern removed, which is what an
+// interview scaffolds with: the generated file's first line names the problem,
+// and naming the pattern there would answer the question being asked.
+func WithoutPattern(p catalog.Problem) catalog.Problem {
+	p.Pattern, p.PatternSlug = "", ""
+	return p
+}
+
+// headerLine names the problem at the top of a generated solution, dropping the
+// pattern when WithoutPattern has taken it off.
+func headerLine(p catalog.Problem) string {
+	if p.Pattern == "" {
+		return fmt.Sprintf("%d. %s — %s", p.ID, p.Title, p.Difficulty)
+	}
+	return fmt.Sprintf("%d. %s — %s, %s", p.ID, p.Title, p.Difficulty, p.Pattern)
+}
+
 func GenerateFor(l lang.Lang, p catalog.Problem, signature, statement string) Files {
 	if l.ID == lang.Python {
 		return GeneratePython(p, signature, statement)
@@ -232,7 +249,7 @@ func Generate(p catalog.Problem, signature, statement string) Files {
 	helpers := HelperTypes(signature)
 
 	var sol strings.Builder
-	fmt.Fprintf(&sol, "// %d. %s — %s, %s\n", p.ID, p.Title, p.Difficulty, p.Pattern)
+	fmt.Fprintf(&sol, "// %s\n", headerLine(p))
 	fmt.Fprintf(&sol, "// %s\n", p.LeetCodeURL)
 	fmt.Fprintf(&sol, "//\n// Statement: %s/problem.md\n", p.ContentDir())
 	fmt.Fprintf(&sol, "package %s\n\n", pkg)

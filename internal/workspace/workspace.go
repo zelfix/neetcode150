@@ -30,11 +30,16 @@ const guests = "_work"
 
 // Layout is where one user's working Go files live.
 //
-// Two path shapes mean a bug can hide in the guest one alone, so the branch
-// lives in PkgDir only, and its test covers an owner and a guest id.
+// Three path shapes mean a bug can hide in one of them alone, so the branch
+// lives in PkgDir only, and its test covers an owner, a guest and an interview.
 type Layout struct {
 	Root   string // absolute project root
 	UserID int64
+	// Interview is non-zero while these files belong to an interview rather
+	// than to the person's own study. An interview draws problems at random and
+	// scaffolds them blank, which would overwrite a solution they already have,
+	// so it gets a directory of its own and leaves the study files alone.
+	Interview int64
 }
 
 // Owner is the layout the CLI uses: the repository owner's own files.
@@ -43,8 +48,19 @@ func Owner(root string) Layout { return Layout{Root: root, UserID: studydb.Owner
 // For is the layout belonging to one user.
 func For(root string, userID int64) Layout { return Layout{Root: root, UserID: userID} }
 
+// Interview is the layout for one interview's working files.
+func Interview(root string, userID, interviewID int64) Layout {
+	return Layout{Root: root, UserID: userID, Interview: interviewID}
+}
+
 // PkgDir is the problem's package directory, relative to Root.
 func (l Layout) PkgDir(p catalog.Problem) string {
+	// Interview files go under guests even for the owner: the point is that
+	// they are not the owner's solutions/ tree.
+	if l.Interview != 0 {
+		return filepath.Join(guests, strconv.FormatInt(l.UserID, 10),
+			"interview-"+strconv.FormatInt(l.Interview, 10), solutions, p.Dir)
+	}
 	if l.UserID == studydb.OwnerID {
 		return filepath.Join(solutions, p.Dir)
 	}

@@ -10,7 +10,6 @@ import (
 	"flag"
 	"fmt"
 	"math"
-	"math/rand/v2"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -64,7 +63,6 @@ Usage:
                                --amend <1-5> corrects the last rating, --undo drops it
   nc resolve <problem>         archive the current solution and start a cold re-solve
   nc diff <problem>            the last archived attempt against the current one
-  nc drill [--pattern p]       a problem at random, pattern withheld (--solved to revise)
   nc weak [-n 10]              what is least secure, and why
   nc time <problem> <minutes>  add time spent
   nc review [--limit 8]        what is due for review, most overdue first
@@ -113,8 +111,8 @@ func commandHelpOnErr(cmd string, err error) error {
 	return err
 }
 
-// commandHelp prints one command's lines out of usage, so the flags on rate,
-// drill or serve can be found without reading the whole block.
+// commandHelp prints one command's lines out of usage, so the flags on rate
+// or serve can be found without reading the whole block.
 func commandHelp(cmd string) error {
 	var out []string
 	capturing := false
@@ -178,8 +176,6 @@ func dispatch(cmd, root string, rest []string) error {
 		return cmdResolve(root, rest)
 	case "diff":
 		return cmdDiff(root, rest)
-	case "drill":
-		return cmdDrill(root, rest)
 	case "weak":
 		return cmdWeak(root, rest)
 	default:
@@ -849,16 +845,15 @@ func cmdRate(root string, args []string) error {
 		if rung == 0 {
 			fmt.Println("  unaided")
 		} else {
-			fmt.Printf("  needed hint rung %d\n", rung)
+			fmt.Printf("  needed hint %d of 5\n", rung)
 		}
-		// The rating is the felt measure and the rung is the honest one, so say
-		// plainly when the rung is what decided the schedule.
+		// Say so when the hint, not the rating, is what set the schedule.
 		held := max(1, prev.ReviewStage)
 		switch {
 		case e.ReviewStage < held:
-			fmt.Printf("  rung %d is not recall — stage %d, down from %d\n", rung, e.ReviewStage, held)
+			fmt.Printf("  hint %d dropped it to stage %d, down from %d\n", rung, e.ReviewStage, held)
 		case rung >= 3 && n >= 4:
-			fmt.Printf("  rung %d held it at stage %d rather than earning the next one\n", rung, e.ReviewStage)
+			fmt.Printf("  hint %d held it at stage %d rather than earning the next one\n", rung, e.ReviewStage)
 		}
 	}
 	if e.Slipped() {
@@ -1227,50 +1222,6 @@ func cmdDiff(root string, args []string) error {
 	}
 	fmt.Printf("\n  %s added, %s removed\n",
 		plural(report.Added, "line", "lines"), plural(report.Removed, "line", "lines"))
-	return nil
-}
-
-// ---------- drilling ----------
-
-// cmdDrill picks a problem at random and does not say which pattern it is.
-//
-// Working the roadmap in order means the pattern is known before the statement
-// is read, which is most of the work. Interleaved practice feels worse during a
-// session and holds up better weeks later, so it needs its own entry point.
-func cmdDrill(root string, args []string) error {
-	fs := flag.NewFlagSet("drill", flag.ContinueOnError)
-	pattern := fs.String("pattern", "", "draw only from this pattern (name or slug)")
-	solved := fs.Bool("solved", false, "draw from problems already solved, for retrieval practice")
-	if err := fs.Parse(args); err != nil {
-		return err
-	}
-	cat, prog, err := load(root)
-	if err != nil {
-		return err
-	}
-	defer prog.Close()
-
-	pool := catalog.MatchPattern(cat.Problems, *pattern)
-	if len(pool) == 0 && *pattern != "" {
-		return fmt.Errorf("no pattern matches %q — `nc stats` lists them", *pattern)
-	}
-
-	candidates := prog.DrillPool(pool, *solved)
-	if len(candidates) == 0 {
-		if *solved {
-			return fmt.Errorf("nothing solved yet to drill")
-		}
-		return fmt.Errorf("nothing unsolved left in that pool — try --solved")
-	}
-
-	p := candidates[rand.IntN(len(candidates))]
-	fmt.Printf("%d. %s — %s\n", p.ID, p.Title, p.Difficulty)
-	fmt.Printf("  drawn from %s\n", plural(len(candidates), "candidate", "candidates"))
-	fmt.Printf("  statement %s/problem.md\n", p.ContentDir())
-	fmt.Printf("  start     nc start %s\n", p.Slug)
-	fmt.Println()
-	fmt.Println("  The pattern is withheld on purpose: name it yourself before you read on.")
-	fmt.Println("  It is in the statement's frontmatter, so do not scroll past the title.")
 	return nil
 }
 

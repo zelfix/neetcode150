@@ -22,7 +22,7 @@
 {{if .Sittings}}
 <table class="record-table">
   <thead>
-    <tr><th>Date</th><th>Rating</th><th>Rung</th><th>Stage</th><th>Sitting</th></tr>
+    <tr><th>Date</th><th>Rating</th><th>Hint</th><th>Stage</th><th>Sitting</th></tr>
   </thead>
   <tbody>
     {{range .Sittings}}
@@ -35,7 +35,7 @@
     </tr>
     {{if or .Slipped .Generous}}
     <tr class="record-flag">
-      <td colspan="5">{{if .Slipped}}rating slipped{{end}}{{if and .Slipped .Generous}} · {{end}}{{if .Generous}}rating looks generous next to that rung{{end}}</td>
+      <td colspan="5">{{if .Slipped}}rating slipped{{end}}{{if and .Slipped .Generous}} · {{end}}{{if .Generous}}rating looks generous next to the hint it needed{{end}}</td>
     </tr>
     {{end}}
     {{end}}
@@ -44,51 +44,32 @@
 {{end}}
 {{end}}
 
-{{/* rateForm offers the five confidence buttons. Pass a problemView, with
-     .BackTo set on the page so the form returns where it came from. */}}
+{{/* rateForm asks how much help the sitting needed. Pass a problemView, with
+     .BackTo set on the page so the form returns where it came from.
+
+     Each button carries its own rating and hint rung; what they mean for the
+     schedule is rateOutcome in server.go. */}}
 {{define "rateForm"}}
 <form class="rate" method="post" action="/problems/{{.P.Slug}}/rate">
   <input type="hidden" name="from" value="{{.BackTo}}">
   <span class="rate-label">How did it go?</span>
-  {{/* The rung sits before the buttons because each button submits: it has to
-       be chosen first. Left alone it is unaided, which is what a bare rating
-       always meant. The rating is the felt measure, the rung the honest one. */}}
-  <label class="rate-rung">needed
-    <select name="rung">
-      <option value="0">no hint</option>
-      <option value="1">rung 1 — where to look</option>
-      <option value="2">rung 2 — the pattern</option>
-      <option value="3">rung 3 — the invariant</option>
-      <option value="4">rung 4 — the shape</option>
-      <option value="5">rung 5 — the answer</option>
-    </select>
-  </label>
-  <span class="rate-row">
-    <button name="confidence" value="1" title="Lost — needed the solution">1</button>
-    <button name="confidence" value="2" title="Needed a strong hint">2</button>
-    <button name="confidence" value="3" title="Got there with effort">3</button>
-    <button name="confidence" value="4" title="Comfortable">4</button>
-    <button name="confidence" value="5" title="Instant">5</button>
+  <span class="rate-row rate-words">
+    {{range rateOutcomes}}
+    <button name="outcome" value="{{.Key}}" title="{{.Title}}">{{.Label}}</button>
+    {{end}}
   </span>
-  <span class="rate-ends"><span>lost it</span><span>instant</span></span>
 </form>
 {{if and .Correct .P.Entry.History}}
 {{/* Offered only where there is a rating to correct, and only on the reading
-     page: the review queue puts one of these in an 18rem column per problem. */}}
+     page: the review queue puts one of these in an 18rem column per problem.
+
+     Undo only: amending means naming a rating and a rung by hand, which the
+     form above no longer asks for. To change one, drop it and rate again. */}}
 <form class="rate rate-correct" method="post" action="/problems/{{.P.Slug}}/rate">
   <input type="hidden" name="from" value="{{.BackTo}}">
   <span class="rate-label">Got that wrong?</span>
   <span class="rate-row">
-    <select name="confidence" aria-label="Corrected rating">
-      <option value="1">1</option><option value="2">2</option><option value="3">3</option>
-      <option value="4">4</option><option value="5">5</option>
-    </select>
-    <select name="rung" aria-label="Corrected rung">
-      <option value="0">no hint</option><option value="1">rung 1</option><option value="2">rung 2</option>
-      <option value="3">rung 3</option><option value="4">rung 4</option><option value="5">rung 5</option>
-    </select>
-    <button name="action" value="amend">Amend</button>
-    <button name="action" value="undo" title="Drop the last rating and rebuild the schedule">Undo</button>
+    <button name="action" value="undo" title="Drop the last rating and rebuild the schedule">Undo the last rating</button>
   </span>
   <span class="rate-ends"><span>the archived attempt and its tutor report stay; only the schedule is rebuilt</span></span>
 </form>
